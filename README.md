@@ -123,6 +123,20 @@ QQ 群：`1093473044`
 
 > 最近 5 个版本的更新内容，完整历史见 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.1.2 - 2026-05-19
+
+### ✨ 新增
+
+- **editor**: 弱网防丢字 + 字号颜色 + Mermaid 放大预览 + 列表切换优化 (0ce7da6)
+
+### 🐛 修复
+
+- **import**: /export/import 返回 version=1，避免有道云附件回填触发 VERSION_REQUIRED (331bea7)
+- bug (a701dd2)
+- **release**: 体检加 lockfile 时间戳兜底，新增依赖自动 npm install (9cd7847)
+- **release**: 白名单补 @tiptap/extension-text-style 防 TS2307 (a17aacb)
+- 放大图片 (935a5e4)
+
 ### v1.1.1 - 2026-05-18
 
 ### ✨ 新增
@@ -249,22 +263,5 @@ QQ 群：`1093473044`
 ### 🐛 修复
 
 - **android**: 修复键盘弹起后输入框下方一大片白色空白 (35cfb74)
-
-### v1.0.36 - 2026-05-12
-
-### ✨ 新增
-
-- **clipper**: AI optimize clipped content via nowen-note backend (fbc1249)
-- **frontend**: wire FileManager/TiptapEditor with new attachment refs + i18n (0376a01)
-- **backend**: add AI clip-enhance API and attachment/share infra (bb91576)
-- **rag**: support xlsx/xlsm/xltx attachment indexing for AI Q&A (d184942)
-
-### 🐛 修复
-
-- **release**: prevent cross-platform native module mismatch in Win installer (5d73e19)
-
-### 🔧 其他
-
-- **clipper**: support Chrome/Edge/Firefox packaging + release v0.1.1 artifacts (10b36d2)
 
 <!-- CHANGELOG:END -->

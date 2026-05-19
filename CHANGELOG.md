@@ -12,6 +12,21 @@
 
 <!-- ADD_NEW_HERE -->
 
+## v1.1.2 - 2026-05-19
+
+### ✨ 新增
+
+- **editor**: 弱网防丢字 + 字号颜色 + Mermaid 放大预览 + 列表切换优化 (0ce7da6)
+
+### 🐛 修复
+
+- **import**: /export/import 返回 version=1，避免有道云附件回填触发 VERSION_REQUIRED (331bea7)
+- bug (a701dd2)
+- **release**: 体检加 lockfile 时间戳兜底，新增依赖自动 npm install (9cd7847)
+- **release**: 白名单补 @tiptap/extension-text-style 防 TS2307 (a17aacb)
+- 放大图片 (935a5e4)
+
+
 ## v1.1.1 - 2026-05-18
 
 ### ✨ 新增
