@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Palette, Shield, Database, X, Settings, Camera, Save, Loader2, Trash2, Upload, Type, Check, ChevronDown, Globe, Bot, Users, Info, ExternalLink, Heart, Sparkles, RefreshCw, Wrench } from "lucide-react";
+import { Palette, Shield, Database, X, Settings, Camera, Save, Loader2, Trash2, Upload, Type, Check, ChevronDown, Globe, Bot, Users, Info, ExternalLink, Heart, Sparkles, RefreshCw, Wrench, ZoomIn } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import ThemeToggle from "@/components/ThemeToggle";
 import SkinSwitcher from "@/components/SkinSwitcher";
@@ -426,10 +426,59 @@ function DeveloperPanel() {
   );
 }
 
+/**
+ * 简易图片放大 Lightbox
+ * - 点击图片打开，Esc/点击蒙层/关闭按钮 关闭
+ * - createPortal 到 body，避免被 SettingsModal 的 overflow/transform 截断
+ * - 故意做轻：赞赏码场景只需要看清原图，不需要缩放/平移
+ */
+function ImageLightbox({ src, alt, onClose }: { src: string; alt?: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[10000] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <button
+        type="button"
+        className="absolute top-3 right-3 p-2 rounded-lg bg-black/60 border border-white/10 text-white/90 hover:bg-white/10 transition-colors"
+        title="关闭 (Esc)"
+        aria-label="关闭"
+        onClick={onClose}
+      >
+        <X size={16} />
+      </button>
+      <img
+        src={src}
+        alt={alt}
+        className="max-w-[92vw] max-h-[88vh] object-contain rounded-lg shadow-2xl bg-white"
+        draggable={false}
+      />
+    </div>,
+    document.body
+  );
+}
+
 function AboutPanel() {
   const { t } = useTranslation();
   const [showSponsor, setShowSponsor] = useState(false);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
+  // 赞赏码大图预览：点击赞赏码缩略图时弹起 Lightbox
+  const [sponsorPreviewOpen, setSponsorPreviewOpen] = useState(false);
   return (
     <div className="space-y-6">
       {/* 标题区 */}
@@ -544,12 +593,29 @@ function AboutPanel() {
               className="overflow-hidden"
             >
               <div className="px-4 pb-4 pt-2 flex flex-col items-center gap-3 border-t border-zinc-200/60 dark:border-zinc-800/60">
-                <img
-                  src="/weixin.jpg"
-                  alt={t('about.sponsor')}
-                  className="w-44 h-44 sm:w-52 sm:h-52 object-contain rounded-lg bg-white p-2 shadow-sm"
-                  loading="lazy"
-                />
+                {/* 点击图片打开 Lightbox 看大图（按钮包裹 → 无障碍/键盘可达） */}
+                <button
+                  type="button"
+                  onClick={() => setSponsorPreviewOpen(true)}
+                  className="group relative rounded-lg overflow-hidden cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400"
+                  title={t('about.sponsor')}
+                  aria-label={t('about.sponsor')}
+                >
+                  <img
+                    src="/weixin.jpg"
+                    alt={t('about.sponsor')}
+                    className="w-44 h-44 sm:w-52 sm:h-52 object-contain rounded-lg bg-white p-2 shadow-sm transition-transform duration-200 group-hover:scale-[1.02]"
+                    loading="lazy"
+                    draggable={false}
+                  />
+                  {/* hover 时浮现的放大图标提示 */}
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/20 transition-colors">
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-2 py-1 rounded-md bg-black/60 text-white text-[11px]">
+                      <ZoomIn size={12} />
+                      点击放大
+                    </span>
+                  </span>
+                </button>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center">
                   {t('about.sponsorTip')}
                 </p>
@@ -569,6 +635,15 @@ function AboutPanel() {
         open={showWhatsNew}
         onClose={() => setShowWhatsNew(false)}
       />
+
+      {/* 赞赏码大图预览 Lightbox */}
+      {sponsorPreviewOpen && (
+        <ImageLightbox
+          src="/weixin.jpg"
+          alt={t('about.sponsor')}
+          onClose={() => setSponsorPreviewOpen(false)}
+        />
+      )}
     </div>
   );
 }
