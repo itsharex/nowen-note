@@ -2,7 +2,7 @@
 
 > A self-hosted private knowledge base, inspired by Synology Note Station.
 >
-> 自托管的私有知识库。[中文 README](./README.md)
+> 自托管的私有知识库。[中文 README](./README.md) · [Author's Note](./AUTHOR_STORY.en.md)
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/Node-20%2B-green.svg)](https://nodejs.org/)

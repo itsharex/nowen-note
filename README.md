@@ -2,7 +2,7 @@
 
 > 自托管的私有知识库，对标群晖 Note Station。
 >
-> A self-hosted private knowledge base. [English README](./README.en.md)
+> A self-hosted private knowledge base. [English README](./README.en.md) · [作者感言](./AUTHOR_STORY.md)
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/Node-20%2B-green.svg)](https://nodejs.org/)
