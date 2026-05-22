@@ -18,7 +18,14 @@ frontend/android/build_output.txt
 # 打包产物
 nowen-note-*.zip
 dist-fpk/
+dist-upk/
 fnpack-1.2.1-*
+ugcli.exe
+ug-*.html
+ug-*.js
+ug-*.lean.js
+ug-*.full.js
+ugnas-*.html
 
 # 本地导入测试样本（用户私人数据，不应入库）
 docs/samples/

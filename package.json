@@ -25,7 +25,8 @@
     "cap:open:ios": "cd frontend && npx cap open ios",
     "zip": "node scripts/export-zip.mjs",
     "zip:jszip": "node scripts/export-zip-jszip.mjs",
-    "fpk": "node scripts/fpk/build-fpk.mjs"
+    "fpk": "node scripts/fpk/build-fpk.mjs",
+    "build:upk": "node scripts/upk/build-upk.mjs"
   },
   "devDependencies": {
     "@capacitor/android": "^8.2.0",
