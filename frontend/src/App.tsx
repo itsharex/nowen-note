@@ -25,6 +25,7 @@ import { ConfirmProvider } from "@/components/ui/confirm";
 import Toaster from "@/components/Toaster";
 import { User } from "@/types";
 import { getServerUrl, clearServerUrl, broadcastLogout } from "@/lib/api";
+import { bootstrap as syncBootstrap, teardown as syncTeardown } from "@/lib/syncEngine";
 import { useBackButton, hideSplashScreen, useStatusBarSync, useKeyboardLayout, isNativePlatform } from "@/hooks/useCapacitor";
 import { useDesktopMenuBridge } from "@/hooks/useDesktopMenuBridge";
 import CommandPalette from "@/components/common/CommandPalette";
@@ -611,6 +612,61 @@ function AuthGate() {
   }, []);
 
   useEffect(() => {
+    // Phase A: Electron 桌面端零登录优先 —— 在任何"客户端模式 + 无 serverUrl 即回登录页"
+    // 的判断之前先问主进程要本地账号 token。
+    //   - 如果 localStorage 里已有 token（用户已显式登录过），优先尊重之，不覆盖；
+    //   - 仅当未登录且 nowenDesktop.isDesktop+getLocalAuth 可用时才走零登录路径；
+    //   - lite 模式（连远端）下主进程会返回 null，自动回落到原有登录流程；
+    //   - 拿到 token 时同时把 window.location.origin（http://127.0.0.1:<port>）
+    //     写入 nowen-server-url，让后续 API 调用照常走 ${serverUrl}/api，
+    //     避免 verify / fetch 落空。
+    //   - 整体放到最前面是因为：桌面端首启 localStorage 一片空白，
+    //     原先 "isClientMode && !getServerUrl()" 会直接 return，零登录代码永远走不到。
+    const desktopApi = (window as any).nowenDesktop;
+    const existingToken = (() => {
+      try { return localStorage.getItem("nowen-token"); } catch { return null; }
+    })();
+    // D-1：桌面端"切换到云端"开关。
+    //   用户在 NavRail 点击云端入口后会写 nowen-prefer-cloud=1，
+    //   此时强制跳过零登录，直接进登录页（让用户输入 fnos 服务器地址）。
+    //   返回本地模式时 LoginPage 会清除该标记 + reload，零登录恢复。
+    const preferCloud = (() => {
+      try { return localStorage.getItem("nowen-prefer-cloud") === "1"; } catch { return false; }
+    })();
+    if (!existingToken && !preferCloud && desktopApi?.isDesktop && desktopApi?.getLocalAuth) {
+      let cancelled = false;
+      desktopApi.getLocalAuth().then((auth: { token: string; user: User } | null) => {
+        if (cancelled) return;
+        if (auth?.token) {
+          try {
+            localStorage.setItem("nowen-token", auth.token);
+            // 桌面端首启把 origin 当作 serverUrl 落盘，让后续同源 API 调用顺利通过
+            if (!getServerUrl() && window.location.origin.startsWith("http")) {
+              localStorage.setItem("nowen-server-url", window.location.origin);
+            }
+          } catch { /* ignore */ }
+          setUser(auth.user);
+          setIsAuthenticated(true);
+          return;
+        }
+        // 主进程没给 token（lite 模式 / ensureLocalAccount 失败）→ 退回原有判定
+        if (isClientMode && !getServerUrl()) {
+          setIsAuthenticated(false);
+        } else {
+          checkAuth();
+        }
+      }).catch(() => {
+        if (cancelled) return;
+        if (isClientMode && !getServerUrl()) {
+          setIsAuthenticated(false);
+        } else {
+          checkAuth();
+        }
+      });
+      return () => { cancelled = true; };
+    }
+
+    // 非桌面端 / 已有 token：走原有逻辑
     // 客户端模式但没有服务器地址：直接显示登录页（含服务器输入框）
     if (isClientMode && !getServerUrl()) {
       setIsAuthenticated(false);
@@ -673,6 +729,16 @@ function AuthGate() {
   /** 当前 token（用于引导对话框写入 secure storage） */
   const [activeToken, setActiveToken] = useState<string>("");
 
+  // Phase B: 用户登录态确立后启动同步引擎（绑定 IDB + 全量 pull）。
+  // 任何登录入口（密码 / 快速登录 / 桌面零登录）最终都会落到 setUser，
+  // 这里集中接管，避免每个入口都重复挂钩。失败不阻塞 UI。
+  useEffect(() => {
+    if (!user?.id) return;
+    void syncBootstrap(user).catch((e) => {
+      console.warn("[App] syncBootstrap failed:", e);
+    });
+  }, [user?.id]);
+
   // 「更新日志」首次升级自动弹窗。
   //   - 仅在已登录分支生效（enable=!!user），未登录态不打扰；
   //   - useWhatsNew 内部对比 localStorage.nowen-seen-version 与 __APP_VERSION__，
@@ -686,6 +752,8 @@ function AuthGate() {
     // Phase 7: 切换服务器时 token 已经无意义，把 secure storage 镜像也清掉，
     // 避免下次开 app 又用旧 token 自动登录（会落到 verify 失败再回退，但没必要走一遭）
     void import("@/lib/quickLogin").then((m) => m.disableQuickLogin()).catch(() => {});
+    // Phase B: 解绑本地缓存当前用户；缓存数据保留以便下次重登秒开
+    syncTeardown();
     setIsAuthenticated(false);
     setUser(null);
   };

@@ -935,6 +935,37 @@ export default function LoginPage({ onLogin, isClientMode = false, onDisconnect 
               </button>
             </div>
           )}
+
+          {/*
+            D-1：桌面端"返回本地（零登录）"入口。
+            条件：当前已写过 nowen-prefer-cloud（说明用户是从 NavRail 主动切到云端模式来的）。
+            点击后清掉标记 + token + reload，App.tsx 重新走 ensureLocalAccount 流程。
+            注意：不清理 IndexedDB / 本地 SQLite 数据，本地笔记本依然完整保留。
+          */}
+          {(() => {
+            const isElectron = !!(window as any).nowenDesktop?.isDesktop;
+            const preferCloud = (() => {
+              try { return localStorage.getItem("nowen-prefer-cloud") === "1"; } catch { return false; }
+            })();
+            if (!isElectron || !preferCloud) return null;
+            return (
+              <div className="mt-2 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      localStorage.removeItem("nowen-prefer-cloud");
+                      localStorage.removeItem("nowen-token");
+                    } catch { /* ignore */ }
+                    window.location.reload();
+                  }}
+                  className="text-xs text-zinc-400 hover:text-blue-500 dark:text-zinc-500 dark:hover:text-blue-400 transition-colors"
+                >
+                  {t("auth.backToLocal", "← 返回本地模式（不登录直接使用）")}
+                </button>
+              </div>
+            );
+          })()}
         </div>
 
         {isClientMode && (
