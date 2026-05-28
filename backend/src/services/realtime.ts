@@ -578,6 +578,7 @@ export function broadcastNoteUpdated(
     {
       type: "note:updated",
       noteId,
+      actorConnectionId: actorConnectionId || null,
       ...payload,
     },
     actorConnectionId,

@@ -1334,6 +1334,9 @@ export default function NoteList() {
   // 滚动复位。Radix 的 ScrollArea forwardRef 暴露的是 Root 节点，真正的滚动容器
   // 是它内部带 data-radix-scroll-area-viewport 的子节点。
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  // 给 WebSocket 列表更新监听使用，避免每次 state.notes 变化都重订阅事件。
+  const notesRef = useRef<NoteListItem[]>([]);
+  useEffect(() => { notesRef.current = state.notes; }, [state.notes]);
   const { t } = useTranslation();
 
   // Phase 2: 加载分享状态
@@ -1485,13 +1488,38 @@ export default function NoteList() {
     });
   }, [state.notes, sortPref.by, sortPref.dir, state.viewMode]);
 
-  // 监听 WebSocket：外部导入笔记（如剪藏器）后自动刷新列表
+  // 监听 WebSocket：外部导入 / 同账号其它设备保存后自动刷新列表
   useEffect(() => {
-    const off = realtime.on("notes:imported", () => {
+    realtime.connect();
+    const offImported = realtime.on("notes:imported", () => {
       actions.refreshNotes();
       actions.refreshNotebooks();
     });
-    return off;
+    const offListUpdated = realtime.on("note:list-updated", (msg: any) => {
+      const note = msg?.note;
+      if (!note?.id) return;
+      const exists = notesRef.current.some((n) => n.id === note.id);
+      if (exists) {
+        actions.updateNoteInList({
+          id: note.id,
+          title: note.title,
+          contentText: note.contentText,
+          updatedAt: note.updatedAt,
+          version: note.version,
+          isPinned: note.isPinned,
+          isTrashed: note.isTrashed,
+          notebookId: note.notebookId,
+          workspaceId: note.workspaceId,
+        } as any);
+      } else {
+        // 当前筛选下原本没有这条笔记；可能是移动/恢复/新建，低频场景全量刷新更稳。
+        actions.refreshNotes();
+      }
+    });
+    return () => {
+      offImported();
+      offListUpdated();
+    };
   }, [actions]);
 
   // viewMode 切换时自动收起日历并清除筛选

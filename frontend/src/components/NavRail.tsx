@@ -32,18 +32,18 @@ import {
   BookOpen, Star, Trash2, ListTodo, BrainCircuit,
   Sparkles, NotebookPen, FolderOpen,
   Settings, LogOut, PanelLeftClose, PanelLeft, X,
-  Columns2, Columns3, Cloud,
+  Columns2, Columns3, Cloud, CloudOff,
 } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useApp, useAppActions } from "@/store/AppContext";
-import { api, broadcastLogout, getCurrentWorkspace } from "@/lib/api";
+import { api, broadcastLogout, getCurrentWorkspace, getServerUrl, clearServerUrl } from "@/lib/api";
 import { ViewMode, WorkspaceFeatures } from "@/types";
 import { cn } from "@/lib/utils";
 import SettingsModal from "@/components/SettingsModal";
 import MigrationModal from "@/components/MigrationModal";
 import { useRailMode, nextRailMode, RailMode } from "@/hooks/useRailMode";
-import { isDesktop as isDesktopApp } from "@/lib/desktopBridge";
+import { getAppInfo, isDesktop as isDesktopApp, switchDesktopToFull } from "@/lib/desktopBridge";
 
 type NavGroup = "workspace" | "modules" | "tools";
 
@@ -124,6 +124,32 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
   const [showSettings, setShowSettings] = useState(false);
   // D-2：迁移向导弹窗。点"切换到云端"会先弹出，让用户选择是否把本地数据迁过去。
   const [showMigration, setShowMigration] = useState(false);
+  const [desktopMode, setDesktopMode] = useState<"full" | "lite" | null>(null);
+
+  useEffect(() => {
+    if (!isDesktopApp()) return;
+    let cancelled = false;
+    getAppInfo()
+      .then((info) => {
+        if (!cancelled) setDesktopMode(info?.mode ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setDesktopMode(null);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const normalizeUrl = (url: string) => url.replace(/\/+$/, "").toLowerCase();
+  const serverUrl = getServerUrl();
+  const currentOrigin = typeof window !== "undefined" && window.location.origin.startsWith("http")
+    ? window.location.origin
+    : "";
+  // full 桌面端也可能通过 MigrationModal 登录远端账号：此时 Electron mode 仍是 full，
+  // 但 API baseURL 已经被 nowen-server-url 指向云端，所以必须把它识别为"云端态"，
+  // 否则左下角按钮只会再次弹迁移向导，无法回本地。
+  const usingRemoteServer = !!serverUrl && (!currentOrigin || normalizeUrl(serverUrl) !== normalizeUrl(currentOrigin));
+  const usingDesktopLiteMode = desktopMode === "lite";
+  const canSwitchBackToLocal = isDesktopApp() && (usingRemoteServer || usingDesktopLiteMode);
 
   const items = features
     ? NAV_CONFIG.filter((it) => !it.feature || features[it.feature] !== false)
@@ -136,6 +162,46 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
     // 与 Sidebar 内笔记本/标签点击关闭抽屉的行为保持一致。
     if (isMobile) actions.setMobileSidebar(false);
   }, [actions, isMobile]);
+
+  const handleDesktopCloudButton = useCallback(async () => {
+    if (!canSwitchBackToLocal) {
+      setShowMigration(true);
+      return;
+    }
+
+    // lite 模式是真正的 Electron 运行模式切换，必须交给主进程写 settings.json、
+    // 清 WebStorage 并重启；renderer 自己清 localStorage 不足以启动本地后端。
+    if (usingDesktopLiteMode) {
+      await switchDesktopToFull();
+      return;
+    }
+
+    let queuedCount = 0;
+    try {
+      const raw = localStorage.getItem("nowen-offline-queue");
+      queuedCount = raw ? JSON.parse(raw).length : 0;
+    } catch { /* ignore */ }
+
+    const confirmed = window.confirm(
+      queuedCount > 0
+        ? t('sidebar.switchToLocalConfirmWithQueue', '切回本地离线模式？当前云端账号还有未同步操作，切换后这些待同步操作会被丢弃，云端数据不会被删除。')
+        : t('sidebar.switchToLocalConfirm', '切回本地离线模式？云端数据不会被删除，本地数据会继续保留。')
+    );
+    if (!confirmed) return;
+
+    // 从"full + 云端账号"切回"full + 本地零登录"：
+    // 1) 先用当前 server-url/token 尝试吊销云端会话并清快速登录镜像；
+    // 2) 再清 server-url/token/prefer-cloud/offline-queue；
+    // 3) reload 后 App.tsx 会重新走 getLocalAuth()，恢复本地零登录。
+    broadcastLogout("switch_to_local");
+    try {
+      clearServerUrl();
+      localStorage.removeItem("nowen-token");
+      localStorage.removeItem("nowen-prefer-cloud");
+      localStorage.removeItem("nowen-offline-queue");
+    } catch { /* ignore */ }
+    window.location.reload();
+  }, [canSwitchBackToLocal, t, usingDesktopLiteMode]);
 
   // ===== 尺寸常量 =====
   // icon 模式：48px 宽栏 / 40px 方按钮
@@ -284,28 +350,32 @@ export default function NavRail({ variant = "desktop" }: { variant?: "desktop" |
         )}
       </button>
       {/*
-        D-1 / D-2：桌面端把"退出"替换为"切换到云端账号"。
-        理由：桌面端是零登录单机模式，没有传统意义上的退出。
-        D-1 行为：直接 reload 进登录页（用户如果有云端账号，自己重新登录一次）。
-        D-2 升级：先弹 MigrationModal，让用户**带着本地数据**登录到云端账号。
-          - 用户登录成功 → 自动迁移 → 写入云端 token → reload
-          - 用户取消    → 写入 prefer-cloud=1 → reload 进登录页（保留旧行为）
+        桌面端底部账号模式入口：
+          - 本地态：显示 Cloud，打开 MigrationModal，登录并迁移到云端；
+          - 云端态：显示 CloudOff，切回本地零登录；
+          - lite 运行模式：交给主进程切回 full 并重启。
         Web/移动端保持原本的退出登录行为。
       */}
       {isDesktopApp() ? (
         <button
-          onClick={() => setShowMigration(true)}
-          title={showLabel ? undefined : t('sidebar.switchToCloud', '切换到云端账号')}
-          aria-label={t('sidebar.switchToCloud', '切换到云端账号')}
+          onClick={handleDesktopCloudButton}
+          title={showLabel ? undefined : (canSwitchBackToLocal
+            ? t('sidebar.switchToLocal', '切回本地离线模式')
+            : t('sidebar.switchToCloud', '切换到云端账号'))}
+          aria-label={canSwitchBackToLocal
+            ? t('sidebar.switchToLocal', '切回本地离线模式')
+            : t('sidebar.switchToCloud', '切换到云端账号')}
           className={cn(
             itemBaseClass,
             "text-tx-tertiary hover:bg-app-hover hover:text-accent-primary",
           )}
         >
-          <Cloud size={16} />
+          {canSwitchBackToLocal ? <CloudOff size={16} /> : <Cloud size={16} />}
           {showLabel && (
             <span className="text-[10px] leading-none mt-0.5 max-w-full truncate px-1">
-              {t('sidebar.switchToCloud', '切换云端')}
+              {canSwitchBackToLocal
+                ? t('sidebar.switchToLocalShort', '本地')
+                : t('sidebar.switchToCloudShort', '云端')}
             </span>
           )}
         </button>
