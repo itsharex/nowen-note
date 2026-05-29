@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Palette, Shield, Database, X, Settings, Camera, Save, Loader2, Trash2, Upload, Type, Check, ChevronDown, Globe, Bot, Users, Info, ExternalLink, Heart, Sparkles, RefreshCw, Wrench, ZoomIn, Key, Building2, BookOpen, ToggleLeft } from "lucide-react";
+import { Palette, Shield, Database, X, Settings, Camera, Save, Loader2, Trash2, Upload, Type, Check, ChevronDown, Globe, Bot, Users, Info, ExternalLink, Heart, Sparkles, RefreshCw, Wrench, ZoomIn, Key, Building2, BookOpen, ToggleLeft, Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import ThemeToggle from "@/components/ThemeToggle";
 import SkinSwitcher from "@/components/SkinSwitcher";
@@ -13,6 +13,7 @@ import UserManagement from "@/components/UserManagement";
 import WorkspaceManagement from "@/components/WorkspaceManagement";
 import WhatsNewModal from "@/components/WhatsNewModal";
 import AuthorStoryModal from "@/components/AuthorStoryModal";
+import DownloadPanel from "@/components/DownloadPanel";
 import { useSiteSettings, BUILTIN_FONTS, getBuiltinFontName } from "@/hooks/useSiteSettings";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { api } from "@/lib/api";
@@ -20,7 +21,7 @@ import { isDesktop, checkForUpdates, onUpdaterStatus, getReleaseChannel, isPorta
 import { CustomFont } from "@/types";
 import { cn } from "@/lib/utils";
 
-type TabId = "appearance" | "switches" | "ai" | "security" | "tokens" | "data" | "users" | "workspaces" | "developer" | "about";
+type TabId = "appearance" | "switches" | "ai" | "security" | "tokens" | "data" | "users" | "workspaces" | "developer" | "download" | "about";
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -1320,6 +1321,11 @@ const SettingsModal = React.forwardRef<HTMLDivElement, SettingsModalProps>(
     // 「开发者」面板：仅管理员可见，承载运行时调试开关（如 files-list 查询日志）。
     // 普通用户根本看不到这一项，与后端的 admin-only 写入闸门双层防御。
     ...(isAdmin ? [{ id: "developer" as const, label: t('settings.developer'), icon: Wrench }] : []),
+    // 「下载客户端」面板：面向所有用户（含未登录、本地、云端）。需求背景：
+    //   用户主要在中国大陆，GitHub Releases 下载体验差，这里按平台列出产物并提供
+    //   「GitHub 直连 + 多个公共加速代理」的换源能力。与 about 的「前往下载页」区别：后者只能调起
+    //   GitHub 。该面板本身不调用任何需要鉴权的接口（releases/latest 未鉴权）。
+    { id: "download" as const, label: t('settings.download', { defaultValue: '下载客户端' }), icon: Download },
     { id: "about" as const, label: t('about.title'), icon: Info },
   ];
 
@@ -1500,6 +1506,7 @@ const SettingsModal = React.forwardRef<HTMLDivElement, SettingsModalProps>(
                        —— 管理员看到完整三 scope；普通用户只看"个人空间"的导出/导入。 */}
                   {activeTab === "data" && <DataManager />}
                   {activeTab === "developer" && isAdmin && <DeveloperPanel />}
+                  {activeTab === "download" && <DownloadPanel />}
                   {activeTab === "about" && <AboutPanel />}
                 </PanelErrorBoundary>
               </motion.div>

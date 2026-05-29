@@ -499,7 +499,8 @@
     "standard": "Standard",
     "fontUploadSuccess": "Successfully imported {{count}} fonts",
     "fontUploadFailed": "Upload failed",
-    "interDefault": "Inter (Default)"
+    "interDefault": "Inter (Default)",
+    "download": "Downloads"
   },
   "securitySettings": {
     "title": "Account & Security",
@@ -1440,6 +1441,37 @@
     "filterClear": "Clear",
     "emptyFiltered": "Nothing in this time range",
     "emptyFilteredHint": "Try a different range"
+  },
+  "download": {
+    "title": "Downloads",
+    "subtitle": "Get Nowen Note on desktop, mobile and NAS. Mainland China users can switch to a mirror for faster downloads.",
+    "latestVersion": "Latest version",
+    "viewOnGithub": "View full release on GitHub",
+    "refresh": "Refresh",
+    "proxyTip": "Overseas users: connect to GitHub directly. Mainland China users: try Gitee mirror first (only small files like .exe / .apk / .zip / .deb, auto-synced by CI), then ghproxy public mirrors which also cover large files like .fpk / .upk. Public mirror availability varies — rotate as needed.",
+    "btnDownload": "Download",
+    "btnAccelerated": "Mirror",
+    "giteeFallbackTip": "Not on Gitee — fell back to GitHub",
+    "unavailable": "Failed to fetch the latest release",
+    "openGithubManually": "Open GitHub Releases manually",
+    "noAssets": "No recognised installer in this release. See GitHub Releases for raw assets.",
+    "dockerTitle": "Docker one-liner",
+    "dockerDesc": "Run a minimal self-hosted instance on your own server or NAS. After it starts, open http://<host>:3001 to finish setup.",
+    "dockerCnTip": "Tip: if Docker Hub is slow in your region, replace the image prefix with a regional mirror.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "group": {
+      "winSetup": "Windows Installer",
+      "winPortable": "Windows Portable",
+      "mac": "macOS",
+      "linuxApp": "Linux · AppImage",
+      "linuxDeb": "Linux · Debian / Ubuntu (.deb)",
+      "linuxRpm": "Linux · RHEL / Fedora (.rpm)",
+      "android": "Android APK",
+      "fpk": "fnOS NAS (.fpk)",
+      "upk": "UGREEN NAS (.upk)",
+      "clipper": "Browser Clipper"
+    }
   },
   "about": {
     "title": "About",

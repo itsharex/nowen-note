@@ -760,6 +760,14 @@ export const api = {
         prerelease: boolean;
         draft: boolean;
         body?: string;
+        // 资产列表：每条对应一个 GitHub release asset（exe/dmg/apk/fpk/upk 等）。
+        // 后端从 GitHub API 整理后下发，前端在「下载客户端」面板里按文件名分类。
+        assets: Array<{
+          name: string;
+          size: number;
+          contentType: string;
+          browserDownloadUrl: string;
+        }>;
       }
     | { available: false; reason: string }
   > => {
