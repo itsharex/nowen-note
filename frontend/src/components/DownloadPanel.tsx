@@ -49,6 +49,7 @@ import {
   ExternalLink,
   Info,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -157,10 +158,13 @@ function resolveDownloadUrl(
   )}`;
 }
 
-/** 分组顺序与图标映射 —— 影响在面板里的展示顺序。 */
+/** 分组顺序与图标映射 —— 影响在面板里的展示顺序。
+ *  icon 直接用 lucide-react 自己导出的 LucideIcon，避免手写窄签名（{size:number}）
+ *  与库里 size: string|number 不兼容导致 TS2322（更新 @types/react / lucide-react 后会触发）。
+ */
 const GROUP_ORDER: Array<{
   category: AssetCategory;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: LucideIcon;
   /** i18n key 后缀，最终 key 形如 download.group.<key> */
   i18nKey: string;
 }> = [
