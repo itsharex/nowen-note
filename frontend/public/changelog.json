@@ -1,6 +1,11 @@
 {
-  "generatedAt": "2026-05-29T07:13:10.320Z",
+  "generatedAt": "2026-05-29T10:25:51.343Z",
   "entries": [
+    {
+      "version": "1.1.11",
+      "date": "2026-05-29",
+      "body": "### ✨ 新增\n\n- **editor**: 表格交互优化 - 网格选择器与行高丝滑拖拽 (f92168e)"
+    },
     {
       "version": "1.1.10",
       "date": "2026-05-29",
@@ -45,11 +50,6 @@
       "version": "1.1.2",
       "date": "2026-05-19",
       "body": "### ✨ 新增\n\n- **editor**: 弱网防丢字 + 字号颜色 + Mermaid 放大预览 + 列表切换优化 (0ce7da6)\n\n### 🐛 修复\n\n- **import**: /export/import 返回 version=1，避免有道云附件回填触发 VERSION_REQUIRED (331bea7)\n- bug (a701dd2)\n- **release**: 体检加 lockfile 时间戳兜底，新增依赖自动 npm install (9cd7847)\n- **release**: 白名单补 @tiptap/extension-text-style 防 TS2307 (a17aacb)\n- 放大图片 (935a5e4)"
-    },
-    {
-      "version": "1.1.1",
-      "date": "2026-05-18",
-      "body": "### ✨ 新增\n\n- **mobile**: 移动端编辑器体验大改造 + 修复输入回退/Failed to fetch/点笔记没反应 (10b3e59)\n- **backup**: P0~P1 backup/export/import improvements (0764826)\n\n### 🐛 修复\n\n- **ai**: scope knowledge-base notebook by workspace on import (9fd5138)"
     }
   ]
 }
