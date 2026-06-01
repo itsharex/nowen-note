@@ -249,6 +249,10 @@ function rowResizePlugin(): Plugin {
         g.style.display = "block";
         g.style.top = `${rect.bottom - 1}px`;
         // 拖拽中隐藏 hover 手柄，避免视觉重叠
+        // 裁剪到编辑器范围内
+        const editorRect = view.dom.getBoundingClientRect();
+        g.style.left = `${editorRect.left}px`;
+        g.style.right = `${window.innerWidth - editorRect.right}px`;
         hideHandle();
       };
       const onMouseUp = (e: MouseEvent) => {
