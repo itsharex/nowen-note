@@ -26,7 +26,7 @@ import { TableRow } from "@tiptap/extension-table";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
-const ROW_RESIZE_HANDLE_HEIGHT = 6; // 拖拽热区高度（px），稍微放宽一点，更好命中
+const ROW_RESIZE_HANDLE_HEIGHT = 12; // 拖拽热区高度（px），稍微放宽一点，更好命中
 const MIN_ROW_HEIGHT = 24; // 最小行高，防止拖到看不见
 
 /**
@@ -179,7 +179,7 @@ function rowResizePlugin(): Plugin {
         const rect = rowEl.getBoundingClientRect();
         const distFromBottom = rect.bottom - y;
         // 命中带：底边上下各 ROW_RESIZE_HANDLE_HEIGHT 像素
-        if (distFromBottom < -2 || distFromBottom > ROW_RESIZE_HANDLE_HEIGHT + 4) {
+        if (distFromBottom < -4 || distFromBottom > ROW_RESIZE_HANDLE_HEIGHT + 6) {
           hideHandle();
           return;
         }
@@ -201,9 +201,11 @@ function rowResizePlugin(): Plugin {
           const next = Math.max(MIN_ROW_HEIGHT, dragging.startHeight + dy);
           // 给 tr 也加一份（部分浏览器 tr.height 也生效）
           dragging.rowEl.style.height = `${next}px`;
-          // 真正驱动行高的：所有 cell 的 inline height
+          dragging.rowEl.style.minHeight = `${next}px`;
+          // 真正驱动行高的：所有 cell 的 inline height + min-height
           for (const cell of dragging.cells) {
             cell.style.height = `${next}px`;
+            cell.style.minHeight = `${next}px`;
           }
           // 参考线跟随鼠标 Y（夹到行 top + MIN_ROW_HEIGHT 之下不可以）
           const minBottomY = dragging.rowTopAtStart + MIN_ROW_HEIGHT;
@@ -276,8 +278,10 @@ function rowResizePlugin(): Plugin {
         }
         // 清掉行内 inline style，让 schema 渲染接管
         dragging.rowEl.style.height = "";
+        dragging.rowEl.style.minHeight = "";
         for (const cell of dragging.cells) {
           cell.style.height = "";
+          cell.style.minHeight = "";
         }
         dragging = null;
         document.body.style.cursor = "";
