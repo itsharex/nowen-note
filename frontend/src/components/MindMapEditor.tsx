@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   BrainCircuit, Plus, Trash2, Edit2,
-  ZoomIn, ZoomOut, Maximize2,
+  ZoomIn, ZoomOut, Maximize2, Minimize2,
   Loader2, Check, Map, Menu, PanelLeftClose, Image, FileImage, FileDown, MoreHorizontal,
   User as UserIcon
 } from "lucide-react";
@@ -436,6 +436,7 @@ export default function MindMapCenter() {
   const [editValue, setEditValue] = useState("");
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 60, y: 0 });
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
@@ -697,6 +698,24 @@ export default function MindMapCenter() {
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.15, 2.5));
   const handleZoomOut = () => setZoom((z) => Math.max(z - 0.15, 0.3));
   const handleZoomReset = () => { setZoom(1); setPan({ x: 60, y: 0 }); };
+
+  // 全屏时锁定 body 滚动 + Esc 退出
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !editingNodeId) setIsFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    // 切换后触发 resize 适配画布
+    const t = window.setTimeout(() => window.dispatchEvent(new Event("resize")), 50);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+      window.clearTimeout(t);
+    };
+  }, [isFullscreen, editingNodeId]);
 
   // 平移（鼠标）
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -1111,7 +1130,11 @@ export default function MindMapCenter() {
   }, [activeMap?.id]);
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
+    <div className={cn(
+      isFullscreen
+        ? "fixed inset-0 z-[80] flex flex-col bg-app-bg"
+        : "flex h-full w-full overflow-hidden"
+    )}>
       {/* 移动端遮罩层 */}
       {isMobile && sidebarOpen && (
         <div
@@ -1120,7 +1143,7 @@ export default function MindMapCenter() {
         />
       )}
 
-      {/* Left: Map List Panel */}
+      {!isFullscreen && (/* Left: Map List Panel */
       <div
         className={cn(
           "border-r border-app-border bg-app-surface flex flex-col transition-all duration-200",
@@ -1190,6 +1213,7 @@ export default function MindMapCenter() {
         </div>
       </div>
 
+      )}
       {/* Center: Mind Map Canvas */}
       <div className="flex-1 flex flex-col overflow-hidden bg-app-bg transition-colors" ref={containerRef}>
         {activeMap && mapData ? (
@@ -1246,6 +1270,13 @@ export default function MindMapCenter() {
                   <Maximize2 size={16} />
                 </button>
                 <div className="w-px h-4 bg-app-border mx-0.5" />
+                <button
+                  onClick={() => setIsFullscreen(v => !v)}
+                  className="p-1.5 rounded-md hover:bg-app-hover text-tx-secondary transition-colors"
+                  title={isFullscreen ? t("mindMap.exitFullscreen") : t("mindMap.fullscreen")}
+                >
+                  {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                </button>
                 <button
                   onClick={() => setShowMiniMap((v) => !v)}
                   className={cn(
