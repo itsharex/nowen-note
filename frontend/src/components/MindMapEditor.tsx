@@ -2,13 +2,14 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import {
   BrainCircuit, Plus, Trash2, Edit2,
   ZoomIn, ZoomOut, Maximize2,
-  Loader2, Check, Map, Menu, PanelLeftClose, Image, FileImage, FileDown,
+  Loader2, Check, Map, Menu, PanelLeftClose, Image, FileImage, FileDown, MoreHorizontal,
   User as UserIcon
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, getCurrentWorkspace } from "@/lib/api";
 import { MindMap, MindMapListItem, MindMapNode, MindMapData } from "@/types";
 import { cn } from "@/lib/utils";
+import { toast } from "@/lib/toast";
 
 /* ===== 布局算法：计算树节点的 x,y 位置 ===== */
 interface LayoutNode {
@@ -156,7 +157,7 @@ function Edge({ from, to }: { from: LayoutNode; to: LayoutNode }) {
 function NodeBox({
   node, isSelected, isEditing, editValue,
   onSelect, onDoubleClick, onEditChange, onEditSubmit,
-  onToggleCollapse, onAddChild, onDelete, isMobile, onContextMenu,
+  onToggleCollapse, onAddChild, onAddSibling, onDelete, isMobile, onContextMenu,
 }: {
   node: LayoutNode;
   isSelected: boolean;
@@ -168,6 +169,7 @@ function NodeBox({
   onEditSubmit: () => void;
   onToggleCollapse: () => void;
   onAddChild: () => void;
+  onAddSibling: () => void;
   onDelete: () => void;
   isMobile: boolean;
   onContextMenu: (e: React.MouseEvent) => void;
@@ -283,6 +285,15 @@ function NodeBox({
             >
               <Plus size={isMobile ? 14 : 10} />
             </button>
+              <button
+                className={cn(
+                  "flex items-center gap-1 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors",
+                  isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]"
+                )}
+                onClick={(e) => { e.stopPropagation(); onAddSibling(); }}
+              >
+                <MoreHorizontal size={isMobile ? 14 : 10} />
+              </button>
             <button
               className={cn(
                 "flex items-center gap-1 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors",
@@ -556,6 +567,17 @@ export default function MindMapCenter() {
     }, []
   );
 
+  const findParentNode = useCallback(
+    (root: MindMapNode, nodeId: string, parent: MindMapNode | null = null): MindMapNode | null => {
+      if (root.id === nodeId) return parent;
+      for (const c of root.children) {
+        const found = findParentNode(c, nodeId, root);
+        if (found) return found;
+      }
+      return null;
+    }, []
+  );
+
   // 操作：添加子节点
   const handleAddChild = useCallback((parentId: string) => {
     if (!mapData) return;
@@ -573,6 +595,34 @@ export default function MindMapCenter() {
     setEditValue(newNode.text);
     triggerSave(newData);
   }, [mapData, updateNode, triggerSave, t]);
+
+  // 操作：添加同级节点
+  const handleAddSibling = useCallback((nodeId: string) => {
+    if (!mapData || nodeId === "root") {
+      toast.error(t("mindMap.cannotAddSiblingToRoot"));
+      return;
+    }
+    const parent = findParentNode(mapData.root, nodeId);
+    if (!parent) return;
+    const newId = `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const newNode: MindMapNode = { id: newId, text: t("mindMap.newNode"), children: [] };
+    const idx = parent.children.findIndex(c => c.id === nodeId);
+    const newParent = {
+      ...parent,
+      children: [
+        ...parent.children.slice(0, idx + 1),
+        newNode,
+        ...parent.children.slice(idx + 1),
+      ],
+    };
+    const newRoot = updateNode(mapData.root, parent.id, () => newParent);
+    const newData = { root: newRoot };
+    setMapData(newData);
+    setSelectedNodeId(newId);
+    setEditingNodeId(newId);
+    setEditValue(newNode.text);
+    triggerSave(newData);
+  }, [mapData, findParentNode, updateNode, triggerSave, t]);
 
   // 操作：删除节点
   const handleDeleteNode = useCallback((nodeId: string) => {
@@ -730,7 +780,10 @@ export default function MindMapCenter() {
           e.preventDefault();
           handleDeleteNode(selectedNodeId);
         }
-      } else if (e.key === "Enter" || e.key === "F2") {
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        handleAddSibling(selectedNodeId);
+      } else if (e.key === "F2") {
         e.preventDefault();
         const node = findNode(mapData.root, selectedNodeId);
         if (node) {
@@ -744,7 +797,7 @@ export default function MindMapCenter() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [mapData, selectedNodeId, editingNodeId, handleAddChild, handleDeleteNode, handleToggleCollapse, findNode]);
+  }, [mapData, selectedNodeId, editingNodeId, handleAddChild, handleAddSibling, handleDeleteNode, handleToggleCollapse, findNode, findParentNode]);
 
   // 构建布局
   const { layoutNodes, edges, viewBox, bounds } = useMemo(() => {
@@ -1239,7 +1292,7 @@ export default function MindMapCenter() {
                 ))}
 
                 {/* Nodes */}
-                {layoutNodes.map((n) => (
+                {(selectedNodeId ? [...layoutNodes.filter(n => n.id !== selectedNodeId), layoutNodes.find(n => n.id === selectedNodeId)!] : layoutNodes).map((n) => (
                   <NodeBox
                     key={n.id}
                     node={n}
@@ -1255,6 +1308,7 @@ export default function MindMapCenter() {
                     onEditSubmit={handleEditSubmit}
                     onToggleCollapse={() => handleToggleCollapse(n.id)}
                     onAddChild={() => handleAddChild(n.id)}
+                    onAddSibling={() => handleAddSibling(n.id)}
                     onDelete={() => handleDeleteNode(n.id)}
                     isMobile={isMobile}
                     onContextMenu={(e) => e.preventDefault()}
