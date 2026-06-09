@@ -1,5 +1,11 @@
 import type { Editor } from "@tiptap/react";
-import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model";
+import {
+  DOMParser as ProseMirrorDOMParser,
+  Fragment,
+  Node as ProseMirrorNode,
+  Schema,
+} from "@tiptap/pm/model";
+import { TextSelection } from "@tiptap/pm/state";
 import { canJoin } from "@tiptap/pm/transform";
 import type { EditorView } from "@tiptap/pm/view";
 
@@ -31,6 +37,36 @@ export function insertPlainTextPreservingParagraphs(view: EditorView, text: stri
   const parser = ProseMirrorDOMParser.fromSchema(view.state.schema);
   const slice = parser.parseSlice(createPlainTextParagraphContainer(text));
   view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+  return true;
+}
+
+export function createPlainTextParagraphNodes(schema: Schema, text: string): ProseMirrorNode[] {
+  const paragraphType = schema.nodes.paragraph;
+  if (!paragraphType) return [];
+
+  const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  return lines.map((line) =>
+    line.length > 0
+      ? paragraphType.create(null, schema.text(line))
+      : paragraphType.create(),
+  );
+}
+
+export function replaceCodeBlockWithPlainText(
+  view: EditorView,
+  pos: number,
+  node: ProseMirrorNode,
+): boolean {
+  const paragraphs = createPlainTextParagraphNodes(view.state.schema, node.textContent);
+  if (paragraphs.length === 0) return false;
+
+  const fragment = Fragment.fromArray(paragraphs);
+  const tr = view.state.tr.replaceWith(pos, pos + node.nodeSize, fragment);
+  const lastParagraph = paragraphs[paragraphs.length - 1];
+  const caretPos = Math.max(pos, pos + fragment.size - lastParagraph.nodeSize + lastParagraph.content.size + 1);
+  tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(caretPos, tr.doc.content.size)), -1));
+  view.dispatch(tr.scrollIntoView());
+  view.focus();
   return true;
 }
 

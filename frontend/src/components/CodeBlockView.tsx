@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { NodeViewWrapper, NodeViewContent, NodeViewProps } from "@tiptap/react";
-import { Copy, Check, ChevronDown, Palette, Eye, Code2 } from "lucide-react";
+import { Copy, Check, ChevronDown, Palette, Eye, Code2, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   CODE_BLOCK_THEMES,
@@ -11,6 +11,7 @@ import {
 } from "@/lib/codeBlockTheme";
 import MermaidView from "@/components/MermaidView";
 import { isMermaidLang } from "@/lib/mermaidRenderer";
+import { replaceCodeBlockWithPlainText } from "@/lib/tiptapEditorCommands";
 
 /**
  * 自定义代码块视图：
@@ -41,7 +42,7 @@ function formatLanguageLabel(raw: string | null | undefined): string {
 }
 
 export function CodeBlockView(props: NodeViewProps) {
-  const { node, updateAttributes, extension } = props;
+  const { node, updateAttributes, extension, editor, getPos } = props;
   const lowlight = (extension.options as any)?.lowlight;
 
   const currentLang: string = node.attrs.language || "auto";
@@ -174,6 +175,13 @@ export function CodeBlockView(props: NodeViewProps) {
     [updateAttributes],
   );
 
+  const handleDissolveToText = useCallback(() => {
+    if (!editor || typeof getPos !== "function") return;
+    const pos = getPos();
+    if (typeof pos !== "number") return;
+    replaceCodeBlockWithPlainText(editor.view, pos, node);
+  }, [editor, getPos, node]);
+
   // 点击外部关闭语言选择器
   useEffect(() => {
     if (!showLangPicker) return;
@@ -200,16 +208,22 @@ export function CodeBlockView(props: NodeViewProps) {
       return;
     }
     computeLangPopupPos();
-    const onScrollOrResize = () => {
-      // 滚动时直接关闭，避免位置错乱
-      setShowLangPicker(false);
-      setLangFilter("");
+    let raf = 0;
+    const scheduleRecompute = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(computeLangPopupPos);
     };
-    window.addEventListener("resize", onScrollOrResize);
-    window.addEventListener("scroll", onScrollOrResize, true);
+    const onScroll = (e: Event) => {
+      const target = e.target as Element | null;
+      if (target?.closest?.("[data-codeblock-langpicker]")) return;
+      scheduleRecompute();
+    };
+    window.addEventListener("resize", scheduleRecompute);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
-      window.removeEventListener("resize", onScrollOrResize);
-      window.removeEventListener("scroll", onScrollOrResize, true);
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", scheduleRecompute);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [showLangPicker, computeLangPopupPos]);
 
@@ -237,12 +251,22 @@ export function CodeBlockView(props: NodeViewProps) {
       return;
     }
     computeThemePopupPos();
-    const onScrollOrResize = () => setShowThemePicker(false);
-    window.addEventListener("resize", onScrollOrResize);
-    window.addEventListener("scroll", onScrollOrResize, true);
+    let raf = 0;
+    const scheduleRecompute = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(computeThemePopupPos);
+    };
+    const onScroll = (e: Event) => {
+      const target = e.target as Element | null;
+      if (target?.closest?.("[data-codeblock-themepicker]")) return;
+      scheduleRecompute();
+    };
+    window.addEventListener("resize", scheduleRecompute);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
-      window.removeEventListener("resize", onScrollOrResize);
-      window.removeEventListener("scroll", onScrollOrResize, true);
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", scheduleRecompute);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [showThemePicker, computeThemePopupPos]);
 
@@ -427,6 +451,16 @@ export function CodeBlockView(props: NodeViewProps) {
           >
             {copied ? <Check size={12} /> : <Copy size={12} />}
             <span>{copied ? "已复制" : "复制"}</span>
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleDissolveToText}
+            className="code-block-tool-btn flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-colors"
+            title="解散为文本"
+          >
+            <FileText size={12} />
+            <span className="hidden sm:inline">解散</span>
           </button>
         </div>
       </div>

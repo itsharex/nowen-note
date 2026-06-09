@@ -1,6 +1,7 @@
 import { Schema } from "@tiptap/pm/model";
 import { describe, expect, it } from "vitest";
 import {
+  createPlainTextParagraphNodes,
   createPlainTextParagraphContainer,
   findAdjacentListJoinPositions,
   isAllowedRemoteImageUrl,
@@ -34,6 +35,14 @@ const listSchema = new Schema({
       toDOM: () => ["li", 0],
       parseDOM: [{ tag: "li" }],
     },
+    codeBlock: {
+      content: "text*",
+      group: "block",
+      code: true,
+      defining: true,
+      toDOM: () => ["pre", ["code", 0]],
+      parseDOM: [{ tag: "pre", preserveWhitespace: "full" }],
+    },
   },
 });
 
@@ -53,6 +62,35 @@ describe("createPlainTextParagraphContainer", () => {
     expect(paragraphs).toHaveLength(3);
     expect(paragraphs.map((node) => node.textContent)).toEqual(["first", "", "third"]);
     expect(paragraphs[1].querySelector("br")).not.toBeNull();
+  });
+});
+
+describe("createPlainTextParagraphNodes", () => {
+  it("turns multiline code text into one paragraph per line", () => {
+    const nodes = createPlainTextParagraphNodes(listSchema, "a\nb\n\nc");
+
+    expect(nodes).toHaveLength(4);
+    expect(nodes.map((node) => node.type.name)).toEqual([
+      "paragraph",
+      "paragraph",
+      "paragraph",
+      "paragraph",
+    ]);
+    expect(nodes.map((node) => node.textContent)).toEqual(["a", "b", "", "c"]);
+  });
+
+  it("turns an empty code block into one empty paragraph", () => {
+    const nodes = createPlainTextParagraphNodes(listSchema, "");
+
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].type.name).toBe("paragraph");
+    expect(nodes[0].textContent).toBe("");
+  });
+
+  it("normalizes CRLF and CR line endings", () => {
+    const nodes = createPlainTextParagraphNodes(listSchema, "first\r\nsecond\rthird");
+
+    expect(nodes.map((node) => node.textContent)).toEqual(["first", "second", "third"]);
   });
 });
 
