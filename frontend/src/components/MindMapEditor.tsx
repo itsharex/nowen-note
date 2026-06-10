@@ -405,7 +405,7 @@ function NodeBox({
 /* ===== Floating toolbar: HTML absolute overlay ===== */
 function FloatingToolbar({
   position, isRoot, isMobile,
-  onAddChild, onAddSibling, onEdit, onDelete, onAddMarker, onSetLink, onSetNote, onSetColor, currentStyle, onApplyTheme, onStartRelation, onCreateBoundary, onCopy, onCut, onPaste, t,
+  onAddChild, onAddSibling, onEdit, onDelete, onAddMarker, onSetLink, onSetNote, onSetColor, currentStyle, onApplyTheme, onStartRelation, onCreateBoundary, onFocusNode, onCopy, onCut, onPaste, t,
 }: {
   position: { x: number; y: number };
   isRoot: boolean;
@@ -422,6 +422,7 @@ function FloatingToolbar({
   onApplyTheme: (idx: number) => void;
   onStartRelation: () => void;
   onCreateBoundary: () => void;
+  onFocusNode?: () => void;
   onCopy: () => void;
   onCut: () => void;
   onPaste: () => void;
@@ -516,6 +517,12 @@ function FloatingToolbar({
               </button>
             ))}
             <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+            {onFocusNode && (
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onFocusNode(); setShowMore(false); }}>
+              <Scan size={14} className="text-emerald-500" /> {t("mindMap.focusNode")}
+            </button>
+            )}
             <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
               onClick={(e) => { e.stopPropagation(); onCopy(); setShowMore(false); }}>
               <span className="text-[14px]">⎘</span> {t("mindMap.copyNode")} <span className="ml-auto text-[10px] text-tx-tertiary">Ctrl+C</span>
@@ -727,7 +734,8 @@ export default function MindMapCenter() {
   const [clipboard, setClipboard] = useState<{ node: MindMapNode; isCut: boolean } | null>(null);
   const [dragNodeId, setDragNodeId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-  useEffect(() => { setSelectedNodeIds([]); setClipboard(null); }, [activeMap?.id]);
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  useEffect(() => { setSelectedNodeIds([]); setClipboard(null); setFocusedNodeId(null); }, [activeMap?.id]);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [zoom, setZoom] = useState(1);
@@ -1511,7 +1519,17 @@ export default function MindMapCenter() {
   const { layoutNodes, edges, viewBox, bounds } = useMemo(() => {
     if (!mapData) return { layoutNodes: [], edges: [], viewBox: "0 0 800 600", bounds: { minX: 0, minY: 0, width: 800, height: 600 } };
 
-    const root = buildLayout(mapData.root, 0, null);
+    // ???????????????
+    let layoutRoot = mapData.root;
+    if (focusedNodeId) {
+      const found = (function find(n: MindMapNode): MindMapNode | null {
+        if (n.id === focusedNodeId) return n;
+        for (const c of n.children) { const r = find(c); if (r) return r; }
+        return null;
+      })(mapData.root);
+      if (found) layoutRoot = found;
+    }
+    const root = buildLayout(layoutRoot, 0, null);
     const treeH = getSubtreeHeight(root);
     if (layoutMode === "left-right" && root.children.length > 1) {
       // Split children: odd index right, even index left
@@ -1949,6 +1967,15 @@ export default function MindMapCenter() {
             {/* Toolbar */}
             <div className="px-2 sm:px-4 py-2 border-b border-app-border flex items-center justify-between bg-app-surface/50 gap-1">
               <div className="flex items-center gap-2 min-w-0">
+                {focusedNodeId && (
+                  <button
+                    onClick={() => setFocusedNodeId(null)}
+                    className="flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors flex-shrink-0"
+                  >
+                    <Scan size={12} />
+                    {t("mindMap.showAll")}
+                  </button>
+                )}
                 {isMobile && (
                   <button
                     onClick={() => setSidebarOpen(true)}
@@ -2287,6 +2314,7 @@ export default function MindMapCenter() {
                       onApplyTheme={handleApplyTheme}
                       onStartRelation={() => { setDrawingRelation(true); setRelationStart(selectedNodeId); toast.success(t("mindMap.relationStart")); }}
                       onCreateBoundary={handleCreateBoundary}
+                      onFocusNode={() => setFocusedNodeId(selectedNodeId)}
                       onCopy={() => handleCopyNode(selectedNodeId)}
                       onCut={() => handleCutNode(selectedNodeId)}
                       onPaste={handlePasteNode}

@@ -1312,6 +1312,8 @@
     "copyNode": "Copy node",
     "cutNode": "Cut node",
     "pasteNode": "Paste node",
+    "focusNode": "Focus on node",
+    "showAll": "Show full map",
     "layoutRight": "Right layout",
     "layoutBoth": "Left-right layout",
     "themes": "Theme Templates",

@@ -1326,6 +1326,8 @@
     "copyNode": "复制节点",
     "cutNode": "剪切节点",
     "pasteNode": "粘贴节点",
+    "focusNode": "聚焦此节点",
+    "showAll": "显示完整导图",
     "layoutRight": "右向布局",
     "layoutBoth": "左右平衡布局",
     "themes": "主题模板",
