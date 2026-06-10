@@ -1707,6 +1707,50 @@ export default function MindMapCenter() {
       <div className="flex-1 flex flex-col overflow-hidden bg-app-bg transition-colors" ref={containerRef}>
         {activeMap && mapData ? (
           <>
+                {/* Floating toolbar: HTML absolute overlay */}
+                {(() => {
+                  if (!selectedNodeId || editingNodeId === selectedNodeId) return null;
+                  const node = layoutNodes.find(n => n.id === selectedNodeId);
+                  if (!node) return null;
+                  return (
+                    <FloatingToolbar
+                      position={(() => {
+                        const svg = svgRef.current;
+                        const container = containerRef.current;
+                        if (!svg || !container) return { x: 0, y: 0 };
+                        const point = svg.createSVGPoint();
+                        point.x = node.x + node.width / 2;
+                        point.y = node.y + node.height + 4;
+                        const ctm = svg.getScreenCTM();
+                        if (!ctm) return { x: 0, y: 0 };
+                        const screen = point.matrixTransform(ctm);
+                        const rect = container.getBoundingClientRect();
+                        let x = screen.x - rect.left;
+                        let y = screen.y - rect.top;
+                        const toolbarWidth = 320;
+                        const toolbarHeight = 36;
+                        const pad = 8;
+                        x = Math.max(pad, Math.min(x, rect.width - toolbarWidth - pad));
+                        y = Math.max(pad, Math.min(y, rect.height - toolbarHeight - pad));
+                        return { x, y };
+                      })()}
+                      isRoot={node.depth === 0} isMobile={isMobile}
+                      onAddChild={() => handleAddChild(node.id)}
+                      onAddSibling={() => handleAddSibling(node.id)}
+                      onEdit={() => { setEditingNodeId(node.id); const n = findNode(mapData!.root, node.id); setEditValue(n?.text || ""); }}
+                      onDelete={() => handleDeleteNode(node.id)}
+                      onAddMarker={handleAddMarker}
+                      onSetLink={handleSetLink}
+                      onSetNote={handleSetNote}
+                      onSetColor={handleSetColor}
+                      currentStyle={findNode(mapData!.root, selectedNodeId)?.style}
+                      onApplyTheme={handleApplyTheme}
+                      onStartRelation={() => { setDrawingRelation(true); setRelationStart(selectedNodeId); toast.success(t("mindMap.relationStart")); }}
+                      onCreateBoundary={handleCreateBoundary}
+                      t={t}
+                    />
+                  );
+                })()}
             {/* Toolbar */}
             <div className="px-2 sm:px-4 py-2 border-b border-app-border flex items-center justify-between bg-app-surface/50 gap-1">
               <div className="flex items-center gap-2 min-w-0">
@@ -1969,51 +2013,6 @@ export default function MindMapCenter() {
                 ))}
               </svg>
 
-                {/* Floating toolbar: HTML absolute overlay */}
-                {(() => {
-                  if (!selectedNodeId || editingNodeId === selectedNodeId) return null;
-                  const node = layoutNodes.find(n => n.id === selectedNodeId);
-                  if (!node) return null;
-                  return (
-                    <FloatingToolbar
-                      position={(() => {
-                        const svg = svgRef.current;
-                        const container = canvasRef.current;
-                        if (!svg || !container) return { x: 0, y: 0 };
-                        const point = svg.createSVGPoint();
-                        point.x = node.x + node.width / 2;
-                        point.y = node.y + node.height + 4;
-                        const ctm = svg.getScreenCTM();
-                        if (!ctm) return { x: 0, y: 0 };
-                        const screen = point.matrixTransform(ctm);
-                        const rect = container.getBoundingClientRect();
-                        let x = screen.x - rect.left;
-                        let y = screen.y - rect.top;
-                        const toolbarWidth = 320;
-                        const toolbarHeight = 36;
-                        const pad = 8;
-                        x = Math.max(pad, Math.min(x, rect.width - toolbarWidth - pad));
-                        y = Math.max(pad, Math.min(y, rect.height - toolbarHeight - pad));
-                        return { x, y };
-                      })()}
-                      isRoot={node.depth === 0} isMobile={isMobile}
-                      onAddChild={() => handleAddChild(node.id)}
-                      onAddSibling={() => handleAddSibling(node.id)}
-                      onEdit={() => { setEditingNodeId(node.id); const n = findNode(mapData!.root, node.id); setEditValue(n?.text || ""); }}
-                      onDelete={() => handleDeleteNode(node.id)}
-                      onAddMarker={handleAddMarker}
-                      onSetLink={handleSetLink}
-                      onSetNote={handleSetNote}
-                      onSetColor={handleSetColor}
-                      currentStyle={findNode(mapData!.root, selectedNodeId)?.style}
-                      onApplyTheme={handleApplyTheme}
-                      onStartRelation={() => { setDrawingRelation(true); setRelationStart(selectedNodeId); toast.success(t("mindMap.relationStart")); }}
-                      onCreateBoundary={handleCreateBoundary}
-                      t={t}
-                    />
-                  );
-                })()}
-
               {/* MiniMap 小地图 */}
               {showMiniMap && layoutNodes.length > 0 && (
                 <div
@@ -2093,6 +2092,7 @@ export default function MindMapCenter() {
                 </div>
               )}
             </div>
+
             </div>
             </div>
             {!isMobile && (
