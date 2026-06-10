@@ -3,7 +3,7 @@ import {
   BrainCircuit, Plus, Trash2, Edit2,
   ZoomIn, ZoomOut, Maximize2, Minimize2, Scan,
   Loader2, Check, Map, Menu, PanelLeftClose, Image, FileImage, FileDown, MoreHorizontal,
-  User as UserIcon, Undo2, Redo2, PanelLeft, ChevronRight, ChevronDown, Link as LinkIcon, StickyNote, Palette, ExternalLink, FileText, ArrowDownToLine, Spline, Square, Pipette, Search as SearchIcon, ChevronUp, Star
+  User as UserIcon, Undo2, Redo2, PanelLeft, ChevronRight, ChevronDown, Link as LinkIcon, StickyNote, Palette, ExternalLink, FileText, ArrowDownToLine, Spline, Square, Pipette, Search as SearchIcon, ChevronUp, Star, Folder as FolderIcon, FolderPlus
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, getCurrentWorkspace } from "@/lib/api";
@@ -301,7 +301,7 @@ function NodeBox({
   const hasChildren = node.children.length > 0 || node.collapsed;
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+    useEffect(() => {
     if (isEditing && inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
@@ -725,6 +725,20 @@ export default function MindMapCenter() {
   }, []);
 
   const [maps, setMaps] = useState<MindMapListItem[]>([]);
+  const [folders, setFolders] = useState<any[]>([]);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [newFolderName, setNewFolderName] = useState("");
+  const [showNewFolder, setShowNewFolder] = useState(false);
+
+  // 加载文件夹
+  const loadFolders = useCallback(async () => {
+    try {
+      const data = await api.getMindMapFolders();
+      setFolders(data);
+    } catch (err) {
+      console.error("Failed to load folders:", err);
+    }
+  }, []);
   const [activeMap, setActiveMap] = useState<MindMap | null>(null);
   const [mapData, setMapData] = useState<MindMapData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -827,7 +841,7 @@ export default function MindMapCenter() {
   }, []);
 
   useEffect(() => {
-    loadMaps();
+    loadMaps(); loadFolders();
   }, [loadMaps]);
 
   // 工作区切换：清空当前打开的导图 + 重拉列表，避免显示其他 scope 的图
@@ -1927,35 +1941,95 @@ export default function MindMapCenter() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto p-3 space-y-2">
+        <div className="flex-1 overflow-auto p-2 space-y-0.5">
           {isLoading ? (
             <div className="flex items-center justify-center h-20 text-tx-tertiary text-sm">
               {t("common.loading")}
             </div>
-          ) : maps.filter(m => !listSearch.trim() || m.title.toLowerCase().includes(listSearch.trim().toLowerCase())).length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-tx-tertiary">
-              <BrainCircuit size={32} className="mb-2 opacity-30" />
-              <span className="text-xs">{t("mindMap.empty")}</span>
-              <button
-                onClick={handleCreate}
-                className="mt-3 text-xs text-indigo-500 hover:text-indigo-600 font-medium"
-              >
-                {t("mindMap.createFirst")}
-              </button>
-            </div>
-          ) : (
-            maps.filter(m => !listSearch.trim() || m.title.toLowerCase().includes(listSearch.trim().toLowerCase())).map((m) => (
-              <MindMapListRow
-                key={m.id}
-                item={m}
-                isActive={activeMap?.id === m.id}
-                onSelect={() => { handleSelect(m.id); if (isMobile) setSidebarOpen(false); }}
-                onDelete={() => handleDeleteMap(m.id)}
-                onContextMenu={(e) => handleListContextMenu(e, m)}
-                onToggleStar={() => handleToggleStar(m.id)}
-              />
-            ))
-          )}
+          ) : (() => {
+            const q = listSearch.trim().toLowerCase();
+            const filteredMaps = maps.filter(m => !q || m.title.toLowerCase().includes(q));
+            const filteredFolders = folders.filter(f => !q || f.name.toLowerCase().includes(q));
+            const topFolders = filteredFolders.filter((f: any) => !f.parentId);
+            const childFolders = (parentId: string) => filteredFolders.filter((f: any) => f.parentId === parentId);
+            const mapsInFolder = (folderId: string) => filteredMaps.filter(m => m.folderId === folderId);
+            const uncategorized = filteredMaps.filter(m => !m.folderId);
+            const hasResults = filteredMaps.length > 0 || filteredFolders.length > 0;
+
+            const renderFolder = (folder: any, depth: number) => {
+              const isExpanded = expandedFolders.has(folder.id);
+              const children = childFolders(folder.id);
+              const folderMaps = mapsInFolder(folder.id);
+              return (
+                <div key={folder.id}>
+                  <div
+                    className="group flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 text-sm"
+                    style={{ paddingLeft: depth * 16 + 8 }}
+                    onClick={() => setExpandedFolders(prev => { const next = new Set(prev); if (next.has(folder.id)) next.delete(folder.id); else next.add(folder.id); return next; })}
+                  >
+                    <ChevronRight size={12} className={cn("text-tx-tertiary transition-transform flex-shrink-0", isExpanded && "rotate-90")} />
+                    <FolderIcon size={14} className={cn("flex-shrink-0", isExpanded ? "text-amber-500" : "text-tx-tertiary")} />
+                    <span className="flex-1 truncate text-tx-primary">{folder.name}</span>
+                    <span className="text-[10px] text-tx-tertiary">{folder.mindmapCount ?? 0}</span>
+                    <button onClick={(e) => { e.stopPropagation(); if (confirm(t("mindMap.confirmDeleteFolder"))) { api.deleteMindMapFolder(folder.id).then(() => { loadFolders(); loadMaps(); }); } }} className="opacity-0 group-hover:opacity-100 text-tx-tertiary hover:text-accent-danger transition-all"><Trash2 size={12} /></button>
+                  </div>
+                  {isExpanded && (
+                    <>
+                      {children.map(f => renderFolder(f, depth + 1))}
+                      {folderMaps.map(m => (
+                        <div key={m.id} style={{ paddingLeft: (depth + 1) * 16 + 8 }}>
+                          <MindMapListRow item={m} isActive={activeMap?.id === m.id} onSelect={() => { handleSelect(m.id); if (isMobile) setSidebarOpen(false); }} onDelete={() => handleDeleteMap(m.id)} onContextMenu={(e) => handleListContextMenu(e, m)} onToggleStar={() => handleToggleStar(m.id)} />
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+              );
+            };
+
+            if (!hasResults && q) return (
+              <div className="flex flex-col items-center justify-center h-32 text-tx-tertiary">
+                <SearchIcon size={24} className="mb-2 opacity-30" />
+                <span className="text-xs">{t("mindMap.noResults")}</span>
+              </div>
+            );
+
+            if (!hasResults && !q) return (
+              <div className="flex flex-col items-center justify-center h-32 text-tx-tertiary">
+                <BrainCircuit size={32} className="mb-2 opacity-30" />
+                <span className="text-xs">{t("mindMap.empty")}</span>
+                <button onClick={handleCreate} className="mt-3 text-xs text-indigo-500 hover:text-indigo-600 font-medium">{t("mindMap.createFirst")}</button>
+              </div>
+            );
+
+            return (
+              <>
+                {topFolders.map(f => renderFolder(f, 0))}
+                {uncategorized.length > 0 && (
+                  <div>
+                    {!q && topFolders.length > 0 && (
+                      <div className="flex items-center gap-1.5 px-2 pt-2 pb-1 text-[10px] text-tx-tertiary uppercase tracking-wider">
+                        {t("mindMap.uncategorized")}
+                      </div>
+                    )}
+                    {uncategorized.map(m => (
+                      <MindMapListRow key={m.id} item={m} isActive={activeMap?.id === m.id} onSelect={() => { handleSelect(m.id); if (isMobile) setSidebarOpen(false); }} onDelete={() => handleDeleteMap(m.id)} onContextMenu={(e) => handleListContextMenu(e, m)} onToggleStar={() => handleToggleStar(m.id)} />
+                    ))}
+                  </div>
+                )}
+                <div className="pt-2">
+                  <button onClick={() => setShowNewFolder(true)} className="flex items-center gap-1.5 w-full px-2 py-1.5 rounded-md text-xs text-tx-tertiary hover:text-tx-secondary hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                    <FolderPlus size={13} /> {t("mindMap.newFolder")}
+                  </button>
+                  {showNewFolder && (
+                    <div className="flex items-center gap-1 px-2 py-1">
+                      <input type="text" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && newFolderName.trim()) { api.createMindMapFolder({ name: newFolderName.trim() }).then(() => { loadFolders(); setShowNewFolder(false); setNewFolderName(""); }); } if (e.key === "Escape") { setShowNewFolder(false); setNewFolderName(""); } }} placeholder={t("mindMap.folderName")} className="flex-1 bg-transparent text-xs text-tx-primary placeholder:text-tx-tertiary outline-none border-b border-app-border py-0.5" autoFocus />
+                    </div>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </div>
       </div>
 

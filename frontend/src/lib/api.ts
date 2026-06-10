@@ -1467,6 +1467,23 @@ export const api = {
   deleteMindMap: (id: string) => request(`/mindmaps/${id}`, { method: "DELETE" }),
   toggleStarMindMap: (id: string) => request<MindMap>(`/mindmaps/${id}/star`, { method: "PATCH" }),
 
+  // MindMap Folders
+  getMindMapFolders: () => {
+    const ws = getCurrentWorkspace();
+    const qs = ws ? `?workspaceId=${encodeURIComponent(ws)}` : "";
+    return request<any[]>(`/mindmap-folders${qs}`);
+  },
+  createMindMapFolder: (data: { name?: string; parentId?: string }) => {
+    const ws = getCurrentWorkspace();
+    const qs = ws ? `?workspaceId=${encodeURIComponent(ws)}` : "";
+    return request<any>(`/mindmap-folders${qs}`, { method: "POST", body: JSON.stringify(data) });
+  },
+  updateMindMapFolder: (id: string, data: { name?: string; parentId?: string; sortOrder?: number }) =>
+    request<any>(`/mindmap-folders/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteMindMapFolder: (id: string) => request(`/mindmap-folders/${id}`, { method: "DELETE" }),
+  moveMindMap: (id: string, folderId: string | null) =>
+    request<any>(`/mindmaps/${id}/move`, { method: "PATCH", body: JSON.stringify({ folderId }) }),
+
   // Diary (说说/动态)
   // Y2: 自动注入当前工作区。后端按 workspaceId 隔离数据：
   //   - 'personal' 或省略 → 个人空间（diaries.workspaceId IS NULL）
