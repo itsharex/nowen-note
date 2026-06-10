@@ -272,7 +272,7 @@ function NodeBox({
   node, isSelected, isEditing, editValue,
   onSelect, onDoubleClick, onEditChange, onEditSubmit,
   onToggleCollapse, isMobile, onContextMenu, nodeData,
-  markerIcons, isSearchMatch, isSearchActive,
+  markerIcons, isSearchMatch, isSearchActive, onDragStart, onDragOver, onDragLeave, onDrop, isDragTarget,
 }: {
   node: LayoutNode;
   isSelected: boolean;
@@ -289,6 +289,11 @@ function NodeBox({
   markerIcons?: React.ReactNode;
   isSearchMatch?: boolean;
   isSearchActive?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
+  isDragTarget?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const color = getNodeColor(node.depth);
@@ -309,7 +314,7 @@ function NodeBox({
         <div
           className={cn(
             "flex items-center h-full px-3 rounded-lg cursor-pointer select-none transition-shadow text-sm font-medium whitespace-nowrap overflow-hidden",
-            isSelected && "ring-2 ring-indigo-400/60 ring-offset-1 dark:ring-offset-zinc-900 shadow-sm", isSearchMatch && "ring-2 ring-amber-400/70", isSearchActive && "ring-2 ring-amber-500 shadow-lg shadow-amber-500/20"
+            isSelected && "ring-2 ring-indigo-400/60 ring-offset-1 dark:ring-offset-zinc-900 shadow-sm", isSearchMatch && "ring-2 ring-amber-400/70", isSearchActive && "ring-2 ring-amber-500 shadow-lg shadow-amber-500/20", isDragTarget && "ring-2 ring-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20"
           )}
           style={{
             background: nodeData?.style?.bg || color.bg,
@@ -318,6 +323,11 @@ function NodeBox({
             fontSize: isRoot ? 14 : 13,
             fontWeight: isRoot ? 700 : 500,
           }}
+          draggable={!!onDragStart}
+          onDragStart={onDragStart}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
           onClick={(e) => { e.stopPropagation(); onSelect(); }}
           onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick(); }}
           onContextMenu={onContextMenu}
@@ -715,6 +725,8 @@ export default function MindMapCenter() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [clipboard, setClipboard] = useState<{ node: MindMapNode; isCut: boolean } | null>(null);
+  const [dragNodeId, setDragNodeId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   useEffect(() => { setSelectedNodeIds([]); setClipboard(null); }, [activeMap?.id]);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -1360,6 +1372,37 @@ export default function MindMapCenter() {
   const handleTouchEnd = useCallback(() => {
     // tap 由 onClick 处理
   }, []);
+
+  // 拖拽移动节点到目标节点下
+  const handleMoveNode = useCallback((sourceId: string, targetId: string) => {
+    if (!mapData || sourceId === targetId) return;
+    // 不能移动到自己的子树下
+    const isDescendant = (root: MindMapNode, ancestorId: string, checkId: string): boolean => {
+      if (root.id === ancestorId) {
+        const walk = (n: MindMapNode): boolean => {
+          if (n.id === checkId) return true;
+          return n.children?.some(walk) ?? false;
+        };
+        return root.children?.some(walk) ?? false;
+      }
+      return root.children?.some(c => isDescendant(c, ancestorId, checkId)) ?? false;
+    };
+    if (isDescendant(mapData.root, sourceId, targetId)) return;
+    const sourceNode = findNode(mapData.root, sourceId);
+    if (!sourceNode) return;
+    // 从原位置移除
+    let newRoot = removeNode(mapData.root, sourceId);
+    // 插入到目标节点下
+    newRoot = updateNode(newRoot, targetId, (n) => ({
+      ...n,
+      collapsed: false,
+      children: [...n.children, sourceNode],
+    }));
+    const newData = { ...mapData, root: newRoot };
+    setMapData(newData);
+    pushHistory(newData);
+    triggerSave(newData);
+  }, [mapData, findNode, removeNode, updateNode, pushHistory, triggerSave]);
 
   // 复制节点
   const handleCopyNode = useCallback((nodeId: string) => {
@@ -2099,7 +2142,7 @@ export default function MindMapCenter() {
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
-                onClick={(e) => { if (!e.ctrlKey && !e.metaKey) setSelectedNodeIds([]); setSelectedNodeId(null); setEditingNodeId(null); }}
+                onClick={(e) => { if (!e.ctrlKey && !e.metaKey) setSelectedNodeIds([]); setSelectedNodeId(null); setEditingNodeId(null); setDragNodeId(null); setDropTargetId(null); }}
               >
                 <svg
                   ref={svgRef}
@@ -2181,6 +2224,11 @@ export default function MindMapCenter() {
                     isSelected={selectedNodeIds.length > 0 ? selectedNodeIds.includes(n.id) : selectedNodeId === n.id}
                     isSearchMatch={searchResults.includes(n.id)}
                     isSearchActive={searchResults.length > 0 && searchIndex >= 0 && searchResults[searchIndex] === n.id}
+                    onDragStart={(e) => { e.stopPropagation(); setDragNodeId(n.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", n.id); }}
+                    onDragOver={(e) => { if (dragNodeId && dragNodeId !== n.id) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setDropTargetId(n.id); } }}
+                    onDragLeave={() => { if (dropTargetId === n.id) setDropTargetId(null); }}
+                    onDrop={(e) => { e.preventDefault(); e.stopPropagation(); if (dragNodeId && dragNodeId !== n.id) { handleMoveNode(dragNodeId, n.id); } setDragNodeId(null); setDropTargetId(null); }}
+                    isDragTarget={dropTargetId === n.id}
                     isEditing={editingNodeId === n.id}
                     editValue={editValue}
                     onSelect={(e?: React.MouseEvent) => { if (drawingRelation) { handleRelationClick(n.id); return; } if (e && (e.ctrlKey || e.metaKey)) { setSelectedNodeIds((ids) => ids.includes(n.id) ? ids.filter((id) => id !== n.id) : [...ids, n.id]); setSelectedNodeId(n.id); } else { setSelectedNodeIds([n.id]); setSelectedNodeId(n.id); }}}
