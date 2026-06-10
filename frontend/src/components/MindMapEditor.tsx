@@ -686,6 +686,8 @@ export default function MindMapCenter() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
+  useEffect(() => { setSelectedNodeIds([]); }, [activeMap?.id]);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [zoom, setZoom] = useState(1);
@@ -721,6 +723,7 @@ export default function MindMapCenter() {
       setActiveMap(null);
       setMapData(null);
       setSelectedNodeId(null);
+      setSelectedNodeIds([]);
       setEditingNodeId(null);
       loadMaps();
     };
@@ -746,6 +749,7 @@ export default function MindMapCenter() {
         setMapData({ root: { id: "root", text: map.title, children: [] } });
       }
       setSelectedNodeId(null);
+      setSelectedNodeIds([]);
       setEditingNodeId(null);
       setZoom(1);
       setPan({ x: 60, y: 0 });
@@ -1866,7 +1870,7 @@ export default function MindMapCenter() {
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
-                onClick={() => { setSelectedNodeId(null); setEditingNodeId(null); }}
+                onClick={(e) => { if (!e.ctrlKey && !e.metaKey) setSelectedNodeIds([]); setSelectedNodeId(null); setEditingNodeId(null); }}
               >
                 <svg
                   ref={svgRef}
@@ -1941,14 +1945,14 @@ export default function MindMapCenter() {
                 })}
 
                 {/* Nodes */}
-                {(selectedNodeId ? [...layoutNodes.filter(n => n.id !== selectedNodeId), layoutNodes.find(n => n.id === selectedNodeId)!] : layoutNodes).map((n) => (
+                {((() => { const ids = selectedNodeIds.length > 0 ? selectedNodeIds : (selectedNodeId ? [selectedNodeId] : []); return ids.length > 0 ? [...layoutNodes.filter(n => !ids.includes(n.id)), ...layoutNodes.filter(n => ids.includes(n.id))] : layoutNodes; })()).map((n) => (
                   <NodeBox
                     key={n.id}
                     node={n}
-                    isSelected={selectedNodeId === n.id}
+                    isSelected={selectedNodeIds.length > 0 ? selectedNodeIds.includes(n.id) : selectedNodeId === n.id}
                     isEditing={editingNodeId === n.id}
                     editValue={editValue}
-                    onSelect={() => { if (drawingRelation) { handleRelationClick(n.id); } else { setSelectedNodeId(n.id); }}}
+                    onSelect={(e?: React.MouseEvent) => { if (drawingRelation) { handleRelationClick(n.id); return; } if (e && (e.ctrlKey || e.metaKey)) { setSelectedNodeIds((ids) => ids.includes(n.id) ? ids.filter((id) => id !== n.id) : [...ids, n.id]); setSelectedNodeId(n.id); } else { setSelectedNodeIds([n.id]); setSelectedNodeId(n.id); }}}
                     onDoubleClick={() => {
                       setEditingNodeId(n.id);
                       setEditValue(n.text);
