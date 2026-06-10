@@ -395,7 +395,7 @@ function NodeBox({
 /* ===== Floating toolbar: HTML absolute overlay ===== */
 function FloatingToolbar({
   position, isRoot, isMobile,
-  onAddChild, onAddSibling, onEdit, onDelete, onAddMarker, onSetLink, onSetNote, onSetColor, currentStyle, onApplyTheme, onStartRelation, onCreateBoundary, t,
+  onAddChild, onAddSibling, onEdit, onDelete, onAddMarker, onSetLink, onSetNote, onSetColor, currentStyle, onApplyTheme, onStartRelation, onCreateBoundary, onCopy, onCut, onPaste, t,
 }: {
   position: { x: number; y: number };
   isRoot: boolean;
@@ -412,6 +412,9 @@ function FloatingToolbar({
   onApplyTheme: (idx: number) => void;
   onStartRelation: () => void;
   onCreateBoundary: () => void;
+  onCopy: () => void;
+  onCut: () => void;
+  onPaste: () => void;
   t: (key: string) => string;
 }) {
   const [showMore, setShowMore] = useState(false);
@@ -502,6 +505,19 @@ function FloatingToolbar({
                 {theme.name}
               </button>
             ))}
+            <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onCopy(); setShowMore(false); }}>
+              <span className="text-[14px]">⎘</span> {t("mindMap.copyNode")} <span className="ml-auto text-[10px] text-tx-tertiary">Ctrl+C</span>
+            </button>
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onCut(); setShowMore(false); }}>
+              <span className="text-[14px]">✂</span> {t("mindMap.cutNode")} <span className="ml-auto text-[10px] text-tx-tertiary">Ctrl+X</span>
+            </button>
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onPaste(); setShowMore(false); }}>
+              <span className="text-[14px]">⧉</span> {t("mindMap.pasteNode")} <span className="ml-auto text-[10px] text-tx-tertiary">Ctrl+V</span>
+            </button>
             <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
             <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
               onClick={(e) => { e.stopPropagation(); onStartRelation(); setShowMore(false); }}>
@@ -689,7 +705,8 @@ export default function MindMapCenter() {
   const [isSaving, setIsSaving] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
-  useEffect(() => { setSelectedNodeIds([]); }, [activeMap?.id]);
+  const [clipboard, setClipboard] = useState<{ node: MindMapNode; isCut: boolean } | null>(null);
+  useEffect(() => { setSelectedNodeIds([]); setClipboard(null); }, [activeMap?.id]);
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [zoom, setZoom] = useState(1);
@@ -1325,6 +1342,55 @@ export default function MindMapCenter() {
     // tap 由 onClick 处理
   }, []);
 
+  // 复制节点
+  const handleCopyNode = useCallback((nodeId: string) => {
+    if (!mapData) return;
+    const node = findNode(mapData.root, nodeId);
+    if (!node) return;
+    const cloneWithNewIds = (n: MindMapNode): MindMapNode => ({
+      ...n,
+      id: `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      children: n.children?.map(cloneWithNewIds) ?? [],
+    });
+    setClipboard({ node: cloneWithNewIds(node), isCut: false });
+    toast.success(t("mindMap.copied"));
+  }, [mapData, findNode, t]);
+
+  // 剪切节点
+  const handleCutNode = useCallback((nodeId: string) => {
+    if (!mapData || nodeId === "root") return;
+    const node = findNode(mapData.root, nodeId);
+    if (!node) return;
+    setClipboard({ node: JSON.parse(JSON.stringify(node)), isCut: true });
+    toast.success(t("mindMap.cut"));
+  }, [mapData, findNode, t]);
+
+  // 粘贴节点为当前选中节点的子节点
+  const handlePasteNode = useCallback(() => {
+    if (!mapData || !clipboard || !selectedNodeId) return;
+    const pasteNode = (src: MindMapNode): MindMapNode => ({
+      ...src,
+      id: `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      children: src.children?.map(pasteNode) ?? [],
+    });
+    const newNode = pasteNode(clipboard.node);
+    let newRoot = updateNode(mapData.root, selectedNodeId, (n) => ({
+      ...n,
+      collapsed: false,
+      children: [...n.children, newNode],
+    }));
+    if (clipboard.isCut) {
+      newRoot = removeNode(newRoot, clipboard.node.id);
+    }
+    const newData = { ...mapData, root: newRoot };
+    setMapData(newData);
+    setSelectedNodeId(newNode.id);
+    pushHistory(newData);
+    triggerSave(newData);
+    if (clipboard.isCut) setClipboard(null);
+    toast.success(t("mindMap.pasted"));
+  }, [mapData, clipboard, selectedNodeId, updateNode, removeNode, triggerSave, t]);
+
   // 键盘快捷键
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -1364,11 +1430,20 @@ export default function MindMapCenter() {
       } else if (e.key === " ") {
         e.preventDefault();
         handleToggleCollapse(selectedNodeId);
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+        e.preventDefault();
+        handleCopyNode(selectedNodeId);
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "x") {
+        e.preventDefault();
+        handleCutNode(selectedNodeId);
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+        e.preventDefault();
+        handlePasteNode();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [mapData, selectedNodeId, editingNodeId, handleAddChild, handleAddSibling, handleDeleteNode, handleToggleCollapse, findNode, findParentNode]);
+  }, [mapData, selectedNodeId, editingNodeId, handleAddChild, handleAddSibling, handleDeleteNode, handleToggleCollapse, findNode, findParentNode, handleCopyNode, handleCutNode, handlePasteNode]);
 
   // 构建布局
   const { layoutNodes, edges, viewBox, bounds } = useMemo(() => {
@@ -2144,6 +2219,9 @@ export default function MindMapCenter() {
                       onApplyTheme={handleApplyTheme}
                       onStartRelation={() => { setDrawingRelation(true); setRelationStart(selectedNodeId); toast.success(t("mindMap.relationStart")); }}
                       onCreateBoundary={handleCreateBoundary}
+                      onCopy={() => handleCopyNode(selectedNodeId)}
+                      onCut={() => handleCutNode(selectedNodeId)}
+                      onPaste={handlePasteNode}
                       t={t}
                     />
                   );
