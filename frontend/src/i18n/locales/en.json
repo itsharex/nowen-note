@@ -1,4 +1,4 @@
-﻿{
+{
   "common": {
     "cancel": "Cancel",
     "chars": "chars",
@@ -115,7 +115,6 @@
     "aiChat": "AI Chat",
     "diary": "Diary",
     "fileManager": "Files",
-
     "favorites": "Favorites",
     "trash": "Trash",
     "searchPlaceholder": "Search notes...",
@@ -650,7 +649,6 @@
     "searchPlaceholder": "Search username / display name / email",
     "filterRoleAll": "All roles",
     "filterStatusAll": "All status",
-    "roleAdmin": "Admin",
     "roleUser": "User",
     "statusActive": "Active",
     "statusDisabled": "Disabled",
@@ -726,7 +724,7 @@
     "confirmDelete": "Confirm delete",
     "deleteSuccess": "Workspace deleted",
     "deleteFailed": "Failed to delete",
-    "iconPlaceholder": "🏢"
+    "iconPlaceholder": "??"
   },
   "dataManager": {
     "title": "Data Management",
@@ -925,7 +923,6 @@
       "sudoTitle": "Authentication required",
       "sudoPasswordLabel": "Current password",
       "sudoPasswordPlaceholder": "Enter your login password",
-
       "dirConfigTitle": "Backup directory",
       "currentBackupDir": "Current backup dir",
       "currentDataDir": "Data dir",
@@ -942,7 +939,6 @@
       "dirSwitching": "Switching...",
       "dirSwitchSuccess": "Switched to {{path}}. Note: existing backup files were NOT auto-migrated.",
       "dirMigrateHint": "Switching does not auto-migrate old backup files. Use docker exec cp manually if you want to keep them.",
-
       "autoConfigTitle": "Auto backup",
       "autoEnabledLabel": "Enabled",
       "autoDisabledLabel": "Disabled",
@@ -964,7 +960,6 @@
       "saveAuto": "Save config",
       "savingAuto": "Saving...",
       "saveAutoFailed": "Save failed: {{error}}",
-
       "restoreTooltip": "Restore from this backup (dangerous)",
       "restoreTitle": "Restore from backup",
       "restoreDangerTitle": "This is a destructive operation",
@@ -985,7 +980,6 @@
       "restoreFailed": "Restore failed",
       "cancel": "Cancel",
       "close": "Close",
-
       "sendEmailTooltip": "Send this backup as an email attachment",
       "sendEmailTitle": "Send backup via email",
       "sendEmailTo": "Recipient email",
@@ -998,7 +992,6 @@
       "sendEmailSuccess": "Sent to {{to}}: {{resp}}",
       "sendEmailGeneratedSuccess": "Created new backup {{filename}} and sent to {{to}}: {{resp}}",
       "sendEmailFailed": "Send failed: {{error}}",
-
       "sendEmailFormat": "Attachment format",
       "sendEmailFormatCurrent": "Send the current backup ({{type}} · {{size}})",
       "sendEmailFormatCurrentHint": "Fastest — no new file is created; attachment size equals the current backup size.",
@@ -1030,7 +1023,6 @@
       "testSend": "Send test",
       "testSuccess": "Test email sent to {{to}}: {{resp}}",
       "testFailed": "Test failed: {{error}}",
-
       "guide": {
         "title": "SMTP setup guide for common providers",
         "subtitle": "QQ / 163 / Gmail / Outlook quick reference",
@@ -1040,8 +1032,8 @@
         "colPort": "Port",
         "colTls": "Use TLS",
         "colPass": "Password to use",
-        "tlsOn": "✅ Check (SSL)",
-        "tlsOff": "❌ Uncheck (STARTTLS)",
+        "tlsOn": "? Check (SSL)",
+        "tlsOff": "? Uncheck (STARTTLS)",
         "tlsDepends": "Check for 465 / Uncheck for 587",
         "passAuthCodeQQ": "16-char auth code generated via SMS in QQ Mail settings",
         "passAuthCode163": "Auth code generated after enabling IMAP/SMTP in mailbox settings",
@@ -1155,7 +1147,7 @@
     "helpStep3": "Press F12 to open Developer Tools, switch to the Network tab",
     "helpStep4": "Refresh the page, click any request, find and copy the full Cookie from request headers",
     "openMiCloud": "Open Mi Cloud",
-    "cookieWarning": "⚠️ Cookie is equivalent to your account credentials, do not share with others. Cookie is only stored in the current session and will be cleared when the page is closed.",
+    "cookieWarning": "?? Cookie is equivalent to your account credentials, do not share with others. Cookie is only stored in the current session and will be cleared when the page is closed.",
     "connect": "Connect to Mi Cloud",
     "verifying": "Verifying...",
     "loadingNotes": "Loading notes...",
@@ -1216,7 +1208,7 @@
     "openICloud": "Open iCloud Notes",
     "copyScript": "Copy Script",
     "copied": "Copied",
-    "tip": "💡 Method 1 is recommended for reliability. Method 2 depends on iCloud's DOM structure and may break if Apple updates the page.",
+    "tip": "?? Method 1 is recommended for reliability. Method 2 depends on iCloud's DOM structure and may break if Apple updates the page.",
     "jsonLabel": "Paste notes JSON data",
     "jsonPlaceholder": "Paste the JSON data copied from the console here...",
     "jsonRequired": "Please paste the notes JSON data",
@@ -1291,7 +1283,37 @@
     "deleteNode": "Delete",
     "cannotAddSiblingToRoot": "Cannot add sibling to root node",
     "fullscreen": "Fullscreen",
-    "exitFullscreen": "Exit Fullscreen"
+    "exitFullscreen": "Exit Fullscreen",
+    "undo": "Undo",
+    "redo": "Redo",
+    "outline": "Outline",
+    "outlineIndent": "Indent",
+    "outlineAdd": "Add sibling",
+    "more": "More",
+    "markers": "Markers",
+    "nodeColors": "Node Colors",
+    "clearColor": "Clear Color",
+    "setLink": "Set Link",
+    "setNote": "Set Note",
+    "enterLink": "Enter link URL",
+    "enterNote": "Enter note content",
+    "importMarkdown": "Import Markdown",
+    "exportMarkdown": "Export as Markdown",
+    "enterMarkdown": "Paste Markdown text",
+    "importSuccess": "Imported as mind map",
+    "importFailed": "Import failed",
+    "exportFailed": "Export failed",
+    "clipboardEmpty": "Clipboard is empty",
+    "layoutRight": "Right layout",
+    "layoutBoth": "Left-right layout",
+    "themes": "Theme Templates",
+    "addRelation": "Add Relation",
+    "addBoundary": "Add Boundary",
+    "relationStart": "Click target node to complete",
+    "relationCreated": "Relation created",
+    "drawingRelation": "Drawing - click a node",
+    "selectNodesFirst": "Select at least 2 nodes first",
+    "boundaryCreated": "Boundary created"
   },
   "ai": {
     "title": "AI Configuration",
@@ -1533,11 +1555,11 @@
     "github": "GitHub",
     "license": "MIT License",
     "sponsor": "Sponsor",
-    "sponsorDesc": "If this project helps you, buy the author a coffee ☕",
+    "sponsorDesc": "If this project helps you, buy the author a coffee ?",
     "sponsorAction": "Show QR code",
     "sponsorCollapse": "Hide",
     "sponsorTip": "Scan with WeChat · buy the author a keyboard / a bug fix",
-    "madeWith": "Made with ❤️",
+    "madeWith": "Made with ??",
     "changelog": "What's New",
     "changelogDesc": "See this release's new features and past fixes",
     "viewChangelog": "View updates",
@@ -1658,12 +1680,7 @@
       "compareHint": "vs. previous {{n}}-day window",
       "chartAria": "Daily token call volume bar chart",
       "topTitle": "Most active tokens",
-      "empty": "No token calls in the past {{n}} days. Time to put your apps to work ✨"
+      "empty": "No token calls in the past {{n}} days. Time to put your apps to work ?"
     }
   }
 }
-
-
-
-
-

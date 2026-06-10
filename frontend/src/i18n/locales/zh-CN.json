@@ -1,4 +1,4 @@
-﻿{
+{
   "common": {
     "cancel": "取消",
     "chars": "字符",
@@ -115,7 +115,6 @@
     "aiChat": "AI 问答",
     "diary": "说说",
     "fileManager": "文件管理",
-
     "favorites": "收藏",
     "trash": "回收站",
     "emptyTrash": "清空回收站",
@@ -662,7 +661,6 @@
     "searchPlaceholder": "搜索用户名 / 昵称 / 邮箱",
     "filterRoleAll": "全部角色",
     "filterStatusAll": "全部状态",
-    "roleAdmin": "管理员",
     "roleUser": "普通用户",
     "statusActive": "正常",
     "statusDisabled": "已禁用",
@@ -937,7 +935,6 @@
       "sudoTitle": "身份验证",
       "sudoPasswordLabel": "当前密码",
       "sudoPasswordPlaceholder": "输入登录密码",
-
       "dirConfigTitle": "备份目录",
       "currentBackupDir": "当前备份目录",
       "currentDataDir": "数据目录",
@@ -954,7 +951,6 @@
       "dirSwitching": "切换中...",
       "dirSwitchSuccess": "已切换到 {{path}}。注意：旧备份文件未自动迁移。",
       "dirMigrateHint": "切换不会自动迁移旧目录的备份文件，如需保留请管理员通过 docker exec 手动 cp。",
-
       "autoConfigTitle": "自动备份",
       "autoEnabledLabel": "已启用",
       "autoDisabledLabel": "已停用",
@@ -976,7 +972,6 @@
       "saveAuto": "保存配置",
       "savingAuto": "保存中...",
       "saveAutoFailed": "保存失败：{{error}}",
-
       "restoreTooltip": "从此备份恢复（高危）",
       "restoreTitle": "从备份恢复",
       "restoreDangerTitle": "这是破坏性操作",
@@ -997,7 +992,6 @@
       "restoreFailed": "恢复失败",
       "cancel": "取消",
       "close": "关闭",
-
       "sendEmailTooltip": "将此备份作为附件发送到邮箱",
       "sendEmailTitle": "发送备份到邮箱",
       "sendEmailTo": "收件人邮箱",
@@ -1010,7 +1004,6 @@
       "sendEmailSuccess": "已发送到 {{to}}：{{resp}}",
       "sendEmailGeneratedSuccess": "已新建备份 {{filename}} 并发送到 {{to}}：{{resp}}",
       "sendEmailFailed": "发送失败：{{error}}",
-
       "sendEmailFormat": "附件格式",
       "sendEmailFormatCurrent": "直接发送当前备份（{{type}} · {{size}}）",
       "sendEmailFormatCurrentHint": "不会新建文件，发送速度最快；附件大小 = 当前备份大小。",
@@ -1042,7 +1035,6 @@
       "testSend": "发送测试",
       "testSuccess": "测试邮件已发送到 {{to}}：{{resp}}",
       "testFailed": "测试失败：{{error}}",
-
       "guide": {
         "title": "常见邮箱 SMTP 配置教程",
         "subtitle": "QQ / 163 / Gmail / Outlook 速查",
@@ -1305,7 +1297,37 @@
     "deleteNode": "删除",
     "cannotAddSiblingToRoot": "根节点不能添加同级节点",
     "fullscreen": "全屏编辑",
-    "exitFullscreen": "退出全屏"
+    "exitFullscreen": "退出全屏",
+    "undo": "撤销",
+    "redo": "重做",
+    "outline": "大纲",
+    "outlineIndent": "缩进",
+    "outlineAdd": "添加同级",
+    "more": "更多",
+    "markers": "标记",
+    "nodeColors": "节点颜色",
+    "clearColor": "清除颜色",
+    "setLink": "设置链接",
+    "setNote": "设置备注",
+    "enterLink": "请输入链接地址",
+    "enterNote": "请输入备注内容",
+    "importMarkdown": "导入 Markdown",
+    "exportMarkdown": "导出为 Markdown",
+    "enterMarkdown": "请粘贴 Markdown 文本",
+    "importSuccess": "已导入为思维导图",
+    "importFailed": "导入失败",
+    "exportFailed": "导出失败",
+    "clipboardEmpty": "剪贴板为空",
+    "layoutRight": "右向布局",
+    "layoutBoth": "左右平衡布局",
+    "themes": "主题模板",
+    "addRelation": "添加关系线",
+    "addBoundary": "添加边界框",
+    "relationStart": "请点击目标节点完成连线",
+    "relationCreated": "关系线已创建",
+    "drawingRelation": "连线模式 - 点击节点",
+    "selectNodesFirst": "请先选中至少2个节点",
+    "boundaryCreated": "边界框已创建"
   },
   "ai": {
     "title": "AI 智能配置",
@@ -1679,8 +1701,3 @@
     }
   }
 }
-
-
-
-
-

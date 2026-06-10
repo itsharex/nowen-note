@@ -3,13 +3,14 @@ import {
   BrainCircuit, Plus, Trash2, Edit2,
   ZoomIn, ZoomOut, Maximize2, Minimize2, Scan,
   Loader2, Check, Map, Menu, PanelLeftClose, Image, FileImage, FileDown, MoreHorizontal,
-  User as UserIcon
+  User as UserIcon, Undo2, Redo2, PanelLeft, ChevronRight, ChevronDown, Link as LinkIcon, StickyNote, Palette, ExternalLink, FileText, ArrowDownToLine, Spline, Square, Pipette
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api, getCurrentWorkspace } from "@/lib/api";
-import { MindMap, MindMapListItem, MindMapNode, MindMapData } from "@/types";
+import { MindMap, MindMapListItem, MindMapNode, MindMapData, MindMapRelation, MindMapBoundary } from "@/types";
 import { cn } from "@/lib/utils";
 import { toast } from "@/lib/toast";
+import { markdownToMindMapData, mindMapDataToMarkdown } from "@/lib/mindmapTransform";
 
 /* ===== 布局算法：计算树节点的 x,y 位置 ===== */
 interface LayoutNode {
@@ -84,6 +85,29 @@ function layoutTree(node: LayoutNode, x: number, yCenter: number) {
   });
 }
 
+/**
+ * Layout children to the LEFT of the parent node.
+ * Child right edge = parent.x - H_GAP; child extends leftward.
+ */
+function layoutTreeLeft(node: LayoutNode, x: number, yCenter: number) {
+  // x here is the RIGHT edge of the subtree (parent left edge)
+  node.x = x - node.width;
+  node.y = yCenter - node.height / 2;
+  if (node.children.length === 0) return;
+
+  const childRightX = x - node.width - H_GAP;
+  const totalH = node.children.reduce(
+    (sum, c, i) => sum + getSubtreeHeight(c) + (i > 0 ? V_GAP : 0),
+    0
+  );
+  let cy = yCenter - totalH / 2;
+  node.children.forEach((c) => {
+    const ch = getSubtreeHeight(c);
+    layoutTreeLeft(c, childRightX, cy + ch / 2);
+    cy += ch + V_GAP;
+  });
+}
+
 function flattenNodes(node: LayoutNode): LayoutNode[] {
   const result: LayoutNode[] = [node];
   node.children.forEach((c) => result.push(...flattenNodes(c)));
@@ -98,6 +122,54 @@ const DEPTH_COLORS = [
   { bg: "rgb(255,247,237)", text: "rgb(55,65,81)", border: "rgb(253,186,116)" }, // light orange
   { bg: "rgb(245,243,255)", text: "rgb(55,65,81)", border: "rgb(196,181,253)" }, // light purple
   { bg: "rgb(254,242,242)", text: "rgb(55,65,81)", border: "rgb(252,165,165)" }, // light red
+];
+
+const NODE_COLORS = [
+  { bg: "#6366f1", color: "#fff" },
+  { bg: "#3b82f6", color: "#fff" },
+  { bg: "#22c55e", color: "#fff" },
+  { bg: "#f59e0b", color: "#fff" },
+  { bg: "#ef4444", color: "#fff" },
+  { bg: "#8b5cf6", color: "#fff" },
+  { bg: "#ec4899", color: "#fff" },
+  { bg: "#06b6d4", color: "#fff" },
+  { bg: "#f0fdf4", color: "#374151" },
+  { bg: "#fff7ed", color: "#374151" },
+  { bg: "#faf5ff", color: "#374151" },
+  { bg: "#fef2f2", color: "#374151" },
+];
+
+/* ===== Theme templates ===== */
+interface ThemeTemplate {
+  name: string;
+  colors: { bg: string; text: string; border: string; accent: string }[];
+}
+const THEME_TEMPLATES: ThemeTemplate[] = [
+  { name: "Indigo", colors: [
+    { bg: "#6366f1", text: "#fff", border: "#4f46e5", accent: "#6366f1" },
+    { bg: "#eef2ff", text: "#374151", border: "#c7d2fe", accent: "#6366f1" },
+    { bg: "#e0e7ff", text: "#374151", border: "#a5b4fc", accent: "#6366f1" },
+  ]},
+  { name: "Emerald", colors: [
+    { bg: "#10b981", text: "#fff", border: "#059669", accent: "#10b981" },
+    { bg: "#ecfdf5", text: "#374151", border: "#a7f3d0", accent: "#10b981" },
+    { bg: "#d1fae5", text: "#374151", border: "#6ee7b7", accent: "#10b981" },
+  ]},
+  { name: "Sunset", colors: [
+    { bg: "#f97316", text: "#fff", border: "#ea580c", accent: "#f97316" },
+    { bg: "#fff7ed", text: "#374151", border: "#fed7aa", accent: "#f97316" },
+    { bg: "#ffedd5", text: "#374151", border: "#fdba74", accent: "#f97316" },
+  ]},
+  { name: "Rose", colors: [
+    { bg: "#f43f5e", text: "#fff", border: "#e11d48", accent: "#f43f5e" },
+    { bg: "#fff1f2", text: "#374151", border: "#fecdd3", accent: "#f43f5e" },
+    { bg: "#ffe4e6", text: "#374151", border: "#fda4af", accent: "#f43f5e" },
+  ]},
+  { name: "Dark", colors: [
+    { bg: "#18181b", text: "#fafafa", border: "#3f3f46", accent: "#a1a1aa" },
+    { bg: "#27272a", text: "#e4e4e7", border: "#3f3f46", accent: "#a1a1aa" },
+    { bg: "#3f3f46", text: "#fafafa", border: "#52525b", accent: "#a1a1aa" },
+  ]},
 ];
 
 function getNodeColor(depth: number) {
@@ -134,14 +206,54 @@ function crc32(data: Uint8Array): number {
   return (crc ^ 0xFFFFFFFF) >>> 0;
 }
 
+/* ===== Undo/Redo history ===== */
+interface HistoryEntry {
+  data: MindMapData;
+  title?: string;
+}
+const MAX_HISTORY = 50;
+
+/* ===== Marker icon SVGs ===== */
+const MARKER_SVGS: Record<string, string> = {
+  done: '<circle cx="8" cy="8" r="7" fill="#22c55e"/><path d="M5 8l2 2 4-4" stroke="white" stroke-width="1.5" fill="none"/>',
+  todo: '<circle cx="8" cy="8" r="7" fill="#e5e7eb" stroke="#9ca3af" stroke-width="1"/><path d="M5 8h6M8 5v6" stroke="#9ca3af" stroke-width="1.5" fill="none"/>',
+  "priority-high": '<circle cx="8" cy="8" r="7" fill="#ef4444"/><text x="8" y="11" text-anchor="middle" font-size="10" font-weight="bold" fill="white">!</text>',
+  warning: '<path d="M8 1l7 14H1z" fill="#f59e0b"/><text x="8" y="12" text-anchor="middle" font-size="10" font-weight="bold" fill="white">!</text>',
+  idea: '<circle cx="8" cy="8" r="7" fill="#8b5cf6"/><text x="8" y="11" text-anchor="middle" font-size="10" fill="white">★</text>',
+  pin: '<circle cx="8" cy="8" r="7" fill="#06b6d4"/><path d="M8 4v5M6 9l2 3 2-3" stroke="white" stroke-width="1.5" fill="none"/>',
+};
+
+function MarkerIcons({ markers }: { markers?: string[] }) {
+  if (!markers || markers.length === 0) return null;
+  return (
+    <span className="flex items-center gap-0.5 mr-1 shrink-0">
+      {markers.map((m) => {
+        const svg = MARKER_SVGS[m];
+        if (!svg) return null;
+        return (
+          <svg key={m} width="14" height="14" viewBox="0 0 16 16" dangerouslySetInnerHTML={{ __html: svg }} />
+        );
+      })}
+    </span>
+  );
+}
+
 /* ===== 连线组件 ===== */
 function Edge({ from, to }: { from: LayoutNode; to: LayoutNode }) {
-  const x1 = from.x + from.width;
-  const y1 = from.y + from.height / 2;
-  const x2 = to.x;
-  const y2 = to.y + to.height / 2;
+  const toIsLeft = to.x + to.width < from.x;
+  let x1: number, y1: number, x2: number, y2: number;
+  if (toIsLeft) {
+    x1 = from.x;
+    y1 = from.y + from.height / 2;
+    x2 = to.x + to.width;
+    y2 = to.y + to.height / 2;
+  } else {
+    x1 = from.x + from.width;
+    y1 = from.y + from.height / 2;
+    x2 = to.x;
+    y2 = to.y + to.height / 2;
+  }
   const mx = (x1 + x2) / 2;
-
   return (
     <path
       d={`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`}
@@ -157,7 +269,8 @@ function Edge({ from, to }: { from: LayoutNode; to: LayoutNode }) {
 function NodeBox({
   node, isSelected, isEditing, editValue,
   onSelect, onDoubleClick, onEditChange, onEditSubmit,
-  onToggleCollapse, onAddChild, onAddSibling, onDelete, isMobile, onContextMenu,
+  onToggleCollapse, isMobile, onContextMenu, nodeData,
+  markerIcons,
 }: {
   node: LayoutNode;
   isSelected: boolean;
@@ -168,11 +281,10 @@ function NodeBox({
   onEditChange: (v: string) => void;
   onEditSubmit: () => void;
   onToggleCollapse: () => void;
-  onAddChild: () => void;
-  onAddSibling: () => void;
-  onDelete: () => void;
   isMobile: boolean;
   onContextMenu: (e: React.MouseEvent) => void;
+  nodeData?: MindMapNode;
+  markerIcons?: React.ReactNode;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const color = getNodeColor(node.depth);
@@ -196,9 +308,9 @@ function NodeBox({
             isSelected && "ring-2 ring-indigo-500 ring-offset-1 dark:ring-offset-zinc-900"
           )}
           style={{
-            background: color.bg,
-            color: color.text,
-            border: `1.5px solid ${color.border}`,
+            background: nodeData?.style?.bg || color.bg,
+            color: nodeData?.style?.color || color.text,
+            border: `1.5px solid ${nodeData?.style?.border || color.border}`,
             fontSize: isRoot ? 14 : 13,
             fontWeight: isRoot ? 700 : 500,
           }}
@@ -227,6 +339,9 @@ function NodeBox({
             }
           }}
         >
+          {markerIcons}
+          {nodeData?.link && (<a href={nodeData.link} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex items-center mr-1 shrink-0 text-blue-500 hover:text-blue-600"><ExternalLink size={10} /></a>)}
+          {nodeData?.note && (<span className="inline-flex items-center mr-0.5 shrink-0 text-amber-500" title={nodeData.note}><StickyNote size={10} /></span>)}
           {isEditing ? (
             <input
               ref={inputRef}
@@ -267,61 +382,208 @@ function NodeBox({
         </foreignObject>
       )}
 
-      {/* 选中时的操作按钮 */}
-      {isSelected && !isEditing && (
-        <foreignObject
-          x={node.x}
-          y={node.y + node.height + 4}
-          width={node.width + 40}
-          height={isMobile ? 36 : 28}
-        >
-          <div className="flex items-center gap-1">
-            <button
-              className={cn(
-                "flex items-center gap-1 rounded bg-indigo-500 text-white hover:bg-indigo-600 transition-colors",
-                isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]"
-              )}
-              onClick={(e) => { e.stopPropagation(); onAddChild(); }}
-            >
-              <Plus size={isMobile ? 14 : 10} />
-            </button>
-              <button
-                className={cn(
-                  "flex items-center gap-1 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors",
-                  isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]"
-                )}
-                onClick={(e) => { e.stopPropagation(); onAddSibling(); }}
-              >
-                <MoreHorizontal size={isMobile ? 14 : 10} />
-              </button>
-            <button
-              className={cn(
-                "flex items-center gap-1 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors",
-                isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]"
-              )}
-              onClick={(e) => { e.stopPropagation(); onDoubleClick(); }}
-            >
-              <Edit2 size={isMobile ? 14 : 10} />
-            </button>
-            {!isRoot && (
-              <button
-                className={cn(
-                  "flex items-center gap-1 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors",
-                  isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]"
-                )}
-                onClick={(e) => { e.stopPropagation(); onDelete(); }}
-              >
-                <Trash2 size={isMobile ? 14 : 10} />
-              </button>
-            )}
-          </div>
-        </foreignObject>
-      )}
     </g>
   );
 }
 
 /* ===== 列表项组件 ===== */
+
+/* ===== Floating toolbar: HTML absolute overlay ===== */
+function FloatingToolbar({
+  node, zoom, pan, isRoot, isMobile,
+  onAddChild, onAddSibling, onEdit, onDelete, onAddMarker, onSetLink, onSetNote, onSetColor, currentStyle, onApplyTheme, onStartRelation, onCreateBoundary, t,
+}: {
+  node: LayoutNode;
+  zoom: number;
+  pan: { x: number; y: number };
+  isRoot: boolean;
+  isMobile: boolean;
+  onAddChild: () => void;
+  onAddSibling: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onAddMarker: (marker: string) => void;
+  onSetLink: (link: string) => void;
+  onSetNote: (note: string) => void;
+  onSetColor: (style: { bg: string; color: string; border: string } | undefined) => void;
+  currentStyle?: { bg?: string; color?: string; border?: string };
+  onApplyTheme: (idx: number) => void;
+  onStartRelation: () => void;
+  onCreateBoundary: () => void;
+  t: (key: string) => string;
+}) {
+  const [showMore, setShowMore] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+
+  const screenX = node.x * zoom + pan.x + (node.width * zoom) / 2;
+  const screenY = (node.y + node.height + 4) * zoom + pan.y;
+
+  useEffect(() => {
+    if (!showMore) return;
+    const close = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setShowMore(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [showMore]);
+
+  return (
+    <div className="absolute z-40 flex items-center gap-1"
+      style={{ left: screenX, top: screenY, transform: "translateX(-50%)" }}>
+      <button className={cn("flex items-center gap-1 rounded-md bg-indigo-500 text-white hover:bg-indigo-600 transition-colors shadow-md", isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]")}
+        onClick={(e) => { e.stopPropagation(); onAddChild(); }}>
+        <Plus size={isMobile ? 14 : 10} />
+        <span className="hidden sm:inline">{t("mindMap.addChild")}</span>
+      </button>
+      {!isRoot && (
+        <button className={cn("flex items-center gap-1 rounded-md bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition-colors shadow-md", isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]")}
+          onClick={(e) => { e.stopPropagation(); onAddSibling(); }}>
+          <MoreHorizontal size={isMobile ? 14 : 10} />
+          <span className="hidden sm:inline">{t("mindMap.addSibling")}</span>
+        </button>
+      )}
+      <button className={cn("flex items-center gap-1 rounded-md bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-300 dark:hover:bg-zinc-600 transition-colors shadow-md", isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]")}
+        onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+        <Edit2 size={isMobile ? 14 : 10} />
+        <span className="hidden sm:inline">{t("mindMap.editNode")}</span>
+      </button>
+      {!isRoot && (
+        <button className={cn("flex items-center gap-1 rounded-md bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors shadow-md", isMobile ? "px-3 py-2 text-xs" : "px-2 py-1 text-[11px]")}
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}>
+          <Trash2 size={isMobile ? 14 : 10} />
+        </button>
+      )}
+      <div className="relative" ref={moreRef}>
+        <button className={cn("rounded-md bg-zinc-100 dark:bg-zinc-700 text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-600 transition-colors shadow-md", isMobile ? "p-2" : "p-1")}
+          onClick={(e) => { e.stopPropagation(); setShowMore(!showMore); }}>
+          <MoreHorizontal size={isMobile ? 14 : 10} />
+        </button>
+        {showMore && (
+          <div className="absolute top-full mt-1 right-0 min-w-[180px] py-1 rounded-lg shadow-xl border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 z-50 max-h-[300px] overflow-auto">
+            <div className="px-3 py-1 text-[10px] text-tx-tertiary uppercase tracking-wider">{t("mindMap.markers")}</div>
+            {[{ key: "done", label: "\u2705 Done" }, { key: "todo", label: "\u2611 Todo" }, { key: "priority-high", label: "\u26a0 High" }, { key: "warning", label: "\u26a0 Warning" }, { key: "idea", label: "\u2b50 Idea" }, { key: "pin", label: "\u1f4cc Pin" }].map((m) => (
+              <button key={m.key} className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                onClick={(e) => { e.stopPropagation(); onAddMarker(m.key); setShowMore(false); }}>
+                {m.label}
+              </button>
+            ))}
+            <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+            <div className="px-3 py-1 text-[10px] text-tx-tertiary uppercase tracking-wider">{t("mindMap.nodeColors")}</div>
+            <div className="flex flex-wrap gap-1 px-3 py-1">
+              {currentStyle?.bg && (
+                <button className="w-6 h-6 rounded-full border-2 border-zinc-400 flex items-center justify-center text-[10px]"
+                  onClick={(e) => { e.stopPropagation(); onSetColor(undefined); setShowMore(false); }} title={t("mindMap.clearColor")}>\u2715</button>
+              )}
+              {NODE_COLORS.map((nc) => (
+                <button key={nc.bg} className="w-6 h-6 rounded-full border border-zinc-300 dark:border-zinc-600 hover:scale-110 transition-transform"
+                  style={{ background: nc.bg }} title={nc.bg}
+                  onClick={(e) => { e.stopPropagation(); onSetColor({ bg: nc.bg, color: nc.color, border: nc.bg }); setShowMore(false); }} />
+              ))}
+            </div>
+            <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                const link = window.prompt(t("mindMap.enterLink"), "https://");
+                if (link !== null) onSetLink(link);
+                setShowMore(false);
+              }}>
+              <LinkIcon size={14} className="text-blue-500" /> {t("mindMap.setLink")}
+            </button>
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              onClick={(e) => {
+                e.stopPropagation();
+                const note = window.prompt(t("mindMap.enterNote"), "");
+                if (note !== null) onSetNote(note);
+                setShowMore(false);
+              }}>
+              <StickyNote size={14} className="text-amber-500" /> {t("mindMap.setNote")}
+            </button>
+            <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+            <div className="px-3 py-1 text-[10px] text-tx-tertiary uppercase tracking-wider">{t("mindMap.themes")}</div>
+            {THEME_TEMPLATES.map((theme, idx) => (
+              <button key={theme.name} className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                onClick={(e) => { e.stopPropagation(); onApplyTheme(idx); setShowMore(false); }}>
+                <span className="flex gap-0.5">{theme.colors.map((c, ci) => <span key={ci} className="w-3 h-3 rounded-full" style={{ background: c.bg }} />)}</span>
+                {theme.name}
+              </button>
+            ))}
+            <div className="h-px bg-zinc-200 dark:bg-zinc-700 my-1" />
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onStartRelation(); setShowMore(false); }}>
+              <Spline size={14} className="text-amber-500" /> {t("mindMap.addRelation")}
+            </button>
+            <button className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-tx-primary hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+              onClick={(e) => { e.stopPropagation(); onCreateBoundary(); setShowMore(false); }}>
+              <Square size={14} className="text-cyan-500" /> {t("mindMap.addBoundary")}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ===== Outline panel ===== */
+function OutlinePanel({
+  mapData, selectedNodeId, onSelectNode, onAddChild, onEdit, onToggleCollapse,
+  editNodeId, editValue, onEditChange, onEditSubmit, t,
+}: {
+  mapData: MindMapData;
+  selectedNodeId: string | null;
+  onSelectNode: (id: string) => void;
+  onAddChild: (parentId: string) => void;
+  onEdit: (nodeId: string, text: string) => void;
+  onToggleCollapse: (nodeId: string) => void;
+  editNodeId: string | null;
+  editValue: string;
+  onEditChange: (v: string) => void;
+  onEditSubmit: () => void;
+  t: (key: string) => string;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (editNodeId && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); }
+  }, [editNodeId]);
+
+  const renderNode = (node: MindMapNode, depth: number) => {
+    const hasChildren = node.children && node.children.length > 0;
+    const isEditing = editNodeId === node.id;
+    const isSelected = selectedNodeId === node.id;
+    return (
+      <div key={node.id}>
+        <div className={cn("flex items-center gap-1 px-2 py-1 rounded cursor-pointer text-sm transition-colors group",
+          isSelected && "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300",
+          !isSelected && "hover:bg-zinc-100 dark:hover:bg-zinc-700/50 text-tx-primary"
+        )} style={{ paddingLeft: depth * 20 + 8 }}
+          onClick={() => onSelectNode(node.id)} onDoubleClick={() => onEdit(node.id, node.text)}>
+          {hasChildren ? (
+            <button className="p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-600 rounded transition-colors"
+              onClick={(e) => { e.stopPropagation(); onToggleCollapse(node.id); }}>
+              {node.collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+            </button>
+          ) : <span className="w-4" />}
+          {isEditing ? (
+            <input ref={inputRef} value={editValue} onChange={(e) => onEditChange(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); onEditSubmit(); } if (e.key === "Escape") onEditSubmit(); }}
+              onBlur={onEditSubmit} className="flex-1 bg-transparent outline-none border-b border-indigo-400 text-sm min-w-0" />
+          ) : <span className="truncate flex-1 text-xs">{node.text}</span>}
+        </div>
+        {hasChildren && !node.collapsed && <div>{node.children.map((c) => renderNode(c, depth + 1))}</div>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="px-3 py-2 border-b border-app-border flex items-center gap-2">
+        <PanelLeft size={14} className="text-indigo-500" />
+        <span className="text-xs font-semibold text-tx-primary">{t("mindMap.outline")}</span>
+      </div>
+      <div className="flex-1 overflow-auto p-1">{renderNode(mapData.root, 0)}</div>
+    </div>
+  );
+}
 function MindMapListRow({
   item, isActive, onSelect, onDelete, onContextMenu,
 }: {
@@ -443,6 +705,7 @@ export default function MindMapCenter() {
   const containerRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+
   // 加载列表
   const loadMaps = useCallback(async () => {
     try {
@@ -480,11 +743,20 @@ export default function MindMapCenter() {
       try {
         const parsed = JSON.parse(map.data);
         setMapData(parsed);
+        setLayoutMode(parsed.layout || "right");
+        // Initialize history
+        const entry: HistoryEntry = { data: JSON.parse(JSON.stringify(parsed)) };
+        historyRef.current = { stack: [entry], idx: 0 };
+        setHistory([entry]);
+        setHistoryIndex(0);
       } catch {
         setMapData({ root: { id: "root", text: map.title, children: [] } });
       }
       setSelectedNodeId(null);
       setEditingNodeId(null);
+      setHistory([]);
+      setHistoryIndex(-1);
+      historyRef.current = { stack: [], idx: 1 };
       setZoom(1);
       setPan({ x: 60, y: 0 });
     } catch (err) {
@@ -534,6 +806,49 @@ export default function MindMapCenter() {
       }
     }, 600);
   }, [activeMap]);
+
+  // Undo/Redo
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const historyRef = useRef<{ stack: HistoryEntry[]; idx: number }>({ stack: [], idx: -1 });
+
+  const pushHistory = useCallback((data: MindMapData, title?: string) => {
+    const h = historyRef.current;
+    h.stack = h.stack.slice(0, h.idx + 1);
+    h.stack.push({ data: JSON.parse(JSON.stringify(data)), title });
+    if (h.stack.length > MAX_HISTORY) h.stack.shift();
+    h.idx = h.stack.length - 1;
+    setHistory([...h.stack]);
+    setHistoryIndex(h.idx);
+  }, []);
+
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+
+  const handleUndo = useCallback(() => {
+    const h = historyRef.current;
+    if (h.idx <= 0) return;
+    h.idx--;
+    const entry = h.stack[h.idx];
+    setMapData(entry.data);
+    setHistoryIndex(h.idx);
+    triggerSave(entry.data, entry.title);
+  }, [triggerSave]);
+
+  const handleRedo = useCallback(() => {
+    const h = historyRef.current;
+    if (h.idx >= h.stack.length - 1) return;
+    h.idx++;
+    const entry = h.stack[h.idx];
+    setMapData(entry.data);
+    setHistoryIndex(h.idx);
+    triggerSave(entry.data, entry.title);
+  }, [triggerSave]);
+
+  // Outline mode
+  const [showOutline, setShowOutline] = useState(false);
+  const [layoutMode, setLayoutMode] = useState<"right" | "left-right">("right");
+
 
   // 更新节点树（递归辅助函数）
   const updateNode = useCallback(
@@ -594,6 +909,7 @@ export default function MindMapCenter() {
     setSelectedNodeId(newId);
     setEditingNodeId(newId);
     setEditValue(newNode.text);
+    pushHistory(newData);
     triggerSave(newData);
   }, [mapData, updateNode, triggerSave, t]);
 
@@ -622,6 +938,7 @@ export default function MindMapCenter() {
     setSelectedNodeId(newId);
     setEditingNodeId(newId);
     setEditValue(newNode.text);
+    pushHistory(newData);
     triggerSave(newData);
   }, [mapData, findParentNode, updateNode, triggerSave, t]);
 
@@ -632,6 +949,7 @@ export default function MindMapCenter() {
     const newData = { root: newRoot };
     setMapData(newData);
     setSelectedNodeId(null);
+    pushHistory(newData);
     triggerSave(newData);
   }, [mapData, removeNode, triggerSave]);
 
@@ -642,6 +960,7 @@ export default function MindMapCenter() {
     const newRoot = updateNode(mapData.root, editingNodeId, (n) => ({ ...n, text: trimmed }));
     const newData = { root: newRoot };
     setMapData(newData);
+    pushHistory(newData);
     setEditingNodeId(null);
     // 如果编辑的是根节点，同步更新标题
     const isRoot = editingNodeId === "root";
@@ -662,10 +981,151 @@ export default function MindMapCenter() {
     }));
     const newData = { root: newRoot };
     setMapData(newData);
+    pushHistory(newData);
     triggerSave(newData);
   }, [mapData, updateNode, triggerSave]);
 
+  const handleAddMarker = useCallback((marker: string) => {
+    if (!mapData || !selectedNodeId) return;
+    const node = findNode(mapData.root, selectedNodeId);
+    if (!node) return;
+    const existing = node.markers || [];
+    const newMarkers = existing.includes(marker as any)
+      ? existing.filter(m => m !== marker)
+      : [...existing, marker as any];
+    const newRoot = updateNode(mapData.root, selectedNodeId, (n) => ({
+      ...n,
+      markers: newMarkers.length > 0 ? newMarkers : undefined,
+    }));
+    const newData = { root: newRoot };
+    setMapData(newData);
+    pushHistory(newData);
+    triggerSave(newData);
+  }, [mapData, selectedNodeId, findNode, updateNode, triggerSave, pushHistory]);
+
+  const handleSetLink = useCallback((link: string) => {
+    if (!mapData || !selectedNodeId) return;
+    const newRoot = updateNode(mapData.root, selectedNodeId, (n) => ({ ...n, link: link || undefined }));
+    const newData = { root: newRoot }; setMapData(newData); pushHistory(newData); triggerSave(newData);
+  }, [mapData, selectedNodeId, updateNode, triggerSave, pushHistory]);
+
+  const handleSetNote = useCallback((note: string) => {
+    if (!mapData || !selectedNodeId) return;
+    const newRoot = updateNode(mapData.root, selectedNodeId, (n) => ({ ...n, note: note || undefined }));
+    const newData = { root: newRoot }; setMapData(newData); pushHistory(newData); triggerSave(newData);
+  }, [mapData, selectedNodeId, updateNode, triggerSave, pushHistory]);
+
+
+  // Theme application
+  const [currentTheme, setCurrentTheme] = useState<string | undefined>(undefined);
+
+  const handleApplyTheme = useCallback((themeIdx: number) => {
+    if (!mapData) return;
+    const theme = THEME_TEMPLATES[themeIdx];
+    if (!theme) return;
+    const rootColor = theme.colors[0];
+    function applyTheme(node: MindMapNode, depth: number): MindMapNode {
+      const colorSet = theme.colors[Math.min(depth, theme.colors.length - 1)];
+      return {
+        ...node,
+        style: { bg: colorSet.bg, color: colorSet.text, border: colorSet.border },
+        children: (node.children || []).map(c => applyTheme(c, depth + 1)),
+      };
+    }
+    const newData = { ...mapData, root: applyTheme(mapData.root, 0), theme: theme.name };
+    setMapData(newData);
+    setCurrentTheme(theme.name);
+    pushHistory(newData);
+    triggerSave(newData);
+  }, [mapData, pushHistory, triggerSave]);
+
+  // Relation drawing mode
+  const [drawingRelation, setDrawingRelation] = useState(false);
+  const [relationStart, setRelationStart] = useState<string | null>(null);
+
+  const handleRelationClick = useCallback((nodeId: string) => {
+    if (!drawingRelation) return;
+    if (!relationStart) {
+      setRelationStart(nodeId);
+      toast.success(t("mindMap.relationStart"));
+      return;
+    }
+    if (relationStart === nodeId) { setRelationStart(null); return; }
+    if (!mapData) return;
+    const existing = mapData.relations || [];
+    const dup = existing.find(r => r.fromId === relationStart && r.toId === nodeId);
+    if (dup) { setRelationStart(null); setDrawingRelation(false); return; }
+    const newRelation: MindMapRelation = {
+      id: "rel_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+      fromId: relationStart,
+      toId: nodeId,
+    };
+    const newData = { ...mapData, relations: [...existing, newRelation] };
+    setMapData(newData);
+    pushHistory(newData);
+    triggerSave(newData);
+    setRelationStart(null);
+    setDrawingRelation(false);
+    toast.success(t("mindMap.relationCreated"));
+  }, [drawingRelation, relationStart, mapData, pushHistory, triggerSave, t]);
+
+  // Boundary creation
+  const [selectedNodes, setSelectedNodes] = useState<Set<string>>(new Set());
+
+  const handleCreateBoundary = useCallback(() => {
+    if (!mapData || selectedNodes.size < 2) {
+      toast.error(t("mindMap.selectNodesFirst"));
+      return;
+    }
+    const existing = mapData.boundaries || [];
+    const colors = ["#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4"];
+    const color = colors[existing.length % colors.length];
+    const boundary: MindMapBoundary = {
+      id: "bnd_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+      nodeIds: Array.from(selectedNodes),
+      color,
+    };
+    const newData = { ...mapData, boundaries: [...existing, boundary] };
+    setMapData(newData);
+    pushHistory(newData);
+    triggerSave(newData);
+    setSelectedNodes(new Set());
+    toast.success(t("mindMap.boundaryCreated"));
+  }, [mapData, selectedNodes, pushHistory, triggerSave, t]);
+  const handleSetColor = useCallback((style: { bg: string; color: string; border: string } | undefined) => {
+    if (!mapData || !selectedNodeId) return;
+    const newRoot = updateNode(mapData.root, selectedNodeId, (n) => ({ ...n, style: style || undefined }));
+    const newData = { root: newRoot }; setMapData(newData); pushHistory(newData); triggerSave(newData);
+  }, [mapData, selectedNodeId, updateNode, triggerSave, pushHistory]);
+
   // 创建新导图
+  const handleImportMarkdown = useCallback(async () => {
+    const md = window.prompt(t("mindMap.enterMarkdown"));
+    if (!md) return;
+    try {
+      const data = markdownToMindMapData(md);
+      const title = data.root.text.slice(0, 50) || t("mindMap.untitled");
+      const created = await api.createMindMap({ title, data: JSON.stringify(data) });
+      setMaps((prev) => [{ id: created.id, userId: created.userId, workspaceId: created.workspaceId, title: created.title, createdAt: created.createdAt, updatedAt: created.updatedAt }, ...prev]);
+      handleSelect(created.id);
+      toast.success(t("mindMap.importSuccess"));
+    } catch (e: any) {
+      toast.error(e?.message || t("mindMap.importFailed"));
+    }
+  }, [handleSelect, t]);
+
+  const handleExportMarkdown = useCallback(() => {
+    if (!mapData) return;
+    const md = mindMapDataToMarkdown(mapData);
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${activeMap?.title || "mindmap"}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [mapData, activeMap]);
+
   const handleCreate = useCallback(async () => {
     try {
       const map = await api.createMindMap({ title: t("mindMap.untitled") });
@@ -789,7 +1249,20 @@ export default function MindMapCenter() {
   // 键盘快捷键
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (!mapData || !selectedNodeId || editingNodeId) return;
+      if (!mapData) return;
+      // Undo: Ctrl+Z
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        if (editingNodeId) return;
+        e.preventDefault(); handleUndo(); return;
+      }
+      // Redo: Ctrl+Y or Ctrl+Shift+Z
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey))) {
+        if (editingNodeId) return;
+        e.preventDefault(); handleRedo(); return;
+      }
+
+      if (!selectedNodeId || editingNodeId) return;
+
 
       if (e.key === "Tab") {
         e.preventDefault();
@@ -824,7 +1297,28 @@ export default function MindMapCenter() {
 
     const root = buildLayout(mapData.root, 0, null);
     const treeH = getSubtreeHeight(root);
-    layoutTree(root, 0, treeH / 2);
+    if (layoutMode === "left-right" && root.children.length > 1) {
+      // Split children: odd index right, even index left
+      const leftChildren: LayoutNode[] = [];
+      const rightChildren: LayoutNode[] = [];
+      root.children.forEach((c, idx) => {
+        if (idx % 2 === 0) rightChildren.push(c);
+        else leftChildren.push(c);
+      });
+      root.children = rightChildren;
+      // Create a virtual left root for layout
+      if (leftChildren.length > 0) {
+        const leftRoot: LayoutNode = { ...root, id: root.id + "-left", children: leftChildren };
+        layoutTree(root, 0, treeH / 2);
+        layoutTreeLeft(leftRoot, 0, treeH / 2);
+        // Merge left children positions back
+        leftChildren.forEach((c, i) => { root.children.push(c); });
+      } else {
+        layoutTree(root, 0, treeH / 2);
+      }
+    } else {
+      layoutTree(root, 0, treeH / 2);
+    }
     const all = flattenNodes(root);
 
     const edgeList: { from: LayoutNode; to: LayoutNode }[] = [];
@@ -849,7 +1343,7 @@ export default function MindMapCenter() {
     const bounds = { minX: minX - pad, minY: minY - pad, width: maxX - minX + pad * 2, height: maxY - minY + pad * 2 };
 
     return { layoutNodes: all, edges: edgeList, viewBox: vb, bounds };
-  }, [mapData]);
+  }, [mapData, layoutMode]);
 
   const [showMiniMap, setShowMiniMap] = useState(!isMobile);
 
@@ -1245,6 +1739,40 @@ export default function MindMapCenter() {
                 )}
               </div>
               <div className="flex items-center gap-1">
+                {/* Undo */}
+                <button onClick={handleUndo} disabled={!canUndo}
+                  className={cn("p-1.5 rounded-md transition-colors", canUndo ? "hover:bg-app-hover text-tx-secondary" : "text-tx-tertiary/40 cursor-not-allowed")}
+                  title={t("mindMap.undo")}><Undo2 size={16} /></button>
+                {/* Redo */}
+                <button onClick={handleRedo} disabled={!canRedo}
+                  className={cn("p-1.5 rounded-md transition-colors", canRedo ? "hover:bg-app-hover text-tx-secondary" : "text-tx-tertiary/40 cursor-not-allowed")}
+                  title={t("mindMap.redo")}><Redo2 size={16} /></button>
+                <div className="w-px h-4 bg-app-border mx-0.5" />
+                {/* Outline toggle */}
+                <button onClick={() => setShowOutline((v) => !v)}
+                  className={cn("p-1.5 rounded-md transition-colors", showOutline ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-500" : "hover:bg-app-hover text-tx-secondary")}
+                  title={t("mindMap.outline")}><PanelLeft size={16} /></button>
+                <button
+                  onClick={() => {
+                    const newMode: "right" | "left-right" = layoutMode === "right" ? "left-right" : "right";
+                    setLayoutMode(newMode);
+                    if (mapData) {
+                      const newData = { ...mapData, layout: newMode };
+                      setMapData(newData);
+                      triggerSave(newData);
+                    }
+                  }}
+                  className={cn("p-1.5 rounded-md transition-colors",
+                    layoutMode === "left-right" ? "bg-indigo-100 dark:bg-indigo-500/20 text-indigo-500" : "hover:bg-app-hover text-tx-secondary")}
+                  title={layoutMode === "right" ? t("mindMap.layoutRight") : t("mindMap.layoutBoth")}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="8" cy="8" r="3" />
+                    <path d="M5 8H2M11 8h3" />
+                    <path d="M2 5v6M14 5v6" />
+                  </svg>
+                </button>
+                <div className="w-px h-4 bg-app-border mx-0.5" />
                 <button
                   onClick={handleZoomOut}
                   className="p-1.5 rounded-md hover:bg-app-hover text-tx-secondary transition-colors"
@@ -1289,10 +1817,44 @@ export default function MindMapCenter() {
                 >
                   <Map size={16} />
                 </button>
+                {drawingRelation && (
+                  <span className="text-xs text-amber-500 animate-pulse ml-1">{t("mindMap.drawingRelation")}</span>
+                )}
+                <button
+                  onClick={handleExportMarkdown}
+                  className="p-1.5 rounded-md hover:bg-app-hover text-tx-secondary transition-colors"
+                  title={t("mindMap.exportMarkdown")}
+                >
+                  <FileText size={16} />
+                </button>
+                <button
+                  onClick={handleImportMarkdown}
+                  className="p-1.5 rounded-md hover:bg-app-hover text-tx-secondary transition-colors"
+                  title={t("mindMap.importMarkdown")}
+                >
+                  <ArrowDownToLine size={16} />
+                </button>
               </div>
             </div>
 
-            {/* Canvas */}
+            <div className="flex-1 flex overflow-hidden">
+              {showOutline && (
+                <div className="w-[240px] min-w-[200px] border-r border-app-border bg-app-surface/50 shrink-0 overflow-hidden">
+                  <OutlinePanel
+                    mapData={mapData!}
+                    selectedNodeId={selectedNodeId}
+                    onSelectNode={(id) => { setSelectedNodeId(id); setEditingNodeId(null); }}
+                    onAddChild={handleAddChild}
+                    onEdit={(id, text) => { setEditingNodeId(id); setEditValue(text); }}
+                    onToggleCollapse={handleToggleCollapse}
+                    editNodeId={editingNodeId}
+                    editValue={editValue}
+                    onEditChange={setEditValue}
+                    onEditSubmit={handleEditSubmit}
+                    t={t}
+                  />
+                </div>
+              )}
             <div
               className="flex-1 overflow-hidden cursor-grab active:cursor-grabbing relative"
               style={{ userSelect: "none" }}
@@ -1321,6 +1883,63 @@ export default function MindMapCenter() {
                 {edges.map((e, i) => (
                   <Edge key={`${e.from.id}-${e.to.id}-${i}`} from={e.from} to={e.to} />
                 ))}
+                {/* Relation lines */}
+                {mapData?.relations?.map((rel) => {
+                  const fromNode = layoutNodes.find(n => n.id === rel.fromId);
+                  const toNode = layoutNodes.find(n => n.id === rel.toId);
+                  if (!fromNode || !toNode) return null;
+                  const fx = fromNode.x + fromNode.width / 2;
+                  const fy = fromNode.y + fromNode.height / 2;
+                  const tx = toNode.x + toNode.width / 2;
+                  const ty = toNode.y + toNode.height / 2;
+                  const mx = (fx + tx) / 2;
+                  const my = (fy + ty) / 2 - 40;
+                  return (
+                    <g key={rel.id}>
+                      <path
+                        d={`M${fx},${fy} Q${mx},${my} ${tx},${ty}`}
+                        fill="none"
+                        stroke="#f59e0b"
+                        strokeWidth={2}
+                        strokeDasharray="6 3"
+                        markerEnd="url(#arrowhead)"
+                      />
+                      {rel.label && <text x={mx} y={my - 6} textAnchor="middle" fontSize={11} fill="#f59e0b">{rel.label}</text>}
+                    </g>
+                  );
+                })}
+                {/* Arrowhead marker definition */}
+                <defs>
+                  <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b" />
+                  </marker>
+                </defs>
+                {/* Boundary rectangles */}
+                {mapData?.boundaries?.map((bnd) => {
+                  const nodes = bnd.nodeIds
+                    .map(id => layoutNodes.find(n => n.id === id))
+                    .filter(Boolean) as LayoutNode[];
+                  if (nodes.length < 2) return null;
+                  const pad = 16;
+                  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                  nodes.forEach(n => {
+                    minX = Math.min(minX, n.x - pad);
+                    minY = Math.min(minY, n.y - pad);
+                    maxX = Math.max(maxX, n.x + n.width + pad);
+                    maxY = Math.max(maxY, n.y + n.height + pad);
+                  });
+                  return (
+                    <g key={bnd.id}>
+                      <rect
+                        x={minX} y={minY}
+                        width={maxX - minX} height={maxY - minY}
+                        rx={8} fill={bnd.color + "10"} stroke={bnd.color || "#6366f1"}
+                        strokeWidth={2} strokeDasharray="8 4"
+                      />
+                      {bnd.label && <text x={minX + 8} y={minY - 4} fontSize={11} fill={bnd.color || "#6366f1"}>{bnd.label}</text>}
+                    </g>
+                  );
+                })}
 
                 {/* Nodes */}
                 {(selectedNodeId ? [...layoutNodes.filter(n => n.id !== selectedNodeId), layoutNodes.find(n => n.id === selectedNodeId)!] : layoutNodes).map((n) => (
@@ -1330,7 +1949,7 @@ export default function MindMapCenter() {
                     isSelected={selectedNodeId === n.id}
                     isEditing={editingNodeId === n.id}
                     editValue={editValue}
-                    onSelect={() => setSelectedNodeId(n.id)}
+                    onSelect={() => { if (drawingRelation) { handleRelationClick(n.id); } else { setSelectedNodeId(n.id); }}}
                     onDoubleClick={() => {
                       setEditingNodeId(n.id);
                       setEditValue(n.text);
@@ -1338,14 +1957,41 @@ export default function MindMapCenter() {
                     onEditChange={setEditValue}
                     onEditSubmit={handleEditSubmit}
                     onToggleCollapse={() => handleToggleCollapse(n.id)}
-                    onAddChild={() => handleAddChild(n.id)}
-                    onAddSibling={() => handleAddSibling(n.id)}
-                    onDelete={() => handleDeleteNode(n.id)}
                     isMobile={isMobile}
                     onContextMenu={(e) => e.preventDefault()}
+                    markerIcons={<MarkerIcons markers={findNode(mapData.root, n.id)?.markers} />}
+                    nodeData={findNode(mapData.root, n.id) ?? undefined}
                   />
                 ))}
               </svg>
+
+                {/* Floating toolbar: HTML absolute overlay */}
+                {(() => {
+                  if (!selectedNodeId || editingNodeId === selectedNodeId) return null;
+                  const node = layoutNodes.find(n => n.id === selectedNodeId);
+                  if (!node) return null;
+                  const screenX = node.x * zoom + pan.x + (node.width * zoom) / 2;
+                  const screenY = (node.y + node.height + 4) * zoom + pan.y;
+                  return (
+                    <FloatingToolbar
+                      node={node} zoom={zoom} pan={pan}
+                      isRoot={node.depth === 0} isMobile={isMobile}
+                      onAddChild={() => handleAddChild(node.id)}
+                      onAddSibling={() => handleAddSibling(node.id)}
+                      onEdit={() => { setEditingNodeId(node.id); const n = findNode(mapData!.root, node.id); setEditValue(n?.text || ""); }}
+                      onDelete={() => handleDeleteNode(node.id)}
+                      onAddMarker={handleAddMarker}
+                      onSetLink={handleSetLink}
+                      onSetNote={handleSetNote}
+                      onSetColor={handleSetColor}
+                      currentStyle={findNode(mapData!.root, selectedNodeId)?.style}
+                      onApplyTheme={handleApplyTheme}
+                      onStartRelation={() => { setDrawingRelation(true); setRelationStart(selectedNodeId); toast.success(t("mindMap.relationStart")); }}
+                      onCreateBoundary={handleCreateBoundary}
+                      t={t}
+                    />
+                  );
+                })()}
 
               {/* MiniMap 小地图 */}
               {showMiniMap && layoutNodes.length > 0 && (
@@ -1427,12 +2073,15 @@ export default function MindMapCenter() {
               )}
 
             </div>
+            </div>
             {!isMobile && (
             <div className="px-4 py-1.5 border-t border-app-border bg-app-surface/30 flex items-center gap-4 text-[11px] text-tx-tertiary">
               <span><kbd className="px-1 py-0.5 rounded border border-app-border bg-app-bg text-[10px]">Tab</kbd> {t("mindMap.shortcutAdd")}</span>
               <span><kbd className="px-1 py-0.5 rounded border border-app-border bg-app-bg text-[10px]">Enter</kbd> {t("mindMap.shortcutEdit")}</span>
               <span><kbd className="px-1 py-0.5 rounded border border-app-border bg-app-bg text-[10px]">Del</kbd> {t("mindMap.shortcutDelete")}</span>
               <span><kbd className="px-1 py-0.5 rounded border border-app-border bg-app-bg text-[10px]">Space</kbd> {t("mindMap.shortcutCollapse")}</span>
+                <span><kbd className="px-1 py-0.5 rounded border border-app-border bg-app-bg text-[10px]">Ctrl+Z</kbd> {t("mindMap.undo")}</span>
+                <span><kbd className="px-1 py-0.5 rounded border border-app-border bg-app-bg text-[10px]">Ctrl+Y</kbd> {t("mindMap.redo")}</span>
               <span>{t("mindMap.dragToMove")}</span>
             </div>
             )}

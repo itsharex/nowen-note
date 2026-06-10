@@ -110,3 +110,117 @@ export function assignMindMapNodeIds(data: MindMapData): MindMapData {
   }
   return { root: assign(data.root) };
 }
+
+/**
+ * 将 Markdown 文本转换为 MindMapData
+ * 规则:
+ *   - 第一个 # 标题作为根节点
+ *   - ## 标题作为第一级子节点
+ *   - ### 标题作为第二级子节点
+ *   - - 列表项按缩进层级展开
+ *   - 非标题非列表的正文挂到最近的节点上
+ */
+export function markdownToMindMapData(markdown: string): MindMapData {
+  const lines = markdown.split("\n").filter(l => l.trim().length > 0);
+  let idCounter = 0;
+  const newId = () => "node-" + (++idCounter);
+
+  // 找到第一个标题作为根
+  let root: MindMapNode | null = null;
+  const stack: { node: MindMapNode; level: number }[] = [];
+
+  function getLevel(line: string): { level: number; text: string } | null {
+    // ATX headings: # / ## / ### / ...
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+    if (headingMatch) {
+      return { level: headingMatch[1].length, text: headingMatch[2].trim() };
+    }
+    // List items: - / * / + with indentation
+    const listMatch = line.match(/^(\s*)[-*+]\s+(.+)$/);
+    if (listMatch) {
+      const indent = listMatch[1].length;
+      // Map indent to pseudo-level: 0 indent = 9, 2 indent = 10, etc.
+      return { level: 9 + Math.floor(indent / 2), text: listMatch[2].trim() };
+    }
+    return null;
+  }
+
+  for (const line of lines) {
+    const parsed = getLevel(line);
+    if (!parsed) {
+      // Plain text — append as child of current deepest node
+      const text = line.replace(/^>\s*/, "").trim();
+      if (!text || !stack.length) continue;
+      if (idCounter >= MAX_NODES) break;
+      const parent = stack[stack.length - 1].node;
+      if (parent.children.length < 20) { // limit plain text children
+        parent.children.push({ id: newId(), text: text.slice(0, 200), children: [] });
+      }
+      continue;
+    }
+
+    const { level, text } = parsed;
+    if (!text) continue;
+
+    const node: MindMapNode = { id: newId(), text: text.slice(0, 200), children: [] };
+
+    if (!root) {
+      root = node;
+      stack.push({ node, level });
+      continue;
+    }
+
+    // Pop stack until we find a parent with lower level
+    while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+      stack.pop();
+    }
+
+    if (stack.length === 0) {
+      // Top-level item without proper heading — add as child of root
+      root.children.push(node);
+      stack.push({ node, level });
+    } else {
+      const parent = stack[stack.length - 1].node;
+      parent.children.push(node);
+      stack.push({ node, level });
+    }
+
+    if (idCounter >= MAX_NODES) break;
+  }
+
+  if (!root) {
+    throw new Error("无法从 Markdown 中提取思维导图内容");
+  }
+
+  return { root };
+}
+
+/**
+ * 将 MindMapData 转换为 Markdown 文本
+ * 根节点作为 # 标题，子节点按层级递增
+ */
+export function mindMapDataToMarkdown(data: MindMapData): string {
+  const lines: string[] = [];
+
+  function walk(node: MindMapNode, depth: number) {
+    if (depth === 0) {
+      lines.push("# " + node.text);
+    } else if (depth <= 6) {
+      lines.push("#".repeat(depth + 1) + " " + node.text);
+    } else {
+      // Beyond h6, use list items with indentation
+      const indent = "  ".repeat(depth - 6);
+      lines.push(indent + "- " + node.text);
+    }
+    if (node.note) {
+      const indent = depth === 0 ? "" : "  ".repeat(Math.min(depth, 4));
+      lines.push(indent + "> " + node.note);
+    }
+    for (const child of (node.children || [])) {
+      walk(child, depth + 1);
+    }
+  }
+
+  walk(data.root, 0);
+  return lines.join("\n");
+}

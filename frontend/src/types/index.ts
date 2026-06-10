@@ -377,10 +377,36 @@ export interface MindMapNode {
   text: string;
   children: MindMapNode[];
   collapsed?: boolean;
+  markers?: Array<"done" | "todo" | "priority-high" | "warning" | "idea" | "pin">;
+  note?: string;
+  link?: string;
+  style?: {
+    bg?: string;
+    color?: string;
+    border?: string;
+  };
+}
+
+export interface MindMapRelation {
+  id: string;
+  fromId: string;
+  toId: string;
+  label?: string;
+}
+
+export interface MindMapBoundary {
+  id: string;
+  nodeIds: string[];
+  color?: string;
+  label?: string;
 }
 
 export interface MindMapData {
   root: MindMapNode;
+  layout?: "right" | "left-right";
+  relations?: MindMapRelation[];
+  boundaries?: MindMapBoundary[];
+  theme?: string;
 }
 
 export interface MindMap {
