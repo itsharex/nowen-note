@@ -72,7 +72,7 @@ function resolveMindmapScope(
   userId: string,
 ): { scope: "personal" | "workspace"; workspaceId: string | null; error?: string } {
   const workspaceId = workspaceIdRaw?.trim() || "";
-  if (!workspaceId) return { scope: "personal", workspaceId: null };
+  if (!workspaceId || workspaceId === "personal") return { scope: "personal", workspaceId: null };
   const role = getUserWorkspaceRole(workspaceId, userId);
   if (!role) return { scope: "workspace", workspaceId, error: "无权访问该工作区" };
   return { scope: "workspace", workspaceId };
