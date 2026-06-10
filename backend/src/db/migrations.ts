@@ -1237,6 +1237,31 @@ export const MIGRATIONS: Migration[] = [
       db.prepare("INSERT INTO notes_fts(notes_fts) VALUES('rebuild')").run();
     },
   },
+  // v17: mindmap folders + mindmaps.folderId
+  {
+    version: 17,
+    name: "mindmap-folders",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS mindmap_folders (
+          id TEXT PRIMARY KEY,
+          userId TEXT NOT NULL,
+          workspaceId TEXT,
+          parentId TEXT,
+          name TEXT NOT NULL DEFAULT '\u672a\u547d\u540d\u6587\u4ef6\u5939',
+          sortOrder INTEGER NOT NULL DEFAULT 0,
+          createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+          updatedAt TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_mindmap_folders_user ON mindmap_folders(userId);
+        CREATE INDEX IF NOT EXISTS idx_mindmap_folders_parent ON mindmap_folders(parentId);
+        CREATE INDEX IF NOT EXISTS idx_mindmap_folders_workspace ON mindmap_folders(workspaceId);
+      `);
+      // mindmaps 表加 folderId 列
+      try { db.prepare("ALTER TABLE mindmaps ADD COLUMN folderId TEXT").run(); } catch {}
+    },
+  },
 ];
 
 /** 当前代码已知的最高 schema 版本（== MIGRATIONS 里 max(version)）。 */

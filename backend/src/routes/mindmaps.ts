@@ -57,6 +57,7 @@ interface MindmapRow {
   title: string;
   data: string;
   starred: number;
+  folderId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -94,11 +95,11 @@ app.get("/", requireWorkspaceFeature("mindmaps"), (c) => {
   // 工作区下导图列表用来展示"谁建的"。LEFT JOIN 兜底用户被删除的极端窗口期。
   const sql =
     scope.scope === "workspace"
-      ? `SELECT m.id, m.userId, m.workspaceId, m.title, m.starred, m.createdAt, m.updatedAt,
+      ? `SELECT m.id, m.userId, m.workspaceId, m.title, m.starred, m.folderId, m.createdAt, m.updatedAt,
                 u.username AS creatorName
          FROM mindmaps m LEFT JOIN users u ON u.id = m.userId
          WHERE m.workspaceId = ? ORDER BY m.starred DESC, m.updatedAt DESC`
-      : `SELECT m.id, m.userId, m.workspaceId, m.title, m.starred, m.createdAt, m.updatedAt,
+      : `SELECT m.id, m.userId, m.workspaceId, m.title, m.starred, m.folderId, m.createdAt, m.updatedAt,
                 u.username AS creatorName
          FROM mindmaps m LEFT JOIN users u ON u.id = m.userId
          WHERE m.userId = ? AND m.workspaceId IS NULL ORDER BY m.starred DESC, m.updatedAt DESC`;

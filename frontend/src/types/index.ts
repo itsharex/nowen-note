@@ -427,12 +427,25 @@ export interface MindMapListItem {
   workspaceId: string | null;
   title: string;
   starred?: number;
+  folderId?: string | null;
   createdAt: string;
   updatedAt: string;
   /** 创建者用户名；仅 list 接口返回。 */
   creatorName?: string | null;
 }
 
+
+export interface MindMapFolder {
+  id: string;
+  userId: string;
+  workspaceId: string | null;
+  parentId: string | null;
+  name: string;
+  sortOrder: number;
+  mindmapCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
 export interface Diary {
   id: string;
   userId: string;
