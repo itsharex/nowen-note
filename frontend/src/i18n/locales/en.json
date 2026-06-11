@@ -1073,7 +1073,29 @@
     "uploadFailed": "Image upload failed",
     "imageTooLarge": "Image too large (max 50MB)",
     "imageInvalidType": "Unsupported image format",
-    "openLink": "Open link"
+    "openLink": "Open link",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "overview": {
+      "totalProgress": "Total Progress",
+      "pending": "{{count}} pending",
+      "todayTasks": "Today",
+      "thisWeek": "This week {{count}}",
+      "nearestDue": "Next Due",
+      "overdue": "Overdue",
+      "noDeadline": "No deadline"
+    },
+    "progress": {
+      "title": "Progress",
+      "childrenStats": "{{completed}}/{{total}} subtasks done",
+      "completed": "Completed",
+      "inProgress": "In progress",
+      "dueLabel": "Due"
+    },
+    "reminder": {
+      "title": "Reminders",
+      "comingSoon": "Reminders are coming soon."
+    }
   },
   "tags": {
     "addTagPlaceholder": "Add tag...",

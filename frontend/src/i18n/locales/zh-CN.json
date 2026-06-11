@@ -1085,7 +1085,29 @@
     "uploadFailed": "图片上传失败",
     "imageTooLarge": "图片过大（最大 50MB）",
     "imageInvalidType": "不支持的图片格式",
-    "openLink": "打开链接"
+    "openLink": "打开链接",
+    "expand": "展开",
+    "collapse": "折叠",
+    "overview": {
+      "totalProgress": "总体进度",
+      "pending": "{{count}} 待完成",
+      "todayTasks": "今日任务",
+      "thisWeek": "本周 {{count}} 项",
+      "nearestDue": "最近截止",
+      "overdue": "已逾期",
+      "noDeadline": "暂无截止日期"
+    },
+    "progress": {
+      "title": "进度",
+      "childrenStats": "{{completed}}/{{total}} 子任务已完成",
+      "completed": "已完成",
+      "inProgress": "进行中",
+      "dueLabel": "截止"
+    },
+    "reminder": {
+      "title": "提醒设置",
+      "comingSoon": "提醒功能即将推出，敬请期待。"
+    }
   },
   "tags": {
     "addTagPlaceholder": "添加标签...",
