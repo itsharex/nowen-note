@@ -489,7 +489,7 @@ function FloatingToolbar({
           <MoreHorizontal size={isMobile ? 14 : 10} />
         </button>
         {showMore && (
-          <div className="absolute top-full mt-1.5 right-0 min-w-[180px] backdrop-blur-xl bg-white/90 dark:bg-zinc-900/90 rounded-[12px] shadow-lg shadow-black/[0.08] dark:shadow-black/30 border border-black/[0.06] dark:border-white/[0.08] py-1 z-50 max-h-[300px] overflow-auto">
+          <div className={`absolute top-full mt-1.5 right-0 min-w-[180px] ${MT.menuCls} bg-white/90 dark:bg-zinc-900/90 z-50 max-h-[300px] overflow-auto`}>
             <div className="px-3 py-1 text-[10px] text-tx-tertiary uppercase tracking-wider">{t("mindMap.markers")}</div>
             {[{ key: "done", label: "\u2705 Done" }, { key: "todo", label: "\u2611 Todo" }, { key: "priority-high", label: "\u26a0 High" }, { key: "warning", label: "\u26a0 Warning" }, { key: "idea", label: "\u2b50 Idea" }, { key: "pin", label: "\u1f4cc Pin" }].map((m) => (
               <button key={m.key} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
@@ -603,11 +603,11 @@ function OutlinePanel({
       <div key={node.id}>
         <div className={cn("flex items-center gap-1 px-2 py-1 rounded cursor-pointer text-sm transition-colors group",
           isSelected && "bg-blue-50/70 dark:bg-blue-500/15 text-blue-700 dark:text-blue-300",
-          !isSelected && "hover:bg-zinc-100 dark:hover:bg-zinc-700/50 text-tx-primary"
+          !isSelected && "hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-tx-primary"
         )} style={{ paddingLeft: depth * 20 + 8 }}
           onClick={() => onSelectNode(node.id)} onDoubleClick={() => onEdit(node.id, node.text)}>
           {hasChildren ? (
-            <button className="p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-600 rounded transition-colors"
+            <button className="p-0.5 hover:bg-black/[0.06] dark:hover:bg-white/[0.08] rounded transition-colors duration-150 ease-out"
               onClick={(e) => { e.stopPropagation(); onToggleCollapse(node.id); }}>
               {node.collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
             </button>
@@ -1973,7 +1973,7 @@ export default function MindMapCenter() {
             <div className="flex items-center gap-1">
               <button
                 onClick={handleCreate}
-                className="p-1.5 rounded-md hover:bg-app-hover transition-colors duration-150 ease-out text-tx-secondary hover:text-indigo-500"
+                className="p-1.5 rounded-md hover:bg-app-hover transition-colors duration-150 ease-out text-tx-secondary hover:text-blue-500"
                 title={t("mindMap.create")}
               >
                 <Plus size={16} />
@@ -2035,7 +2035,7 @@ export default function MindMapCenter() {
               return (
                 <div key={folder.id}>
                   <div
-                    className={cn("group flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 text-sm", dropFolderId === folder.id && "ring-2 ring-emerald-400/60 bg-emerald-50/40 dark:bg-emerald-500/10")}
+                    className={cn("group flex items-center gap-1.5 px-2 py-1.5 rounded-md cursor-pointer hover:bg-black/[0.03] dark:hover:bg-white/[0.04] text-sm", dropFolderId === folder.id && "ring-2 ring-emerald-400/60 bg-emerald-50/40 dark:bg-emerald-500/10")}
                     style={{ paddingLeft: depth * 16 + 8 }}
                     onClick={() => setExpandedFolders(prev => { const next = new Set(prev); if (next.has(folder.id)) next.delete(folder.id); else next.add(folder.id); return next; })}
                     onDragOver={(e) => { if (dragMapId) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDropFolderId(folder.id); } }}
@@ -2097,14 +2097,14 @@ export default function MindMapCenter() {
               <div className="flex flex-col items-center justify-center h-32 text-tx-tertiary">
                 <BrainCircuit size={32} className="mb-2 opacity-30" />
                 <span className="text-xs">{t("mindMap.empty")}</span>
-                <button onClick={handleCreate} className="mt-3 text-xs text-indigo-500 hover:text-indigo-600 font-medium">{t("mindMap.createFirst")}</button>
+                <button onClick={handleCreate} className="mt-3 text-xs text-blue-500 hover:text-blue-600 font-medium">{t("mindMap.createFirst")}</button>
               </div>
             );
 
             return (
               <>
                 <div className="pb-2">
-                  <button onClick={() => setShowNewFolder(true)} className="flex items-center gap-1.5 w-full px-2 py-1.5 rounded-md text-xs text-tx-tertiary hover:text-tx-secondary hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                  <button onClick={() => setShowNewFolder(true)} className="flex items-center gap-1.5 w-full px-2 py-1.5 rounded-md text-xs text-tx-tertiary hover:text-tx-secondary hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors duration-150 ease-out">
                     <FolderPlus size={13} /> {t("mindMap.newFolder")}
                   </button>
                   {showNewFolder && (
@@ -2627,7 +2627,7 @@ export default function MindMapCenter() {
             <span className="text-sm">{t("mindMap.selectOrCreate")}</span>
             <button
               onClick={handleCreate}
-              className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium hover:bg-indigo-600 transition-colors"
+              className="mt-4 flex items-center gap-2 px-4 py-2 rounded-[10px] bg-blue-500/90 text-white text-sm font-medium hover:bg-blue-600 transition-colors duration-150 ease-out"
             >
               <Plus size={16} />
               {t("mindMap.create")}
