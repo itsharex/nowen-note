@@ -1,4 +1,4 @@
-{
+﻿{
   "common": {
     "cancel": "取消",
     "chars": "字符",
@@ -1305,6 +1305,12 @@
     "outlineAdd": "添加同级",
     "more": "更多",
     "markers": "标记",
+    "markerDone": "已完成",
+    "markerTodo": "待办",
+    "markerPriorityHigh": "高优先",
+    "markerWarning": "警告",
+    "markerIdea": "灵感",
+    "markerPin": "置顶",
     "nodeColors": "节点颜色",
     "clearColor": "清除颜色",
     "setLink": "设置链接",
@@ -1336,6 +1342,11 @@
     "layoutRight": "右向布局",
     "layoutBoth": "左右平衡布局",
     "themes": "主题模板",
+    "themeIndigo": "靛蓝",
+    "themeEmerald": "翡翠",
+    "themeSunset": "日落",
+    "themeRose": "玫瑰",
+    "themeDark": "暗夜",
     "addRelation": "添加关系线",
     "addBoundary": "添加边界框",
     "relationStart": "请点击目标节点完成连线",

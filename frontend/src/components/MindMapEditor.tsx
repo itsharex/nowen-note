@@ -166,30 +166,31 @@ const NODE_COLORS = [
 /* ===== Theme templates ===== */
 interface ThemeTemplate {
   name: string;
+  nameKey: string;
   colors: { bg: string; text: string; border: string; accent: string }[];
 }
 const THEME_TEMPLATES: ThemeTemplate[] = [
-  { name: "Indigo", colors: [
+  { name: "Indigo", nameKey: "mindMap.themeIndigo", colors: [
     { bg: "#6366f1", text: "#fff", border: "#4f46e5", accent: "#6366f1" },
     { bg: "#eef2ff", text: "#374151", border: "#c7d2fe", accent: "#6366f1" },
     { bg: "#e0e7ff", text: "#374151", border: "#a5b4fc", accent: "#6366f1" },
   ]},
-  { name: "Emerald", colors: [
+  { name: "Emerald", nameKey: "mindMap.themeEmerald", colors: [
     { bg: "#10b981", text: "#fff", border: "#059669", accent: "#10b981" },
     { bg: "#ecfdf5", text: "#374151", border: "#a7f3d0", accent: "#10b981" },
     { bg: "#d1fae5", text: "#374151", border: "#6ee7b7", accent: "#10b981" },
   ]},
-  { name: "Sunset", colors: [
+  { name: "Sunset", nameKey: "mindMap.themeSunset", colors: [
     { bg: "#f97316", text: "#fff", border: "#ea580c", accent: "#f97316" },
     { bg: "#fff7ed", text: "#374151", border: "#fed7aa", accent: "#f97316" },
     { bg: "#ffedd5", text: "#374151", border: "#fdba74", accent: "#f97316" },
   ]},
-  { name: "Rose", colors: [
+  { name: "Rose", nameKey: "mindMap.themeRose", colors: [
     { bg: "#f43f5e", text: "#fff", border: "#e11d48", accent: "#f43f5e" },
     { bg: "#fff1f2", text: "#374151", border: "#fecdd3", accent: "#f43f5e" },
     { bg: "#ffe4e6", text: "#374151", border: "#fda4af", accent: "#f43f5e" },
   ]},
-  { name: "Dark", colors: [
+  { name: "Dark", nameKey: "mindMap.themeDark", colors: [
     { bg: "#18181b", text: "#fafafa", border: "#3f3f46", accent: "#a1a1aa" },
     { bg: "#27272a", text: "#e4e4e7", border: "#3f3f46", accent: "#a1a1aa" },
     { bg: "#3f3f46", text: "#fafafa", border: "#52525b", accent: "#a1a1aa" },
@@ -492,10 +493,10 @@ function FloatingToolbar({
         {showMore && (
           <div className={`absolute top-full mt-1.5 right-0 min-w-[180px] ${MT.menuCls} ${MT.menuBgCls} z-50 max-h-[300px] overflow-auto`}>
             <div className="px-3 py-1 text-[10px] text-tx-tertiary uppercase tracking-wider">{t("mindMap.markers")}</div>
-            {[{ key: "done", label: "\u2705 Done" }, { key: "todo", label: "\u2611 Todo" }, { key: "priority-high", label: "\u26a0 High" }, { key: "warning", label: "\u26a0 Warning" }, { key: "idea", label: "\u2b50 Idea" }, { key: "pin", label: "\u1f4cc Pin" }].map((m) => (
+            {[{ key: "done", icon: "\u2705", labelKey: "mindMap.markerDone" }, { key: "todo", icon: "\u2611", labelKey: "mindMap.markerTodo" }, { key: "priority-high", icon: "\u26a0", labelKey: "mindMap.markerPriorityHigh" }, { key: "warning", icon: "\u26a0", labelKey: "mindMap.markerWarning" }, { key: "idea", icon: "\u2b50", labelKey: "mindMap.markerIdea" }, { key: "pin", icon: "\u1f4cc", labelKey: "mindMap.markerPin" }].map((m) => (
               <button key={m.key} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
                 onClick={(e) => { e.stopPropagation(); onAddMarker(m.key); setShowMore(false); }}>
-                {m.label}
+                {m.icon} {t(m.labelKey)}
               </button>
             ))}
             <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1" />
@@ -536,7 +537,7 @@ function FloatingToolbar({
               <button key={theme.name} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
                 onClick={(e) => { e.stopPropagation(); onApplyTheme(idx); setShowMore(false); }}>
                 <span className="flex gap-0.5">{theme.colors.map((c, ci) => <span key={ci} className="w-3 h-3 rounded-full" style={{ background: c.bg }} />)}</span>
-                {theme.name}
+                {t(theme.nameKey)}
               </button>
             ))}
             <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1" />

@@ -1,4 +1,4 @@
-{
+﻿{
   "common": {
     "cancel": "Cancel",
     "chars": "chars",
@@ -1291,6 +1291,12 @@
     "outlineAdd": "Add sibling",
     "more": "More",
     "markers": "Markers",
+    "markerDone": "Done",
+    "markerTodo": "Todo",
+    "markerPriorityHigh": "High Priority",
+    "markerWarning": "Warning",
+    "markerIdea": "Idea",
+    "markerPin": "Pin",
     "nodeColors": "Node Colors",
     "clearColor": "Clear Color",
     "setLink": "Set Link",
@@ -1322,6 +1328,11 @@
     "layoutRight": "Right layout",
     "layoutBoth": "Left-right layout",
     "themes": "Theme Templates",
+    "themeIndigo": "Indigo",
+    "themeEmerald": "Emerald",
+    "themeSunset": "Sunset",
+    "themeRose": "Rose",
+    "themeDark": "Dark",
     "addRelation": "Add Relation",
     "addBoundary": "Add Boundary",
     "relationStart": "Click target node to complete",
