@@ -493,10 +493,10 @@ function FloatingToolbar({
         {showMore && (
           <div className={`absolute top-full mt-1.5 right-0 min-w-[180px] ${MT.menuCls} ${MT.menuBgCls} z-50 max-h-[300px] overflow-auto`}>
             <div className="px-3 py-1 text-[10px] text-tx-tertiary uppercase tracking-wider">{t("mindMap.markers")}</div>
-            {[{ key: "done", icon: "\u2705", labelKey: "mindMap.markerDone" }, { key: "todo", icon: "\u2611", labelKey: "mindMap.markerTodo" }, { key: "priority-high", icon: "\u26a0", labelKey: "mindMap.markerPriorityHigh" }, { key: "warning", icon: "\u26a0", labelKey: "mindMap.markerWarning" }, { key: "idea", icon: "\u2b50", labelKey: "mindMap.markerIdea" }, { key: "pin", icon: "\u1f4cc", labelKey: "mindMap.markerPin" }].map((m) => (
+            {[{ key: "done", labelKey: "mindMap.markerDone" }, { key: "todo", labelKey: "mindMap.markerTodo" }, { key: "priority-high", labelKey: "mindMap.markerPriorityHigh" }, { key: "warning", labelKey: "mindMap.markerWarning" }, { key: "idea", labelKey: "mindMap.markerIdea" }, { key: "pin", labelKey: "mindMap.markerPin" }].map((m) => (
               <button key={m.key} className="w-full flex items-center gap-2 px-3 py-2 text-sm text-tx-primary hover:bg-black/[0.04] dark:hover:bg-white/[0.06] transition-colors duration-150 ease-out"
                 onClick={(e) => { e.stopPropagation(); onAddMarker(m.key); setShowMore(false); }}>
-                {m.icon} {t(m.labelKey)}
+                {MARKER_SVGS[m.key] && <svg width="14" height="14" viewBox="0 0 16 16" className="shrink-0" dangerouslySetInnerHTML={{ __html: MARKER_SVGS[m.key] }} />} {t(m.labelKey)}
               </button>
             ))}
             <div className="h-px bg-black/[0.06] dark:bg-white/[0.08] my-1" />
