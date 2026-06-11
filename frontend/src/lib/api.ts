@@ -3207,6 +3207,84 @@ export async function testServerConnection(serverUrl: string): Promise<{ ok: boo
   }
 }
 
+/** 诊断结果 */
+export interface DiagnosisResult {
+  step: string;
+  ok: boolean;
+  detail: string;
+}
+
+/**
+ * 分层连接诊断（未登录状态可用）。
+ *
+ * 依次测试：
+ *   1. URL 格式检查
+ *   2. GET /api/health
+ *   3. GET /api/version
+ *   4. GET /api/auth/register/config
+ *   5. 检查返回是否 JSON（反代可能返回 HTML）
+ *
+ * 返回每一步的结果，便于 UI 逐行展示。
+ */
+export async function diagnoseConnection(serverUrl: string): Promise<DiagnosisResult[]> {
+  const results: DiagnosisResult[] = [];
+  const base = _normalizeBase(serverUrl);
+
+  // Step 1: URL 格式
+  if (!base) {
+    results.push({ step: "url_format", ok: false, detail: "服务器地址格式无效或为空" });
+    return results;
+  }
+  results.push({ step: "url_format", ok: true, detail: base });
+
+  const baseUrl = `${base}/api`;
+  const timeout = 8000;
+
+  async function tryFetch(path: string, label: string): Promise<void> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      const res = await fetch(`${baseUrl}${path}`, { signal: controller.signal });
+      clearTimeout(timer);
+
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("text/html")) {
+        results.push({ step: label, ok: false, detail: `返回了 HTML（HTTP ${res.status}），反代可能没有转发 /api 路径` });
+        return;
+      }
+      if (!res.ok) {
+        results.push({ step: label, ok: false, detail: `HTTP ${res.status}` });
+        return;
+      }
+      try {
+        await res.clone().json();
+        results.push({ step: label, ok: true, detail: `HTTP ${res.status}，JSON 正常` });
+      } catch {
+        results.push({ step: label, ok: false, detail: `HTTP ${res.status}，但返回内容不是有效 JSON` });
+      }
+    } catch (e: any) {
+      if (e.name === "AbortError") {
+        results.push({ step: label, ok: false, detail: "请求超时（" + timeout / 1000 + "s）" });
+      } else if (e instanceof TypeError) {
+        results.push({ step: label, ok: false, detail: `网络错误：${e.message}（可能为 CORS / Mixed Content / 证书问题）` });
+      } else {
+        results.push({ step: label, ok: false, detail: e.message || "未知错误" });
+      }
+    }
+  }
+
+  // Step 2: health
+  await tryFetch("/health", "api_health");
+
+  // Step 3: version
+  await tryFetch("/version", "api_version");
+
+  // Step 4: register config
+  await tryFetch("/auth/register/config", "api_auth");
+
+  return results;
+}
+
 /**
  * 登录页使用：注册新账号（无需 token）。
  * 可选 baseUrlOverride 让客户端模式下指向外部服务器。
