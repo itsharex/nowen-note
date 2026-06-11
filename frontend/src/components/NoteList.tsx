@@ -15,6 +15,7 @@ import { haptic } from "@/hooks/useCapacitor";
 import { toast } from "@/lib/toast";
 import { exportSingleNote, exportSingleNoteAsPDF, exportSingleNoteAsImage } from "@/lib/exportService";
 import { realtime } from "@/lib/realtime"
+import { confirm } from "@/components/ui/confirm";
 import { highlightTextNode, sanitizeSearchHtml, stripSearchMarks } from "@/lib/searchHighlight";
 // "导入 Word 文档" 走 dynamic import（见 createNoteInNotebook），减少首屏 bundle 体积。
 
