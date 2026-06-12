@@ -73,11 +73,11 @@ tasks.get("/", requireWorkspaceFeature("tasks"), (c) => {
   }
 
   if (filter === "today") {
-    sql += ` AND dueDate IS NOT NULL AND date(dueDate) = date('now', 'localtime')`;
+    sql += ` AND COALESCE(dueAt, dueDate) IS NOT NULL AND date(COALESCE(dueAt, dueDate)) = date('now', 'localtime')`;
   } else if (filter === "week") {
-    sql += ` AND dueDate IS NOT NULL AND date(dueDate) BETWEEN date('now', 'localtime') AND date('now', 'localtime', '+7 days')`;
+    sql += ` AND COALESCE(dueAt, dueDate) IS NOT NULL AND date(COALESCE(dueAt, dueDate)) BETWEEN date('now', 'localtime') AND date('now', 'localtime', '+7 days')`;
   } else if (filter === "overdue") {
-    sql += ` AND isCompleted = 0 AND dueDate IS NOT NULL AND date(dueDate) < date('now', 'localtime')`;
+    sql += ` AND isCompleted = 0 AND COALESCE(dueAt, dueDate) IS NOT NULL AND date(COALESCE(dueAt, dueDate)) < date('now', 'localtime')`;
   } else if (filter === "completed") {
     sql += ` AND isCompleted = 1`;
   }
@@ -107,12 +107,12 @@ tasks.get("/stats/summary", requireWorkspaceFeature("tasks"), (c) => {
     SELECT
       COUNT(*)                                                                          AS total,
       SUM(CASE WHEN isCompleted = 1 THEN 1 ELSE 0 END)                                 AS completed,
-      SUM(CASE WHEN isCompleted = 0 AND dueDate IS NOT NULL
-               AND date(dueDate) = date('now', 'localtime') THEN 1 ELSE 0 END)         AS today,
-      SUM(CASE WHEN isCompleted = 0 AND dueDate IS NOT NULL
-               AND date(dueDate) < date('now', 'localtime') THEN 1 ELSE 0 END)         AS overdue,
-      SUM(CASE WHEN isCompleted = 0 AND dueDate IS NOT NULL
-               AND date(dueDate) BETWEEN date('now', 'localtime')
+      SUM(CASE WHEN isCompleted = 0 AND COALESCE(dueAt, dueDate) IS NOT NULL
+               AND date(COALESCE(dueAt, dueDate)) = date('now', 'localtime') THEN 1 ELSE 0 END)         AS today,
+      SUM(CASE WHEN isCompleted = 0 AND COALESCE(dueAt, dueDate) IS NOT NULL
+               AND date(COALESCE(dueAt, dueDate)) < date('now', 'localtime') THEN 1 ELSE 0 END)         AS overdue,
+      SUM(CASE WHEN isCompleted = 0 AND COALESCE(dueAt, dueDate) IS NOT NULL
+               AND date(COALESCE(dueAt, dueDate)) BETWEEN date('now', 'localtime')
                                      AND date('now', 'localtime', '+7 days')
                THEN 1 ELSE 0 END)                                                      AS week
     FROM tasks
@@ -189,7 +189,7 @@ tasks.post("/", requireWorkspaceFeature("tasks"), async (c) => {
 
   const body: any = await c.req.json();
   const id = crypto.randomUUID();
-  const { title, priority = 2, dueDate = null, noteId = null, parentId = null } = body;
+  const { title, priority = 2, dueDate = null, dueAt = null, noteId = null, parentId = null } = body;
 
   if (!title || !title.trim()) {
     return c.json({ error: "Title is required" }, 400);
@@ -215,9 +215,9 @@ tasks.post("/", requireWorkspaceFeature("tasks"), async (c) => {
   }
 
   db.prepare(`
-    INSERT INTO tasks (id, userId, workspaceId, title, isCompleted, priority, dueDate, noteId, parentId)
+    INSERT INTO tasks (id, userId, workspaceId, title, isCompleted, priority, dueDate, dueAt, noteId, parentId)
     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)
-  `).run(id, userId, effectiveWorkspaceId, title.trim(), priority, dueDate, noteId, parentId);
+  `).run(id, userId, effectiveWorkspaceId, title.trim(), priority, dueDate, dueAt, noteId, parentId);
 
   const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
   return c.json(task, 201);
@@ -244,6 +244,7 @@ tasks.put("/:id", (c) => {
     const isCompleted = body.isCompleted ?? existing.isCompleted;
     const priority = body.priority ?? existing.priority;
     const dueDate = body.dueDate !== undefined ? body.dueDate : existing.dueDate;
+    const dueAt = body.dueAt !== undefined ? body.dueAt : existing.dueAt;
     const noteId = body.noteId !== undefined ? body.noteId : existing.noteId;
     const parentId = body.parentId !== undefined ? body.parentId : existing.parentId;
     const sortOrder = body.sortOrder ?? existing.sortOrder;
@@ -290,10 +291,10 @@ tasks.put("/:id", (c) => {
     }
 
     db.prepare(`
-      UPDATE tasks SET title = ?, isCompleted = ?, priority = ?, dueDate = ?,
+      UPDATE tasks SET title = ?, isCompleted = ?, priority = ?, dueDate = ?, dueAt = ?,
         noteId = ?, parentId = ?, sortOrder = ?, updatedAt = datetime('now')
       WHERE id = ?
-    `).run(title, isCompleted, priority, dueDate, noteId, parentId, sortOrder, id);
+    `).run(title, isCompleted, priority, dueDate, dueAt, noteId, parentId, sortOrder, id);
 
     const updated = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
     return c.json(updated);

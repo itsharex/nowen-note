@@ -1,4 +1,4 @@
-import { format, isToday, isPast, isTomorrow, isThisWeek, parseISO } from "date-fns";
+﻿import { format, isToday, isPast, isTomorrow, isThisWeek, parseISO } from "date-fns";
 import { zhCN, enUS } from "date-fns/locale";
 import { Calendar } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -21,7 +21,12 @@ export function toLocalDate(dateStr: string): Date {
  * 判断纯日期（YYYY-MM-DD）是否已逾期。
  * 规则：只有 dueDate 日期 < 今天本地日期才算逾期，今天截止不算逾期。
  */
-export function isTaskDateOverdue(dueDate: string): boolean {
+export function isTaskDateOverdue(dueDate: string, dueAt?: string | null): boolean {
+  // 有 dueAt 时按精确时间判断，否则按日期
+  if (dueAt) {
+    const dueTime = new Date(dueAt).getTime();
+    return Date.now() > dueTime;
+  }
   const d = toLocalDate(dueDate);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -30,7 +35,7 @@ export function isTaskDateOverdue(dueDate: string): boolean {
 }
 
 /* ===== 日期胶囊 ===== */
-export function DateBadge({ dateStr }: { dateStr: string | null }) {
+export function DateBadge({ dateStr, dueAt }: { dateStr: string | null; dueAt?: string | null }) {
   const { t, i18n } = useTranslation();
   const dateLocale = i18n.language === "zh-CN" ? zhCN : enUS;
   if (!dateStr) return null;
@@ -56,10 +61,16 @@ export function DateBadge({ dateStr }: { dateStr: string | null }) {
     cls = "bg-app-hover text-tx-secondary";
   }
 
+  // 如果有 dueAt，附加时间显示
+  const timeStr = dueAt ? (dueAt.split("T")[1] || "") : "";
+  const displayLabel = timeStr && !isToday(d) && !isTomorrow(d)
+    ? label + " " + timeStr.slice(0, 5)
+    : label;
+
   return (
     <span className={cn("inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full", cls)}>
       <Calendar size={10} />
-      {label}
+      {displayLabel}
     </span>
   );
 }

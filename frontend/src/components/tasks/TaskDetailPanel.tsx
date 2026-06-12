@@ -28,6 +28,7 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
   const [title, setTitle] = useState(task.title);
   const [priority, setPriority] = useState<TaskPriority>(task.priority);
   const [dueDate, setDueDate] = useState(task.dueDate || "");
+  const [dueAt, setDueAt] = useState(task.dueAt || "");
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
   const PRIORITY_CONFIG: Record<number, { label: string; color: string; flagClass: string }> = {
@@ -40,10 +41,11 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
     setTitle(task.title);
     setPriority(task.priority);
     setDueDate(task.dueDate || "");
+      setDueAt(task.dueAt || "");
   }, [task.id]);
 
   const handleSave = () => {
-    onUpdate(task.id, { title: title.trim() || task.title, priority, dueDate: dueDate || null });
+    onUpdate(task.id, { title: title.trim() || task.title, priority, dueDate: dueDate || null, dueAt: dueAt || null });
   };
 
   const hasRichTokens = parseTaskTitle(task.title).some((tok) => tok.kind !== "text");
@@ -121,19 +123,42 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
           </div>
         </div>
 
-        {/* 截止日期 */}
+        {/* 截止日期 + 时间 */}
         <div>
           <label className="text-xs text-tx-tertiary uppercase tracking-wider mb-1.5 block">{t('tasks.dueDate')}</label>
-          <input
-            type="date"
-            value={dueDate ? dueDate.split("T")[0] : ""}
-            onChange={(e) => {
-              const val = e.target.value || null;
-              setDueDate(val || "");
-              onUpdate(task.id, { dueDate: val });
-            }}
-            className="w-full px-3 py-2 rounded-md bg-app-bg border border-app-border text-sm text-tx-primary focus:outline-none focus:border-accent-primary transition-colors"
-          />
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={dueDate ? dueDate.split("T")[0] : ""}
+              onChange={(e) => {
+                const val = e.target.value;
+                setDueDate(val || "");
+                // 如果有时间，合并为 dueAt
+                if (val && dueAt) {
+                  const time = dueAt.split("T")[1] || "23:59";
+                  const newDueAt = val + "T" + time;
+                  setDueAt(newDueAt);
+                  onUpdate(task.id, { dueDate: val || null, dueAt: newDueAt });
+                } else {
+                  onUpdate(task.id, { dueDate: val || null, dueAt: val ? val + "T23:59" : null });
+                }
+              }}
+              className="flex-1 px-3 py-2 rounded-md bg-app-bg border border-app-border text-sm text-tx-primary focus:outline-none focus:border-accent-primary transition-colors"
+            />
+            <input
+              type="time"
+              value={dueAt ? (dueAt.split("T")[1] || "") : ""}
+              onChange={(e) => {
+                const time = e.target.value;
+                if (dueDate && time) {
+                  const newDueAt = dueDate + "T" + time;
+                  setDueAt(newDueAt);
+                  onUpdate(task.id, { dueAt: newDueAt });
+                }
+              }}
+              className="w-[120px] px-3 py-2 rounded-md bg-app-bg border border-app-border text-sm text-tx-primary focus:outline-none focus:border-accent-primary transition-colors"
+            />
+          </div>
         </div>
 
         {/* 创建时间 */}

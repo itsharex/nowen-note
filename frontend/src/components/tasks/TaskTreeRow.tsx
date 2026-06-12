@@ -110,7 +110,7 @@ export const TaskTreeRow = React.forwardRef<HTMLDivElement, {
           </span>
           {(task.dueDate || showCreator) && (
             <div className="md:hidden flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-              <DateBadge dateStr={task.dueDate} />
+              <DateBadge dateStr={task.dueDate} dueAt={task.dueAt} />
               {showCreator && (
                 <span
                   className="flex items-center gap-1 text-[10px] text-tx-tertiary min-w-0"
@@ -161,7 +161,7 @@ export const TaskTreeRow = React.forwardRef<HTMLDivElement, {
             </div>
           )}
           <span className="hidden md:inline-flex">
-            <DateBadge dateStr={task.dueDate} />
+            <DateBadge dateStr={task.dueDate} dueAt={task.dueAt} />
           </span>
           <Flag size={14} className={pri.flagClass} />
           <button

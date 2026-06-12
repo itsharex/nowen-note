@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SQLite Schema 迁移框架（D3）
  * ---------------------------------------------------------------------------
  *
@@ -1329,6 +1329,16 @@ export const MIGRATIONS: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_notebook_share_links_token
           ON notebook_share_links(token);
       `);
+    },
+  },
+  {
+    version: 20,
+    name: "tasks-dueAt",
+    up: (db) => {
+      // dueAt: 精确到分钟的截止时间，ISO 8601 格式（如 2026-06-12T18:00）
+      // 兼容旧 dueDate（纯日期）：老任务只有 dueDate，新任务优先使用 dueAt
+      db.prepare(SELECT dueAt FROM tasks LIMIT 1).get() || db.exec(ALTER TABLE tasks ADD COLUMN dueAt TEXT);
+      db.exec(CREATE INDEX IF NOT EXISTS idx_tasks_dueAt ON tasks(dueAt););
     },
   },
 ];

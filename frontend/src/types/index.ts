@@ -1,4 +1,4 @@
-export interface User {
+﻿export interface User {
   id: string;
   username: string;
   email: string | null;
@@ -376,6 +376,8 @@ export interface Task {
   isCompleted: number;
   priority: TaskPriority;
   dueDate: string | null;
+  /** Phase 2: 精确到分钟的截止时间，ISO 8601 格式（如 2026-06-12T18:00）。兼容旧 dueDate */
+  dueAt: string | null;
   noteId: string | null;
   parentId: string | null;
   sortOrder: number;
