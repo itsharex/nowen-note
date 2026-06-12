@@ -1136,7 +1136,7 @@ export const api = {
   aiBreakdownTask: (id: string, lang?: string) => request<{ subtasks: { title: string; priority: number; dueDate: string | null; reason: string }[] }>(`/tasks/${id}/ai-breakdown`, { method: "POST", body: JSON.stringify({ lang }) }),
   deleteTask: (id: string) => request(`/tasks/${id}`, { method: "DELETE" }),
   batchTasks: (ids: string[], action: "complete" | "delete") =>
-    request<{ success: boolean; affected: number }>("/tasks/batch", { method: "POST", body: JSON.stringify({ ids, action }) }),
+    request<{ success: boolean; affected: number; generatedCount?: number }>("/tasks/batch", { method: "POST", body: JSON.stringify({ ids, action }) }),
   // Task projects
   getTaskProjects: () => {
     const ws = getCurrentWorkspace();

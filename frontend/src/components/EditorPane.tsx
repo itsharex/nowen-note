@@ -1498,6 +1498,14 @@ export default function EditorPane() {
       let result = await api.aiChat(type, text.slice(0, 5000));
       // ��ϴ��ȥ��Χ��
       result = result.replace(/^```mermaid\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```\s*$/, "").trim();
+      // 从 AI 返回文本中提取 mermaid 源码（AI 可能返回思考过程 + 源码）
+      const mindmapMatch = result.match(/^(mindmap[\s\S]*)/m);
+      const flowchartMatch = result.match(/^(flowchart\s+TD[\s\S]*)/m);
+      if (mindmapMatch) {
+        result = mindmapMatch[1].trimEnd();
+      } else if (flowchartMatch) {
+        result = flowchartMatch[1].trimEnd();
+      }
       // Sanitize: strip chars that break Mermaid mindmap parsing
       result = result.replace(/^(\s*\S+\s+)(.*?)(\s*)$/gm, (_m: string, prefix: string, body: string, tail: string) => {
         return prefix + body.replace(/[[\]{}:|]/g, " ") + tail;

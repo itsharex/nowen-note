@@ -797,7 +797,6 @@ export default function TaskCenter() {
                         allTasks={tasks}
                         onCreateChild={handleCreateChild}
                         onSelectTask={(taskId) => setSelectedTaskId(taskId)}
-            onCreated={() => { loadTasks(); refreshCounts(); }}
                       />
                     </div>
                   ))
@@ -880,6 +879,7 @@ export default function TaskCenter() {
             allTasks={tasks}
             onToggle={handleToggle}
             onSelectTask={(taskId) => setSelectedTaskId(taskId)}
+            onCreated={async () => { await loadTasks(); const s = await api.getTaskStats(); setStats(s); refreshCounts(); }}
           />
         )}
       </AnimatePresence>
