@@ -381,6 +381,8 @@ export interface Task {
   noteId: string | null;
   parentId: string | null;
   sortOrder: number;
+  projectId: string | null;
+  status: TaskStatus;
   createdAt: string;
   updatedAt: string;
   children?: Task[];
@@ -406,6 +408,26 @@ export interface TaskReminder {
   enabled: number;
   lastNotifiedAt: string | null;
   createdAt: string;
+}
+
+/** Task status for kanban board */
+export type TaskStatus = "todo" | "doing" | "done" | "blocked";
+
+/** Task project / project list */
+export interface TaskProject {
+  id: string;
+  userId: string;
+  workspaceId: string | null;
+  name: string;
+  icon: string;
+  color: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  /** populated by backend via subquery */
+  taskCount?: number;
+  /** populated by backend via subquery */
+  completedCount?: number;
 }
 
 export interface CustomFont {

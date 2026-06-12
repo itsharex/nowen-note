@@ -1113,10 +1113,11 @@ export const api = {
   //   - getTasks / getTaskStats / createTask 三个"集合"接口注入 workspaceId；
   //   - getTask / updateTask / toggleTask / deleteTask 按 id 操作，后端按行自带的
   //     workspaceId 做 ACL，不需注入。
-  getTasks: (filter?: TaskFilter, noteId?: string) => {
+  getTasks: (filter?: TaskFilter, noteId?: string, projectId?: string) => {
     const params = new URLSearchParams();
     if (filter && filter !== "all") params.set("filter", filter);
     if (noteId) params.set("noteId", noteId);
+    if (projectId) params.set("projectId", projectId);
     const ws = getCurrentWorkspace();
     if (ws && ws !== "personal") params.set("workspaceId", ws);
     const qs = params.toString() ? `?${params.toString()}` : "";
@@ -1133,6 +1134,21 @@ export const api = {
   deleteTask: (id: string) => request(`/tasks/${id}`, { method: "DELETE" }),
   batchTasks: (ids: string[], action: "complete" | "delete") =>
     request<{ success: boolean; affected: number }>("/tasks/batch", { method: "POST", body: JSON.stringify({ ids, action }) }),
+  // Task projects
+  getTaskProjects: () => {
+    const ws = getCurrentWorkspace();
+    const qs = ws && ws !== "personal" ? `?workspaceId=${encodeURIComponent(ws)}` : "";
+    return request<import("@/types").TaskProject[]>(`/task-projects${qs}`);
+  },
+  createTaskProject: (data: { name: string; icon?: string; color?: string }) => {
+    const ws = getCurrentWorkspace();
+    const qs = ws && ws !== "personal" ? `?workspaceId=${encodeURIComponent(ws)}` : "";
+    return request<import("@/types").TaskProject>(`/task-projects${qs}`, { method: "POST", body: JSON.stringify(data) });
+  },
+  updateTaskProject: (id: string, data: Partial<import("@/types").TaskProject>) =>
+    request<import("@/types").TaskProject>(`/task-projects/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteTaskProject: (id: string) =>
+    request(`/task-projects/${id}`, { method: "DELETE" }),
   // Task reminders
   getRecentReminders: (since: number) =>
     request<{ reminders: Array<{ reminderId: string; taskId: string; taskTitle: string; triggeredAt: number }> }>(

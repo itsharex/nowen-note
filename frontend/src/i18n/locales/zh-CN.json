@@ -1144,7 +1144,21 @@
     "batchDelete": "批量删除",
     "batchCancel": "取消选择",
     "selectMode": "选择模式",
-    "dragHint": "拖拽排序"
+    "dragHint": "拖拽排序",
+    "projects": "项目",
+    "newProject": "新建项目",
+    "projectName": "项目名称",
+    "deleteProject": "删除项目",
+    "deleteProjectConfirm": "确认删除项目？任务不会被删除，会脱离该项目。",
+    "noProject": "未分组",
+    "listView": "列表视图",
+    "boardView": "看板视图",
+    "status": "状态",
+    "statusTodo": "待处理",
+    "statusDoing": "进行中",
+    "statusBlocked": "已阻塞",
+    "statusDone": "已完成",
+    "moveToProject": "移动到项目"
   },
   "tags": {
     "addTagPlaceholder": "添加标签...",

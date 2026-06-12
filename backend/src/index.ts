@@ -18,6 +18,7 @@ import fontsRouter from "./routes/fonts";
 import attachmentsRouter, { handleDownloadAttachment } from "./routes/attachments";
 import taskAttachmentsRouter, { handleDownloadTaskAttachment } from "./routes/task-attachments";
 import taskRemindersRouter from "./routes/task-reminders";
+import taskProjectsRouter from "./routes/task-projects";
 import filesRouter from "./routes/files";
 import micloudRouter from "./routes/micloud";
 import oppoCloudRouter from "./routes/oppocloud";
@@ -409,6 +410,7 @@ app.route("/api/fonts", fontsRouter);
 app.route("/api/attachments", attachmentsRouter);
 app.route("/api/task-attachments", taskAttachmentsRouter);
 app.route("/api/task-reminders", taskRemindersRouter);
+app.route("/api/task-projects", taskProjectsRouter);
 app.route("/api/files", filesRouter);
 
 

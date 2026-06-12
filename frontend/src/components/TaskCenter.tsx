@@ -5,10 +5,12 @@ import {
   CalendarDays, AlertTriangle, CheckCheck, Inbox,
   Search, X as XIcon, GripVertical,
   CheckSquare, Trash2, Square,
+  LayoutGrid, LayoutList, FolderOpen, Plus, ChevronRight,
+  MoreHorizontal, Trash2 as TrashIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
-import { Task, TaskFilter, TaskStats } from "@/types";
+import { Task, TaskFilter, TaskStats, TaskStatus, TaskProject } from "@/types";
 import { cn } from "@/lib/utils";
 import {
   TASK_CENTER_MAIN_CLASS,
@@ -26,6 +28,8 @@ import { TaskQuickAdd } from "./tasks/TaskQuickAdd";
 import { TaskDetailPanel } from "./tasks/TaskDetailPanel";
 import { FlatTaskRow } from "./tasks/FlatTaskRow";
 import { useReminderNotifier } from "./tasks/useReminderNotifier";
+import { useTaskProjects } from "./tasks/useTaskProjects";
+import { TaskBoardView } from "./tasks/TaskBoardView";
 
 /* ===== Main Component ===== */
 export default function TaskCenter() {
@@ -51,6 +55,24 @@ export default function TaskCenter() {
 
   // Phase 4: search
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Phase 4: projects
+  const {
+    projects,
+    selectedProjectId,
+    setSelectedProjectId,
+    createProject,
+    deleteProject,
+    refreshCounts,
+  } = useTaskProjects();
+
+  // Phase 4: view mode (list / board)
+  type ViewMode = "list" | "board";
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+
+  // Phase 4: new project dialog
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState("");
 
   // Phase 4: batch select mode
   const [selectMode, setSelectMode] = useState(false);
@@ -119,7 +141,7 @@ export default function TaskCenter() {
   const loadTasks = useCallback(async () => {
     try {
       const [data, statsData] = await Promise.all([
-        api.getTasks(filter),
+        api.getTasks(filter, undefined, selectedProjectId || undefined),
         api.getTaskStats(),
       ]);
       setTasks(data);
@@ -129,7 +151,7 @@ export default function TaskCenter() {
     } finally {
       setIsLoading(false);
     }
-  }, [filter]);
+  }, [filter, selectedProjectId]);
 
   useEffect(() => { loadTasks(); }, [loadTasks]);
 
@@ -236,6 +258,28 @@ export default function TaskCenter() {
     } catch { loadTasks(); }
   };
 
+  // === Status change (kanban) ===
+  const handleStatusChange = async (id: string, status: TaskStatus) => {
+    const newIsCompleted = status === "done" ? 1 : 0;
+    setTasks((prev) => prev.map((t) => t.id === id ? { ...t, status, isCompleted: newIsCompleted } : t));
+    try {
+      await api.updateTask(id, { status, isCompleted: newIsCompleted });
+      const s = await api.getTaskStats();
+      setStats(s);
+    } catch { loadTasks(); }
+  };
+
+  // === Create project ===
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) return;
+    const p = await createProject(newProjectName.trim());
+    if (p) {
+      setSelectedProjectId(p.id);
+      setNewProjectName("");
+      setShowNewProject(false);
+    }
+  };
+
   // === Batch operations ===
   const toggleSelectId = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -338,8 +382,8 @@ export default function TaskCenter() {
 
   return (
     <div className={TASK_CENTER_ROOT_CLASS}>
-      {/* Left: Sidebar Filters (desktop) */}
-      <div className="hidden md:flex w-48 shrink-0 flex-col border-r border-app-border bg-app-surface overflow-y-auto" style={{ paddingTop: "var(--safe-area-top)" }}>
+      {/* Left: Sidebar Filters + Projects (desktop) */}
+      <div className="hidden md:flex w-52 shrink-0 flex-col border-r border-app-border bg-app-surface overflow-y-auto" style={{ paddingTop: "var(--safe-area-top)" }}>
         <div className="px-4 py-4 border-b border-app-border">
           <span className="text-xs font-semibold text-tx-tertiary uppercase tracking-wider">{t("tasks.title")}</span>
         </div>
@@ -347,20 +391,63 @@ export default function TaskCenter() {
           {FILTERS.map((f) => (
             <button
               key={f.key}
-              onClick={() => { setFilter(f.key); setSelectedTaskId(null); setSearchQuery(""); }}
+              onClick={() => { setFilter(f.key); setSelectedTaskId(null); setSearchQuery(""); setSelectedProjectId(null); }}
               className={cn(
                 "flex items-center gap-2.5 w-full px-3 py-2 rounded-lg text-sm transition-colors",
-                filter === f.key ? "bg-accent-primary/10 text-accent-primary font-medium" : "text-tx-secondary hover:bg-app-hover"
+                filter === f.key && !selectedProjectId ? "bg-accent-primary/10 text-accent-primary font-medium" : "text-tx-secondary hover:bg-app-hover"
               )}
             >
               {f.icon}
               <span className="flex-1 text-left">{f.label}</span>
               <span className={cn(
                 "text-xs min-w-[20px] text-center rounded-full px-1.5 py-0.5",
-                filter === f.key ? "bg-accent-primary/20 text-accent-primary" : "text-tx-tertiary"
+                filter === f.key && !selectedProjectId ? "bg-accent-primary/20 text-accent-primary" : "text-tx-tertiary"
               )}>
                 {filterCount(f.key)}
               </span>
+            </button>
+          ))}
+
+          {/* Projects section */}
+          <div className="mt-4 mb-1 px-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-semibold text-tx-tertiary uppercase tracking-wider">{t("tasks.projects")}</span>
+              <button
+                onClick={() => setShowNewProject(true)}
+                className="p-0.5 rounded hover:bg-app-hover text-tx-tertiary hover:text-accent-primary transition-colors"
+                title={t("tasks.newProject")}
+              >
+                <Plus size={12} />
+              </button>
+            </div>
+          </div>
+
+          {showNewProject && (
+            <div className="px-2 pb-1">
+              <input
+                type="text"
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreateProject(); if (e.key === "Escape") setShowNewProject(false); }}
+                placeholder={t("tasks.projectName")}
+                className="w-full px-2 py-1 text-xs rounded-md bg-app-bg border border-app-border text-tx-primary focus:outline-none focus:border-accent-primary"
+                autoFocus
+              />
+            </div>
+          )}
+
+          {projects.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => { setSelectedProjectId(p.id); setFilter("all"); setSelectedTaskId(null); setSearchQuery(""); }}
+              className={cn(
+                "flex items-center gap-2.5 w-full px-3 py-1.5 rounded-lg text-sm transition-colors group",
+                selectedProjectId === p.id ? "bg-accent-primary/10 text-accent-primary font-medium" : "text-tx-secondary hover:bg-app-hover"
+              )}
+            >
+              <FolderOpen size={14} style={{ color: p.color }} />
+              <span className="flex-1 text-left truncate">{p.name}</span>
+              <span className="text-[10px] text-tx-tertiary">{p.taskCount ?? 0}</span>
             </button>
           ))}
         </nav>
@@ -400,9 +487,32 @@ export default function TaskCenter() {
 
         {/* Header desktop with batch controls */}
         <div className="hidden md:flex items-center justify-between px-6 py-4 border-b border-app-border">
-          <h1 className="text-lg font-bold text-tx-primary">
-            {FILTERS.find((f) => f.key === filter)?.label || t("tasks.allTasks")}
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold text-tx-primary">
+              {selectedProjectId
+                ? projects.find((p) => p.id === selectedProjectId)?.name || t("tasks.allTasks")
+                : FILTERS.find((f) => f.key === filter)?.label || t("tasks.allTasks")}
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* View mode toggle */}
+            <div className="flex items-center rounded-md border border-app-border overflow-hidden">
+              <button
+                onClick={() => setViewMode("list")}
+                className={cn("p-1.5 transition-colors", viewMode === "list" ? "bg-accent-primary/10 text-accent-primary" : "text-tx-tertiary hover:text-tx-secondary")}
+                title={t("tasks.listView")}
+              >
+                <LayoutList size={14} />
+              </button>
+              <button
+                onClick={() => setViewMode("board")}
+                className={cn("p-1.5 transition-colors", viewMode === "board" ? "bg-accent-primary/10 text-accent-primary" : "text-tx-tertiary hover:text-tx-secondary")}
+                title={t("tasks.boardView")}
+              >
+                <LayoutGrid size={14} />
+              </button>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             {selectMode ? (
               <>
@@ -468,7 +578,14 @@ export default function TaskCenter() {
           />
         </div>
 
-        {/* Task List */}
+        {/* Task List or Board View */}
+        {viewMode === "board" && !isLoading && displayTasks.length > 0 ? (
+          <TaskBoardView
+            tasks={displayTasks}
+            onSelect={(task) => setSelectedTaskId(task.id)}
+            onStatusChange={handleStatusChange}
+          />
+        ) : (
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 md:px-6 py-3">
           {isLoading ? (
             <div className="flex items-center justify-center h-32 text-tx-tertiary text-sm">
@@ -559,6 +676,7 @@ export default function TaskCenter() {
             </div>
           )}
         </div>
+        )}
 
         {/* Mobile: batch action bar at bottom */}
         {selectMode && (

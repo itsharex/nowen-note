@@ -72,6 +72,15 @@ tasks.get("/", requireWorkspaceFeature("tasks"), (c) => {
     params.push(noteId);
   }
 
+  const projectId = c.req.query("projectId");
+  if (projectId) {
+    sql += ` AND projectId = ?`;
+    params.push(projectId);
+  } else if (projectId === "") {
+    // empty string means "no project"
+    sql += ` AND projectId IS NULL`;
+  }
+
   if (filter === "today") {
     sql += ` AND COALESCE(dueAt, dueDate) IS NOT NULL AND date(COALESCE(dueAt, dueDate)) = date('now', 'localtime')`;
   } else if (filter === "week") {
@@ -248,6 +257,8 @@ tasks.put("/:id", (c) => {
     const noteId = body.noteId !== undefined ? body.noteId : existing.noteId;
     const parentId = body.parentId !== undefined ? body.parentId : existing.parentId;
     const sortOrder = body.sortOrder ?? existing.sortOrder;
+    const projectId = body.projectId !== undefined ? body.projectId : existing.projectId;
+    const status = body.status ?? existing.status;
 
     // 重新挂接父任务时再次校验同域约束
 
@@ -292,9 +303,9 @@ tasks.put("/:id", (c) => {
 
     db.prepare(`
       UPDATE tasks SET title = ?, isCompleted = ?, priority = ?, dueDate = ?, dueAt = ?,
-        noteId = ?, parentId = ?, sortOrder = ?, updatedAt = datetime('now')
+        noteId = ?, parentId = ?, sortOrder = ?, projectId = ?, status = ?, updatedAt = datetime('now')
       WHERE id = ?
-    `).run(title, isCompleted, priority, dueDate, dueAt, noteId, parentId, sortOrder, id);
+    `).run(title, isCompleted, priority, dueDate, dueAt, noteId, parentId, sortOrder, projectId, status, id);
 
     const updated = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
     return c.json(updated);
@@ -318,7 +329,8 @@ tasks.patch("/:id/toggle", (c) => {
   }
 
   const newStatus = task.isCompleted ? 0 : 1;
-  db.prepare("UPDATE tasks SET isCompleted = ?, updatedAt = datetime('now') WHERE id = ?").run(newStatus, id);
+  const newTaskStatus = newStatus === 1 ? "done" : "todo";
+  db.prepare("UPDATE tasks SET isCompleted = ?, status = ?, updatedAt = datetime('now') WHERE id = ?").run(newStatus, newTaskStatus, id);
 
   const updated = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id);
   return c.json(updated);

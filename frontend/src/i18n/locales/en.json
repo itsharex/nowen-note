@@ -1132,7 +1132,21 @@
     "batchDelete": "Delete selected",
     "batchCancel": "Cancel selection",
     "selectMode": "Select mode",
-    "dragHint": "Drag to reorder"
+    "dragHint": "Drag to reorder",
+    "projects": "Projects",
+    "newProject": "New Project",
+    "projectName": "Project name",
+    "deleteProject": "Delete Project",
+    "deleteProjectConfirm": "Delete this project? Tasks will not be deleted, they will be unlinked.",
+    "noProject": "Unassigned",
+    "listView": "List",
+    "boardView": "Board",
+    "status": "Status",
+    "statusTodo": "To Do",
+    "statusDoing": "In Progress",
+    "statusBlocked": "Blocked",
+    "statusDone": "Done",
+    "moveToProject": "Move to project"
   },
   "tags": {
     "addTagPlaceholder": "Add tag...",
