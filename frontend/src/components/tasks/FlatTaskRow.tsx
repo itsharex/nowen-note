@@ -106,7 +106,7 @@ export const FlatTaskRow = React.forwardRef<HTMLDivElement, {
                     className="hover:text-accent-primary hover:underline truncate max-w-[80px] transition-colors"
                     title={p.title}
                   >
-                    {p.title.length > 12 ? p.title.slice(0, 12) + "â€? : p.title}
+                    {p.title.length > 12 ? p.title.slice(0, 12) + "â€¦" : p.title}
                   </button>
                 </React.Fragment>
               ))}
