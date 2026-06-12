@@ -77,7 +77,7 @@ tasks.get("/", requireWorkspaceFeature("tasks"), (c) => {
   } else if (filter === "week") {
     sql += ` AND COALESCE(dueAt, dueDate) IS NOT NULL AND date(COALESCE(dueAt, dueDate)) BETWEEN date('now', 'localtime') AND date('now', 'localtime', '+7 days')`;
   } else if (filter === "overdue") {
-    sql += ` AND isCompleted = 0 AND COALESCE(dueAt, dueDate) IS NOT NULL AND date(COALESCE(dueAt, dueDate)) < date('now', 'localtime')`;
+    sql += ` AND isCompleted = 0 AND COALESCE(dueAt, dueDate) IS NOT NULL AND COALESCE(dueAt, dueDate || 'T23:59:59') < datetime('now', 'localtime')`;
   } else if (filter === "completed") {
     sql += ` AND isCompleted = 1`;
   }
@@ -110,7 +110,7 @@ tasks.get("/stats/summary", requireWorkspaceFeature("tasks"), (c) => {
       SUM(CASE WHEN isCompleted = 0 AND COALESCE(dueAt, dueDate) IS NOT NULL
                AND date(COALESCE(dueAt, dueDate)) = date('now', 'localtime') THEN 1 ELSE 0 END)         AS today,
       SUM(CASE WHEN isCompleted = 0 AND COALESCE(dueAt, dueDate) IS NOT NULL
-               AND date(COALESCE(dueAt, dueDate)) < date('now', 'localtime') THEN 1 ELSE 0 END)         AS overdue,
+               AND COALESCE(dueAt, dueDate || 'T23:59:59') < datetime('now', 'localtime') THEN 1 ELSE 0 END)         AS overdue,
       SUM(CASE WHEN isCompleted = 0 AND COALESCE(dueAt, dueDate) IS NOT NULL
                AND date(COALESCE(dueAt, dueDate)) BETWEEN date('now', 'localtime')
                                      AND date('now', 'localtime', '+7 days')
