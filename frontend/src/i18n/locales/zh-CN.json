@@ -1103,6 +1103,18 @@
     "confirmDeleteWithChildren": "此任务匋有 {{count}} 个子任务，删除后不可恢复。确认删除？",
     "subtasks": "子任务",
     "subtaskShort": "子任务",
+    "aiBreakdown": {
+      "title": "AI 建议",
+      "button": "AI 拆解任务",
+      "generating": "正在拆解...",
+      "createSelected": "创建选中的子任务",
+      "noSuggestions": "暂无建议",
+      "reason": "拆解原因",
+      "priority": "优先级",
+      "dueDate": "截止日期",
+      "needTitle": "请先填写任务标题",
+      "failed": "AI 拆解失败"
+    },
     "noSubtasks": "暂无子任务",
     "overview": {
       "totalProgress": "总体进度",

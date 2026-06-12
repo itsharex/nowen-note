@@ -1091,6 +1091,18 @@
     "confirmDeleteWithChildren": "This task has {{count}} subtask(s). This cannot be undone. Delete?",
     "subtasks": "Subtasks",
     "subtaskShort": "sub",
+    "aiBreakdown": {
+      "title": "AI Suggestions",
+      "button": "AI Break Down Task",
+      "generating": "Breaking down...",
+      "createSelected": "Create selected subtasks",
+      "noSuggestions": "No suggestions",
+      "reason": "Reason",
+      "priority": "Priority",
+      "dueDate": "Due date",
+      "needTitle": "Please enter a task title first",
+      "failed": "Failed to break down task"
+    },
     "noSubtasks": "No subtasks",
     "overview": {
       "totalProgress": "Total Progress",

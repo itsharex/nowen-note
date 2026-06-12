@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { getDb } from "../db/schema";
+import { callAIChat } from "../services/ai-client";
 import crypto from "crypto";
 import {
   getUserWorkspaceRole,
@@ -553,6 +554,90 @@ tasks.post("/batch", async (c) => {
   } else {
     db.prepare("DELETE FROM tasks WHERE id IN (" + ph + ")").run(...allowedIds);
     return c.json({ success: true, affected: allowedIds.length });
+  }
+});
+
+// AI Breakdown Task
+tasks.post("/:id/ai-breakdown", async (c) => {
+  const db = getDb();
+  const userId = c.req.header("X-User-Id")!;
+  const id = c.req.param("id");
+
+  const task = db.prepare("SELECT * FROM tasks WHERE id = ?").get(id) as any;
+  if (!task) return c.json({ error: "Task not found" }, 404);
+  if (!canManageResource(task.userId, task.workspaceId, userId)) {
+    return c.json({ error: "Forbidden", code: "FORBIDDEN" }, 403);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const lang = body.lang || "zh-CN";
+
+  // Get AI settings
+  const rows = db.prepare("SELECT key, value FROM system_settings WHERE key LIKE 'ai_%'").all() as any[];
+  const settings: any = { ai_provider: "", ai_api_url: "", ai_api_key: "", ai_model: "", ai_embedding_url: "", ai_embedding_key: "", ai_embedding_model: "" };
+  for (const row of rows) settings[row.key] = row.value;
+
+  if (!settings.ai_api_url) {
+    return c.json({ error: "AI not configured", code: "AI_NOT_CONFIGURED" }, 400);
+  }
+
+  // Get existing subtasks
+  const existingChildren = db.prepare("SELECT title, priority, dueDate FROM tasks WHERE parentId = ?").all(id) as any[];
+  const existingList = existingChildren.map((ch) => ch.title).join(", ");
+
+  const isZh = lang.toLowerCase().startsWith("zh");
+  const systemPrompt = isZh
+    ? "你是一个任务管理助手。用户会给你一个任务，你需要把它拆解成 3-8 个可执行的子任务。请严格返回 JSON 格式，不要包含其他文字。JSON 格式：{\"subtasks\":[{\"title\":\"子任务标题\",\"priority\":1或2或3,\"dueDate\":\"YYYY-MM-DD或null\",\"reason\":\"为什么这样拆\"}]}。规则：1.子任务标题要简短。2.如果有截止日期，子任务不晚于父任务。3.priority: 1=低,2=中,3=高。4.不要重复已有子任务。"
+    : "You are a task management assistant. Break the given task into 3-8 actionable subtasks. Return ONLY valid JSON, no other text. JSON format: {\"subtasks\":[{\"title\":\"subtask title\",\"priority\":1,2,or3,\"dueDate\":\"YYYY-MM-DD or null\",\"reason\":\"why this breakdown\"}]}. Rules: 1.Keep titles short. 2.Subtask dueDate must not be later than parent. 3.priority: 1=low,2=medium,3=high. 4.Don't duplicate existing subtasks."
+
+  const userParts = [
+    isZh ? "任务标题：" + task.title : "Task title: " + task.title,
+  ];
+  if (task.dueDate) userParts.push(isZh ? "截止日期：" + task.dueDate : "Due date: " + task.dueDate);
+  if (task.dueAt) userParts.push(isZh ? "截止时间：" + task.dueAt : "Due time: " + task.dueAt);
+  if (existingList) userParts.push(isZh ? "已有子任务：" + existingList : "Existing subtasks: " + existingList);
+
+  try {
+    const result = await callAIChat(settings, [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userParts.join("\n") },
+    ], { temperature: 0.7, max_tokens: 2000, timeout_ms: 30000 });
+
+    // Extract JSON from response
+    let parsed: any;
+    try {
+      parsed = JSON.parse(result);
+    } catch {
+      const jsonMatch = result.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        return c.json({ error: "AI returned invalid JSON", code: "AI_INVALID_JSON" }, 500);
+      }
+    }
+
+    if (!parsed.subtasks || !Array.isArray(parsed.subtasks)) {
+      return c.json({ error: "AI response missing subtasks array", code: "AI_INVALID_FORMAT" }, 500);
+    }
+
+    // Validate and clamp
+    const VALID_PRIORITIES = [1, 2, 3];
+    const parentDue = task.dueAt ? task.dueAt.split("T")[0] : task.dueDate;
+    const subtasks = parsed.subtasks
+      .filter((s: any) => s.title && typeof s.title === "string")
+      .slice(0, 8)
+      .map((s: any) => ({
+        title: s.title.trim().slice(0, 200),
+        priority: VALID_PRIORITIES.includes(s.priority) ? s.priority : 2,
+        dueDate: s.dueDate && typeof s.dueDate === "string" && s.dueDate.match(/^\d{4}-\d{2}-\d{2}$/)
+          ? (parentDue && s.dueDate > parentDue ? parentDue : s.dueDate)
+          : null,
+        reason: typeof s.reason === "string" ? s.reason.trim().slice(0, 200) : "",
+      }));
+
+    return c.json({ subtasks });
+  } catch (err: any) {
+    return c.json({ error: err.message || "AI request failed", code: "AI_REQUEST_FAILED" }, 500);
   }
 });
 

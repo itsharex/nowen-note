@@ -797,6 +797,7 @@ export default function TaskCenter() {
                         allTasks={tasks}
                         onCreateChild={handleCreateChild}
                         onSelectTask={(taskId) => setSelectedTaskId(taskId)}
+            onCreated={() => { loadTasks(); refreshCounts(); }}
                       />
                     </div>
                   ))

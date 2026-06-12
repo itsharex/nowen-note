@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import type { Task, TaskPriority, TaskReminder } from "@/types";
 import { isRepeatingTask } from "./taskRepeatUtils";
+import { TaskAIBreakdown } from "./TaskAIBreakdown";
 import type { TaskTreeNode } from "./taskProgress";
 import { calculateTaskProgress } from "./taskProgress";
 import { parseTaskTitle, TitleView } from "./taskTitleTokens";
@@ -55,7 +56,8 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
   onDelete: (id: string) => void;
   onToggle?: (id: string) => void;
   onSelectTask?: (taskId: string) => void;
-}>(({ task, treeNode, allTasks, onClose, onUpdate, onDelete, onToggle, onSelectTask }, ref) => {
+  onCreated?: () => void;
+}>(({ task, treeNode, allTasks, onClose, onUpdate, onDelete, onToggle, onSelectTask , onCreated }, ref) => {
   const { t, i18n } = useTranslation();
   const lang = i18n.resolvedLanguage || i18n.language;
   const isZh = lang.toLowerCase().startsWith("zh");
@@ -340,6 +342,9 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
             </div>
           </div>
         )}
+
+        {/* AI Breakdown */}
+        <TaskAIBreakdown task={task} onCreated={() => onCreated?.()} />
 
         {/* Repeat Settings */}
         <div className="rounded-lg border border-app-border bg-app-elevated/50 p-4 space-y-2">
