@@ -1251,7 +1251,11 @@
       "desktopNotificationEnabled": "Desktop notifications enabled",
       "reminderAt": "Reminder",
       "dueAt": "Due",
-      "offset": "Offset"
+      "offset": "Offset",
+      "atDue": "At due time",
+      "minutesBefore": "{{minutes}} min before",
+      "hoursBefore": "{{hours}}h before",
+      "hoursMinutesBefore": "{{hours}}h {{minutes}}m before"
     }
   },
   "tags": {

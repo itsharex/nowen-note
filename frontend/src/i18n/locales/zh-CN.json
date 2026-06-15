@@ -1262,7 +1262,11 @@
       "desktopNotificationEnabled": "桌面通知已启用",
       "reminderAt": "提醒时间",
       "dueAt": "截止时间",
-      "offset": "提前"
+      "offset": "提前",
+      "atDue": "准时提醒",
+      "minutesBefore": "提前 {{minutes}} 分钟",
+      "hoursBefore": "提前 {{hours}} 小时",
+      "hoursMinutesBefore": "提前 {{hours}} 小时 {{minutes}} 分钟"
     }
   },
   "tags": {

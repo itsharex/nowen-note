@@ -19,12 +19,14 @@ const GROUP_ORDER: Array<{ key: keyof ReminderOverview; icon: React.ReactNode }>
   { key: "disabled", icon: <BellOff size={14} /> },
 ];
 
-function formatOffset(minutes: number): string {
-  if (minutes === 0) return "at due";
-  if (minutes < 60) return `${minutes}min before`;
+function formatOffset(minutes: number, t: (key: string, opts?: any) => string): string {
+  if (minutes === 0) return t("tasks.reminderCenter.atDue");
+  if (minutes < 60) return t("tasks.reminderCenter.minutesBefore", { minutes });
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return m > 0 ? `${h}h${m}m before` : `${h}h before`;
+  return m > 0
+    ? t("tasks.reminderCenter.hoursMinutesBefore", { hours: h, minutes: m })
+    : t("tasks.reminderCenter.hoursBefore", { hours: h });
 }
 
 export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterProps) {
@@ -35,7 +37,7 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [notifPermission, setNotifPermission] = useState<string>(() => {
     if (typeof window === "undefined") return "default";
-    if (typeof process !== "undefined" && (window as any).electronAPI) return "electron";
+    if ((window as any).nowenDesktop?.taskNotify || (window as any).nowenDesktop?.taskNotifyPermission) return "electron";
     return typeof Notification !== "undefined" ? Notification.permission : "default";
   });
 
@@ -232,7 +234,7 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
                                     : item.dueDate}
                                 </span>
                               )}
-                              <span>{formatOffset(item.offsetMinutes)}</span>
+                              <span>{formatOffset(item.offsetMinutes, t)}</span>
                             </div>
                           </button>
                         ))}
