@@ -420,9 +420,11 @@ app.route("/api/files", filesRouter);
 
 // Reminder scanner: check due reminders every 30s
 import { scanDueReminders, markReminderNotified, type PendingReminder } from "./routes/task-reminders";
+import { scanDependencyReadyNotifications, scanOverdueDailyNotifications, type SystemReminder } from "./routes/automation-scanner";
 
 // In-memory ring buffer of recently triggered reminders (last 5 min)
-const recentReminders: (PendingReminder & { _triggeredAt: number })[] = [];
+type RecentItem = (PendingReminder | SystemReminder) & { _triggeredAt: number; type: string };
+const recentReminders: RecentItem[] = [];
 const RECENT_TTL = 5 * 60 * 1000;
 
 let lastReminderScan = 0;
@@ -438,8 +440,22 @@ setInterval(() => {
     const pending = scanDueReminders();
     for (const r of pending) {
       console.log(`[reminder] Task "${r.taskTitle}" (${r.taskId}) reminder due for user ${r.userId}`);
-      recentReminders.push({ ...r, _triggeredAt: now });
+      recentReminders.push({ ...r, _triggeredAt: now, type: "task_reminder" });
       markReminderNotified(r.reminderId);
+    }
+
+    // Phase 6.4: dependency-ready notifications
+    const depReady = scanDependencyReadyNotifications();
+    for (const d of depReady) {
+      console.log(`[automation] Dependency ready: "${d.taskTitle}" (${d.taskId}) for user ${d.userId}`);
+      recentReminders.push({ ...d, _triggeredAt: now, type: "dependency_ready" });
+    }
+
+    // Phase 6.4: overdue daily notifications
+    const overdueDaily = scanOverdueDailyNotifications();
+    for (const o of overdueDaily) {
+      console.log(`[automation] Overdue daily: "${o.taskTitle}" (${o.taskId}) for user ${o.userId}`);
+      recentReminders.push({ ...o, _triggeredAt: now, type: "overdue_daily" });
     }
   } catch (e) {
     console.error("[reminder] scan failed:", e);
@@ -454,7 +470,7 @@ app.get("/api/task-reminders/recent", (c) => {
   const sinceMs = since ? Number(since) : 0;
   const mine = recentReminders
     .filter((r) => r.userId === userId && r._triggeredAt > sinceMs)
-    .map((r) => ({ reminderId: r.reminderId, taskId: r.taskId, taskTitle: r.taskTitle, triggeredAt: r._triggeredAt }));
+    .map((r) => ({ reminderId: r.reminderId, taskId: r.taskId, taskTitle: r.taskTitle, triggeredAt: r._triggeredAt, type: r.type || "task_reminder" }));
   return c.json({ reminders: mine });
 });
 

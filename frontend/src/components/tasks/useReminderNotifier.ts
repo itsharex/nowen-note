@@ -17,6 +17,7 @@ interface RecentReminder {
   taskId: string;
   taskTitle: string;
   triggeredAt: number;
+  type?: string;
 }
 
 // Session-scoped dedup set (cleared on full page reload, survives HMR)
@@ -81,10 +82,20 @@ export function useReminderNotifier() {
             for (const r of recent) {
               if (notifiedSet.has(r.reminderId)) continue;
               notifiedSet.add(r.reminderId);
-              sendNotification(
-                `\u23F0 ${r.taskTitle}`,
-                r.taskTitle
-              );
+              const notifType = r.type || "task_reminder";
+              let title: string;
+              let body: string;
+              if (notifType === "dependency_ready") {
+                title = `\u2705 ${r.taskTitle}`;
+                body = "Predecessor completed. You can start this task.";
+              } else if (notifType === "overdue_daily") {
+                title = `\u26A0\uFE0F ${r.taskTitle}`;
+                body = "This task is overdue.";
+              } else {
+                title = `\u23F0 ${r.taskTitle}`;
+                body = r.taskTitle;
+              }
+              sendNotification(title, body);
             }
           }
         } catch {
