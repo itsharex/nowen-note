@@ -1228,7 +1228,11 @@
       "finishToStart": "Finish to start",
       "blocked": "Blocked",
       "blockedByIncomplete": "Blocked by incomplete predecessor",
-      "allDependenciesDone": "All dependencies completed"
+      "allDependenciesDone": "All dependencies completed",
+      "scheduleWarning": "Predecessor not done. Suggest rescheduling to {{date}}",
+      "suggestReschedule": "Suggest reschedule",
+      "applySuggestion": "Apply suggestion",
+      "rescheduleReason": "Predecessor incomplete"
     }
   },
   "tags": {

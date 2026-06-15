@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { wouldCreateCycle, buildTaskRowIndex, getDependencyLinePoints, getBlockingDependencies, isTaskBlockedByDependency } from "../taskDependencyUtils";
+import { wouldCreateCycle, buildTaskRowIndex, getDependencyLinePoints, getBlockingDependencies, isTaskBlockedByDependency, getDependencyScheduleWarnings } from "../taskDependencyUtils";
 import type { TaskDependency } from "../../../types";
 
 function dep(pre: string, suc: string): TaskDependency {
@@ -125,6 +125,72 @@ describe("isTaskBlockedByDependency", () => {
 
   it("returns false when no deps", () => {
     expect(isTaskBlockedByDependency("A", [], tasks)).toBe(false);
+  });
+});
+
+describe("getDependencyScheduleWarnings", () => {
+  it("suggests reschedule when B.startDate <= A.dueDate and A incomplete", () => {
+    const tasks = [
+      { id: "A", isCompleted: 0, dueDate: "2026-06-20" },
+      { id: "B", isCompleted: 0, startDate: "2026-06-18", dueDate: "2026-06-25" },
+    ] as any;
+    const deps = [dep("A", "B")];
+    const warn = getDependencyScheduleWarnings("B", deps, tasks);
+    expect(warn).not.toBeNull();
+    expect(warn!.suggestedStartDate).toBe("2026-06-21");
+    expect(warn!.reason).toBe("date_overlap");
+  });
+
+  it("returns null when predecessor completed", () => {
+    const tasks = [
+      { id: "A", isCompleted: 1, dueDate: "2026-06-20" },
+      { id: "B", isCompleted: 0, startDate: "2026-06-18", dueDate: "2026-06-25" },
+    ] as any;
+    const deps = [dep("A", "B")];
+    expect(getDependencyScheduleWarnings("B", deps, tasks)).toBeNull();
+  });
+
+  it("returns null when predecessor has no dueDate", () => {
+    const tasks = [
+      { id: "A", isCompleted: 0, dueDate: null },
+      { id: "B", isCompleted: 0, startDate: "2026-06-18", dueDate: "2026-06-25" },
+    ] as any;
+    const deps = [dep("A", "B")];
+    expect(getDependencyScheduleWarnings("B", deps, tasks)).toBeNull();
+  });
+
+  it("takes latest dueDate from multiple predecessors", () => {
+    const tasks = [
+      { id: "A", isCompleted: 0, dueDate: "2026-06-15" },
+      { id: "C", isCompleted: 0, dueDate: "2026-06-22" },
+      { id: "B", isCompleted: 0, startDate: "2026-06-20", dueDate: "2026-06-30" },
+    ] as any;
+    const deps = [dep("A", "B"), dep("C", "B")];
+    const warn = getDependencyScheduleWarnings("B", deps, tasks);
+    expect(warn).not.toBeNull();
+    expect(warn!.suggestedStartDate).toBe("2026-06-23");
+  });
+
+  it("preserves duration when rescheduling", () => {
+    const tasks = [
+      { id: "A", isCompleted: 0, dueDate: "2026-06-20" },
+      { id: "B", isCompleted: 0, startDate: "2026-06-18", dueDate: "2026-06-22" },
+    ] as any;
+    const deps = [dep("A", "B")];
+    const warn = getDependencyScheduleWarnings("B", deps, tasks);
+    expect(warn).not.toBeNull();
+    // Original duration: 4 days (18-22). New start: 21. New end: 21 + 4 = 25.
+    expect(warn!.suggestedStartDate).toBe("2026-06-21");
+    expect(warn!.suggestedDueDate).toBe("2026-06-25");
+  });
+
+  it("returns null when task has no dates", () => {
+    const tasks = [
+      { id: "A", isCompleted: 0, dueDate: "2026-06-20" },
+      { id: "B", isCompleted: 0, startDate: null, dueDate: null },
+    ] as any;
+    const deps = [dep("A", "B")];
+    expect(getDependencyScheduleWarnings("B", deps, tasks)).toBeNull();
   });
 });
 

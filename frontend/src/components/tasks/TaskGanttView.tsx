@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { Task, TaskProject, TaskDependency } from "../../types";
 import { getTaskStartDate, getTaskEndDate, moveTaskDateRange, isTaskScheduled, buildTimelineDays, getVisibleTaskBar, resizeTaskDateRange } from "./taskGanttUtils";
-import { buildTaskRowIndex, getDependencyLinePoints, isTaskBlockedByDependency } from "./taskDependencyUtils";
+import { buildTaskRowIndex, getDependencyLinePoints, isTaskBlockedByDependency, getDependencyScheduleWarnings } from "./taskDependencyUtils";
 import { format, addDays, startOfWeek, startOfMonth, addWeeks, addMonths, isToday, isBefore } from "date-fns";
 
 interface Props {
@@ -160,6 +160,7 @@ export default function TaskGanttView({ tasks, projects, onSelect, onUpdateTaskD
               const isDragging = dragState?.taskId === task.id;
               const isOverdue = !task.isCompleted && task.dueDate && isBefore(new Date(task.dueDate + "T23:59:59"), new Date());
               const isBlocked = isTaskBlockedByDependency(task.id, dependencies, tasks);
+              const scheduleWarning = getDependencyScheduleWarnings(task.id, dependencies, tasks);
               const dragOffset = isDragging && dragState ? (dragState.diffDays / days.length) * 100 : 0;
               const roundedClass = `${bar.clippedStart ? "rounded-l-none" : "rounded-l"} ${bar.clippedEnd ? "rounded-r-none" : "rounded-r"}`;
               return (
@@ -174,7 +175,7 @@ export default function TaskGanttView({ tasks, projects, onSelect, onUpdateTaskD
                     }}
                     onMouseDown={(e) => handleDragStart(task.id, e, "move")}
                     onClick={() => onSelect(task)}
-                    title={isBlocked ? task.title + " (" + t("tasks.dependencies.blocked") + ")" : task.title}
+                    title={task.title + (isBlocked ? " (" + t("tasks.dependencies.blocked") + ")" : "") + (scheduleWarning ? " (" + t("tasks.dependencies.suggestReschedule") + ")" : "")}
                   >
                     {isBlocked && !task.isCompleted && (
                       <div className="absolute -top-1 -left-1 w-3.5 h-3.5 rounded-full bg-amber-500 flex items-center justify-center" title={t("tasks.dependencies.blockedByIncomplete")}>

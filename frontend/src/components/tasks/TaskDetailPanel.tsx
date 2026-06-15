@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Flag, Trash2, X, Bell, BellOff, CheckCircle2, Circle, Plus, Clock, Repeat, Link2 } from "lucide-react";
+import { Flag, Trash2, X, Bell, BellOff, CheckCircle2, Circle, Plus, Clock, Repeat, Link2, CalendarDays } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhCN, enUS } from "date-fns/locale";
 import { useTranslation } from "react-i18next";
@@ -11,7 +11,7 @@ import { isRepeatingTask } from "./taskRepeatUtils";
 import { TaskAIBreakdown } from "./TaskAIBreakdown";
 import { TaskTemplateEditor } from "./TaskTemplateEditor";
 import { TaskDependencyEditor } from "./TaskDependencyEditor";
-import { isTaskBlockedByDependency } from "./taskDependencyUtils";
+import { isTaskBlockedByDependency, getDependencyScheduleWarnings } from "./taskDependencyUtils";
 import type { TaskTreeNode } from "./taskProgress";
 import { calculateTaskProgress } from "./taskProgress";
 import { parseTaskTitle, TitleView } from "./taskTitleTokens";
@@ -411,6 +411,29 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
                   {t("tasks.dependencies.blockedByIncomplete")}
                 </div>
               )}
+              {(() => {
+                const warning = getDependencyScheduleWarnings(task.id, dependencies, allTasks || []);
+                if (!warning || !warning.suggestedStartDate) return null;
+                return (
+                  <div className="flex items-start gap-2 text-xs text-blue-600 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400 rounded px-2 py-1.5 mb-2">
+                    <CalendarDays size={12} className="mt-0.5 flex-shrink-0" />
+                    <div className="flex-1">
+                      <div>{t("tasks.dependencies.scheduleWarning", { date: warning.suggestedDueDate || warning.suggestedStartDate })}</div>
+                      <button
+                        onClick={() => {
+                          const patch: any = {};
+                          if (warning.suggestedStartDate) patch.startDate = warning.suggestedStartDate;
+                          if (warning.suggestedDueDate) patch.dueDate = warning.suggestedDueDate;
+                          onUpdate(task.id, patch);
+                        }}
+                        className="mt-1 px-2 py-0.5 text-[11px] rounded bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400"
+                      >
+                        {t("tasks.dependencies.applySuggestion")}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
               <TaskDependencyEditor
                 task={task}
                 allTasks={allTasks}

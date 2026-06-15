@@ -1239,7 +1239,11 @@
       "finishToStart": "完成后开始",
       "blocked": "被阻塞",
       "blockedByIncomplete": "前置任务未完成，当前任务被阻塞",
-      "allDependenciesDone": "所有前置任务已完成"
+      "allDependenciesDone": "所有前置任务已完成",
+      "scheduleWarning": "前置任务尚未完成，建议将当前任务顺延到 {{date}}",
+      "suggestReschedule": "建议顺延",
+      "applySuggestion": "应用建议",
+      "rescheduleReason": "前置任务未完成"
     }
   },
   "tags": {
