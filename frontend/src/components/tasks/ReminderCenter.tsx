@@ -220,7 +220,13 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
             </div>
           )}
           {error && (
-            <div className="px-4 py-8 text-center text-sm text-red-500">{error}</div>
+            <div className="px-4 py-8 text-center">
+              <div className="text-sm text-red-500 mb-3">{error}</div>
+              <button type="button" onClick={load} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-app-elevated border border-app-border hover:bg-app-hover text-tx-secondary transition-colors">
+                <RefreshCw size={12} />
+                {t("tasks.reminderCenter.retry")}
+              </button>
+            </div>
           )}
           {!isLoading && !error && overview && (
             <div>

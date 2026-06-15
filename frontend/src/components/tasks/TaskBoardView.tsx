@@ -10,6 +10,7 @@ import { TitleView } from "./taskTitleTokens";
 import { DateBadge, isTaskDateOverdue } from "./DateBadge";
 import { calculateTaskProgress } from "./taskProgress";
 import { buildTaskTree, type TaskTreeNode } from "./taskProgress";
+import { TaskEmptyState } from "./TaskEmptyState";
 
 const COLUMNS: { key: TaskStatus; icon: React.ReactNode; color: string }[] = [
   { key: "todo", icon: <Circle size={16} />, color: "text-tx-tertiary" },
@@ -191,7 +192,7 @@ export function TaskBoardView({
 
               {columnTasks.length === 0 && (
                 <div className="text-center text-xs text-tx-tertiary py-8 opacity-50">
-                  {dragOverCol === col.key ? t("tasks.dropHere") : "-"}
+                  {dragOverCol === col.key ? t("tasks.dropHere") : <TaskEmptyState type="no-tasks" compact />}
                 </div>
               )}
             </div>

@@ -1263,7 +1263,8 @@
       "snoozeTomorrow": "Tomorrow",
       "disableReminder": "Disable reminder",
       "enableReminder": "Enable reminder",
-      "snoozedUntil": "Snoozed until"
+      "snoozedUntil": "Snoozed until",
+      "retry": "Retry"
     },
     "notifications": {
       "taskReminderTitle": "Task reminder",
@@ -1272,6 +1273,63 @@
       "dependencyReadyBody": "Predecessor completed. You can start: {{taskTitle}}",
       "overdueDailyTitle": "Task overdue",
       "overdueDailyBody": "{{taskTitle}} is overdue."
+    },
+    "empty": {
+      "no-tasks": {
+        "title": "No tasks yet",
+        "description": "Create your first task to get started",
+        "action": "New task"
+      },
+      "no-search": {
+        "title": "No results",
+        "description": "Try a different keyword",
+        "action": "Clear search"
+      },
+      "no-scheduled": {
+        "title": "No scheduled tasks",
+        "description": "Set start and due dates on tasks to see them here",
+        "action": ""
+      },
+      "no-templates": {
+        "title": "No templates",
+        "description": "Save a task tree as a template for quick reuse",
+        "action": ""
+      },
+      "no-reminders": {
+        "title": "No reminders",
+        "description": "Set reminders on tasks to see them here",
+        "action": ""
+      },
+      "no-dependencies": {
+        "title": "No dependencies",
+        "description": "Add task dependencies to track blockers",
+        "action": ""
+      },
+      "no-projects": {
+        "title": "No projects",
+        "description": "Create a project to organize your tasks",
+        "action": ""
+      }
+    },
+    "toast": {
+      "created": "Task created",
+      "createFailed": "Failed to create task",
+      "updated": "Task updated",
+      "updateFailed": "Failed to update task",
+      "completed": "Task completed",
+      "completeFailed": "Failed to complete task",
+      "deleted": "Task deleted",
+      "deleteFailed": "Failed to delete task",
+      "bulkDeleted": "{{count}} tasks deleted",
+      "bulkDeleteFailed": "Failed to delete tasks",
+      "bulkCompleted": "{{count}} tasks completed",
+      "bulkCompleteFailed": "Failed to complete tasks",
+      "templateApplied": "Template applied",
+      "templateApplyFailed": "Failed to apply template",
+      "dependencyCreated": "Dependency created",
+      "dependencyCreateFailed": "Failed to create dependency",
+      "dependencyDeleted": "Dependency deleted",
+      "dependencyDeleteFailed": "Failed to delete dependency"
     }
   },
   "tags": {

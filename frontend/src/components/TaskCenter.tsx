@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import { Task, TaskFilter, TaskStats, TaskStatus, TaskProject, TaskDependency } from "@/types";
 import { cn } from "@/lib/utils";
 import { isTaskBlockedByDependency } from "./tasks/taskDependencyUtils";
@@ -26,6 +27,7 @@ import type { TaskTreeNode } from "./tasks/taskProgress";
 import { TaskOverview } from "./tasks/TaskOverview";
 import { TaskTreeRow } from "./tasks/TaskTreeRow";
 import { TaskQuickAdd } from "./tasks/TaskQuickAdd";
+import { TaskEmptyState } from "./tasks/TaskEmptyState";
 import { TaskDetailPanel } from "./tasks/TaskDetailPanel";
 import { FlatTaskRow } from "./tasks/FlatTaskRow";
 import { useReminderNotifier } from "./tasks/useReminderNotifier";
@@ -277,6 +279,7 @@ export default function TaskCenter() {
       refreshCounts();
     } catch (err) {
       console.error("Failed to create child task:", err);
+      toast.error(t("tasks.toast.createFailed"));
     }
   };
 
@@ -295,7 +298,7 @@ export default function TaskCenter() {
       const s = await api.getTaskStats();
       setStats(s);
       refreshCounts();
-    } catch { loadTasks(); }
+    } catch { toast.error(t("tasks.toast.deleteFailed")); loadTasks(); }
   };
 
   const handleUpdate = async (id: string, data: Partial<Task>) => {
@@ -355,7 +358,7 @@ export default function TaskCenter() {
     try {
       await api.updateTask(taskId, patch);
       await loadTasks();
-    } catch { loadTasks(); }
+    } catch { toast.error(t("tasks.toast.updateFailed")); loadTasks(); }
   };
 
   // === Create project ===
@@ -405,7 +408,7 @@ export default function TaskCenter() {
       const s = await api.getTaskStats();
       setStats(s);
       refreshCounts();
-    } catch { loadTasks(); }
+    } catch { toast.error(t("tasks.toast.bulkCompleteFailed")); loadTasks(); }
   };
 
   const handleBatchDelete = async () => {
@@ -431,7 +434,7 @@ export default function TaskCenter() {
       const s = await api.getTaskStats();
       setStats(s);
       refreshCounts();
-    } catch { loadTasks(); }
+    } catch { toast.error(t("tasks.toast.bulkDeleteFailed")); loadTasks(); }
   };
 
   // === Drag reorder ===
@@ -795,8 +798,11 @@ export default function TaskCenter() {
             </div>
           ) : displayTasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-tx-tertiary">
-              <CheckCheck size={36} className="mb-3 opacity-40" />
-              <span className="text-sm">{searchQuery ? t("tasks.search") + ": 0" : t("tasks.noTasks")}</span>
+              {searchQuery ? (
+                <TaskEmptyState type="no-search" compact onAction={() => setSearchQuery("")} />
+              ) : (
+                <TaskEmptyState type="no-tasks" onAction={() => inputRef.current?.focus()} />
+              )}
             </div>
           ) : (
             <div className="space-y-2">
@@ -956,8 +962,8 @@ export default function TaskCenter() {
             onSelectTask={(taskId) => setSelectedTaskId(taskId)}
             onCreated={async () => { await loadTasks(); const s = await api.getTaskStats(); setStats(s); refreshCounts(); }}
             dependencies={dependencies}
-            onCreateDependency={async (predId, succId) => { await api.createTaskDependency({ predecessorTaskId: predId, successorTaskId: succId }); await loadDependencies(); }}
-            onDeleteDependency={async (id) => { await api.deleteTaskDependency(id); await loadDependencies(); }}
+            onCreateDependency={async (predId, succId) => { try { await api.createTaskDependency({ predecessorTaskId: predId, successorTaskId: succId }); await loadDependencies(); toast.success(t("tasks.toast.dependencyCreated")); } catch { toast.error(t("tasks.toast.dependencyCreateFailed")); } }}
+            onDeleteDependency={async (id) => { try { await api.deleteTaskDependency(id); await loadDependencies(); toast.success(t("tasks.toast.dependencyDeleted")); } catch { toast.error(t("tasks.toast.dependencyDeleteFailed")); } }}
           />
         )}
       </AnimatePresence>
@@ -968,7 +974,7 @@ export default function TaskCenter() {
           <TaskTemplatePicker
             projects={projects}
             onClose={() => setShowTemplatePicker(false)}
-            onApplied={async () => { setShowTemplatePicker(false); await loadTasks(); const s = await api.getTaskStats(); setStats(s); refreshCounts(); }}
+            onApplied={async () => { setShowTemplatePicker(false); await loadTasks(); const s = await api.getTaskStats(); setStats(s); refreshCounts(); toast.success(t("tasks.toast.templateApplied")); }}
           />
         )}
       </AnimatePresence>

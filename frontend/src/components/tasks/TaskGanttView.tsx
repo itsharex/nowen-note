@@ -4,6 +4,7 @@ import type { Task, TaskProject, TaskDependency } from "../../types";
 import { getTaskStartDate, getTaskEndDate, moveTaskDateRange, isTaskScheduled, buildTimelineDays, getVisibleTaskBar, resizeTaskDateRange } from "./taskGanttUtils";
 import { buildTaskRowIndex, getDependencyLinePoints, isTaskBlockedByDependency, getDependencyScheduleWarnings } from "./taskDependencyUtils";
 import { format, addDays, startOfWeek, startOfMonth, addWeeks, addMonths, isToday, isBefore } from "date-fns";
+import { TaskEmptyState } from "./TaskEmptyState";
 
 interface Props {
   tasks: Task[];
@@ -111,6 +112,10 @@ export default function TaskGanttView({ tasks, projects, onSelect, onUpdateTaskD
       </div>
 
       {/* Main content */}
+      {scheduledTasks.length === 0 && unscheduledTasks.length === 0 ? (
+        <TaskEmptyState type="no-scheduled" />
+      ) : (
+      <>
       <div className="flex flex-1 overflow-hidden">
         {/* Left panel: task list */}
         <div className="w-64 border-r border-app-border overflow-y-auto">
@@ -248,6 +253,10 @@ export default function TaskGanttView({ tasks, projects, onSelect, onUpdateTaskD
           })()}
         </div>
       </div>
+
+
+      </>
+      )}
 
       {/* Unscheduled tasks */}
       {unscheduledTasks.length > 0 && (

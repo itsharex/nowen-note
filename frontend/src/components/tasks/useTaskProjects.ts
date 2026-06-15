@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import type { TaskProject } from "@/types";
 
 export function useTaskProjects() {
@@ -13,6 +14,7 @@ export function useTaskProjects() {
       setProjects(data);
     } catch (err) {
       console.error("Failed to load projects:", err);
+      toast.error("Failed to load projects");
     } finally {
       setIsLoading(false);
     }
@@ -27,6 +29,7 @@ export function useTaskProjects() {
       return p;
     } catch (err) {
       console.error("Failed to create project:", err);
+      toast.error("Failed to create project");
       return null;
     }
   }, []);
@@ -38,6 +41,7 @@ export function useTaskProjects() {
       return p;
     } catch (err) {
       console.error("Failed to update project:", err);
+      toast.error("Failed to update project");
       return null;
     }
   }, []);
@@ -49,6 +53,7 @@ export function useTaskProjects() {
       if (selectedProjectId === id) setSelectedProjectId(null);
     } catch (err) {
       console.error("Failed to delete project:", err);
+      toast.error("Failed to delete project");
     }
   }, [selectedProjectId]);
 

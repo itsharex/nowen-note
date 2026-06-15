@@ -3,6 +3,7 @@ import { Loader2, Save } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Task, TaskTemplateItem } from "@/types";
@@ -67,6 +68,7 @@ export function TaskTemplateEditor({ task, allTasks = [], onSaved }: TaskTemplat
       onSaved?.();
     } catch (err) {
       console.error("Failed to save template:", err);
+      toast.error(t("tasks.templates.failed"));
     } finally {
       setIsSaving(false);
     }

@@ -11,6 +11,7 @@ import type { Task } from "@/types";
 import { isTaskDateOverdue } from "./DateBadge";
 import { getTaskDateKey, moveTaskToDate } from "./taskDateUtils";
 import { TitleView } from "./taskTitleTokens";
+import { TaskEmptyState } from "./TaskEmptyState";
 
 // Re-export for backward compat
 export { getTaskDateKey, moveTaskToDate } from "./taskDateUtils";
@@ -242,7 +243,7 @@ export function TaskCalendarView({
             </div>
             <div className="flex-1 p-3 space-y-1.5">
               {selectedDateTasks.length === 0 ? (
-                <div className="text-center text-xs text-tx-tertiary py-8">{t("tasks.calendarEmpty")}</div>
+                <TaskEmptyState type="no-scheduled" compact />
               ) : selectedDateTasks.map((task) => {
                 const overdue = isCalendarTaskOverdue(task);
                 return (
@@ -292,7 +293,7 @@ export function TaskCalendarView({
           </div>
           <div className="p-2 space-y-1">
             {selectedDateTasks.length === 0 ? (
-              <div className="text-center text-xs text-tx-tertiary py-4">{t("tasks.calendarEmpty")}</div>
+              <TaskEmptyState type="no-scheduled" compact />
             ) : selectedDateTasks.map((task) => {
               const overdue = isCalendarTaskOverdue(task);
               return (

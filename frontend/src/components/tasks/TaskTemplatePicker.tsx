@@ -4,6 +4,8 @@ import { X, FileText, Trash2, Loader2, Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
+import { toast } from "@/lib/toast";
+import { TaskEmptyState } from "./TaskEmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { TaskTemplate, TaskProject } from "@/types";
@@ -29,6 +31,7 @@ export function TaskTemplatePicker({ projects, onClose, onApplied }: TaskTemplat
       setTemplates(data);
     } catch (err) {
       console.error("Failed to load templates:", err);
+      toast.error(t("tasks.templates.failed"));
     } finally {
       setIsLoading(false);
     }
@@ -43,6 +46,7 @@ export function TaskTemplatePicker({ projects, onClose, onApplied }: TaskTemplat
       if (selectedId === id) setSelectedId(null);
     } catch (err) {
       console.error("Failed to delete template:", err);
+      toast.error(t("tasks.templates.failed"));
     }
   };
 
@@ -57,6 +61,7 @@ export function TaskTemplatePicker({ projects, onClose, onApplied }: TaskTemplat
       onApplied();
     } catch (err) {
       console.error("Failed to apply template:", err);
+      toast.error(t("tasks.templates.failed"));
     } finally {
       setIsApplying(false);
     }
@@ -102,9 +107,7 @@ export function TaskTemplatePicker({ projects, onClose, onApplied }: TaskTemplat
               <Loader2 size={20} className="animate-spin text-tx-tertiary" />
             </div>
           ) : templates.length === 0 ? (
-            <div className="text-center py-8 text-sm text-tx-tertiary">
-              {t("tasks.templates.noTemplates")}
-            </div>
+            <TaskEmptyState type="no-templates" compact />
           ) : (
             <div className="space-y-2">
               {templates.map((tpl) => (
