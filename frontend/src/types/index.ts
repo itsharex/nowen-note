@@ -415,6 +415,7 @@ export interface TaskReminder {
   enabled: number;
   lastNotifiedAt: string | null;
   createdAt: string;
+  updatedAt: string;
 }
 
 /** Task status for kanban board */
