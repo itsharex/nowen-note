@@ -163,6 +163,45 @@ QQ 群：`1093473044`
 
 > 最近 5 个版本的更新内容，完整历史见 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.2.1 - 2026-06-16
+
+### ✨ 新增
+
+- **tasks**: 增加待办任务详情描述（TASK-DESC-01） 背景/目标：当前待办任务仅保留标题，缺少更完整的上下文与验收说明。本次变更为任务引入 description 字段，用于记录步骤、备注、验收标准等详细信息，不扩展富文本与协作功能。 主要变更：数据库：在 backend/src/db/migrations.ts 新增 v28 迁移 tasks-add-description，通过 PRAGMA table_info(tasks) 检查并执行 ALTER TABLE tasks ADD COLUMN description TEXT NOT NULL DEFAULT ''，保持幂等，旧任务自动兼容。后端接口：在任务创建流程写入 description；在任务更新流程支持 description 更新（含清空）；重复任务生成时复制 description；模板相关路径同步透传 description。类型：为 Task 新增 description: string，为 TaskTemplateItem 新增 description?: string，前端统一使用 task.description ?? '' 兼容历史数据。详情面板：在 TaskDetailPanel 新增纯文本 textarea，支持多行输入，onBlur 保存并保留本地输入；新增成功/失败提示文案。列表与看板：FlatTaskRow、TaskTreeRow、TaskBoardView 增加轻量摘要，避免打断紧凑布局。搜索：将任务检索范围扩展到 title 与 description，不改变现有搜索入口。国际化：补充 tasks.fields.description、tasks.fields.descriptionPlaceholder、tasks.toast.descriptionUpdated、tasks.toast.descriptionUpdateFailed，并对齐 en/zh-CN。测试：新增 task-description、taskSearch、TaskTemplateEditor 相关测试，补齐测试 mock 中 description 字段。 验证：frontend tsc/vite build 通过；frontend test 通过；backend build:tsc 通过；任务描述相关后端与前端测试通过。 (e06dfdf)
+- Phase 7.1.1 空状态 + 操作反馈 + 重试按钮 (9667ab2)
+- Phase 6.4 轻量自动化提醒 — 依赖完成通知、逾期每日提醒 (267958a)
+- Phase 6.2 轻量提醒操作 — 稍后提醒、关闭/开启提醒、跳转任务 (450c289)
+- Phase 6.1 提醒中心增强 V1 (26194a5)
+- Phase 5 - 甘特图 / 时间轴 V1 (cde9c29)
+
+### 🐛 修复
+
+- Phase 7.1.0 P0 清理 — 通知文案 i18n + BOM 清理 (69e7d6e)
+- Phase 6.4.1 自动化提醒稳定化 — 依赖全部完成才通知、dueAt 用 JS 时间比较 (aae9ae8)
+- Phase 6.2.3 补齐 TaskReminder.snoozedUntil 类型 (a668eed)
+- Phase 6.2.2 snoozedUntil 后端接线修复 — PUT 写入、SELECT 扫描、测试补齐 (33b1feb)
+- Phase 6.2.1 提醒操作稳定化 — snoozedUntil 字段、可靠 snooze、button 嵌套修复 (cae5e8d)
+- Phase 6.1.1 提醒中心 Electron 环境识别与 offset 国际化 (5b0adde)
+- Phase 5.0.1 - 甘特图/时间轴稳定化 (0a998af)
+- Phase 4.7.1 - 任务模板稳定化 (84bf28f)
+
+### 🔧 其他
+
+- **repo**: 同步本次会话中的其他本地改动 背景/目标：在完成 TASK-DESC-01 后，一并提交剩余本地工作区改动，便于代码库保持整洁。 主要变更：新增/更新 shareOutline、ShareOutline、ReminderCenter、DiaryCenter、SharedNoteView、taskTitleTokens 及其测试产物；补充 docs/screenshots 与 .playwright-mcp 相关记录文件。 验证：在提交前已确认 TASK-DESC-01 单独完成提交，本次提交仅包含与任务详情描述无关的其余本地改动。 (7dd4437)
+
+### 📌 杂项
+
+- Phase 6.0.2: add TaskReminder.updatedAt to frontend type (3c4829e)
+- Phase 6.0.1: reminder type + test fixes (e2d5877)
+- Phase 6.0: reminder infrastructure stabilization (d98ccf6)
+- Phase 5.5.1: cascade delete cleanup for task_dependencies on child task removal (455ac38)
+- Phase 5.5: task center regression + tech debt cleanup (a90a1e3)
+- Phase 5.4: dependency-driven lightweight reschedule suggestions (8ba21f0)
+- Phase 5.3: dependency status indicators - blocked task visual hints (e41979c)
+- Phase 5.2.1：任务依赖线稳定化 hotfix — 修复 6 个 P0/P1 (f5427e7)
+- Phase 5.2：任务依赖线 V1 — 数据模型 + 循环检测 + 甘特图依赖线 + 详情面板管理依赖 (c8e1488)
+- Phase 5.1：甘特图体验增强 — resize 调整日期范围 + 跨区间显示 + 一键排期 + today 指示器修复 + BOM/编码清理 (dd9f8ce)
+
 ### v1.1.20 - 2026-06-12
 
 ### ✨ 新增
@@ -305,23 +344,5 @@ QQ 群：`1093473044`
 ### ♻️ 重构
 
 - 大规模代码精简和架构优化 (60f051b)
-
-### v1.1.16 - 2026-06-05
-
-### ✨ 新增
-
-- 全面增强搜索功能和用户体验 (524cf8c)
-- 增强搜索体验和侧边栏布局管理 (14b61c2)
-- 增强附件对象存储功能和搜索高亮显示 (7ce7d53)
-
-### 🐛 修复
-
-- 修复 TypeScript 编译错误 - Buffer 类型兼容性 (ff2f4b5)
-- 全面优化版本恢复功能和编辑器状态管理 (85783d1)
-- 优化侧边栏布局计算和滚动性能 (5e49465)
-
-### 📌 杂项
-
-- 实现对象存储支持和同步中心功能 (d576ec1)
 
 <!-- CHANGELOG:END -->
