@@ -61,6 +61,18 @@ export function isHttpUrl(s: string): boolean {
   return /^https?:\/\/\S+$/i.test(s.trim());
 }
 
+export function insertTaskTitleSnippet(
+  title: string,
+  snippet: string,
+  selectionStart?: number | null,
+  selectionEnd?: number | null,
+): string {
+  if (selectionStart == null || selectionEnd == null) {
+    return (title ? title + " " : "") + snippet;
+  }
+  return title.slice(0, selectionStart) + snippet + title.slice(selectionEnd);
+}
+
 /* ===== 富文本渲染：列表里"紧凑模式"，详情里"完整模式" ===== */
 export function TitleView({
   title,

@@ -127,17 +127,20 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
   const totalMissedToday = overview
     ? overview.missed.length + overview.today.length
     : 0;
+  const isEmpty = overview
+    ? GROUP_ORDER.every(({ key }) => overview[key].length === 0)
+    : false;
 
   return (
     <motion.div
-      className="fixed inset-0 z-[10000] flex items-center justify-center px-4"
+      className="fixed inset-0 z-[10000] flex items-center justify-center px-3"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
       <motion.div
         role="dialog"
         aria-modal="true"
@@ -145,13 +148,13 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.97, opacity: 0, y: 10 }}
         transition={{ duration: 0.2 }}
-        className="relative w-full max-w-md max-h-[80vh] bg-bg-primary rounded-xl shadow-2xl border border-app-border flex flex-col overflow-hidden"
+        className="relative w-[min(560px,calc(100vw-24px))] max-h-[85vh] sm:max-h-[80vh] bg-bg-primary rounded-xl shadow-2xl border border-app-border flex flex-col overflow-hidden"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-app-border">
+        <div className="min-h-12 flex items-center justify-between px-4 border-b border-app-border bg-bg-primary">
           <div className="flex items-center gap-2">
             <Bell size={18} className="text-accent-primary" />
-            <h2 className="text-sm font-semibold text-tx-primary">
+            <h2 className="text-sm font-medium text-tx-primary">
               {t("tasks.reminderCenter.title")}
             </h2>
             {totalMissedToday > 0 && (
@@ -165,15 +168,18 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
               type="button"
               onClick={load}
               disabled={isLoading}
-              className="p-1.5 rounded-md text-tx-tertiary hover:text-tx-secondary hover:bg-bg-hover transition-colors"
+              className="p-1.5 rounded-md text-tx-tertiary hover:text-tx-primary hover:bg-bg-hover transition-colors disabled:opacity-60"
               title={t("tasks.reminderCenter.refresh")}
+              aria-label={t("tasks.reminderCenter.refresh")}
             >
               <RefreshCw size={14} className={isLoading ? "animate-spin" : ""} />
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-md text-tx-tertiary hover:text-tx-secondary hover:bg-bg-hover transition-colors"
+              className="p-1.5 rounded-md text-tx-tertiary hover:text-tx-primary hover:bg-bg-hover transition-colors"
+              title={t("tasks.reminderCenter.close")}
+              aria-label={t("tasks.reminderCenter.close")}
             >
               <X size={16} />
             </button>
@@ -181,21 +187,21 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
         </div>
 
         {/* Notification permission */}
-        <div className="px-4 py-2 border-b border-app-border text-xs">
+        <div className="px-4 py-2.5 border-b border-app-border bg-bg-primary text-xs">
           {notifPermission === "electron" && (
-            <div className="flex items-center gap-1.5 text-tx-tertiary">
+            <div className="inline-flex items-center gap-1.5 rounded-md bg-green-500/10 px-2 py-1 font-medium text-green-700 dark:text-green-400">
               <Monitor size={13} />
               {t("tasks.reminderCenter.desktopNotificationEnabled")}
             </div>
           )}
           {notifPermission === "granted" && (
-            <div className="flex items-center gap-1.5 text-green-600">
+            <div className="inline-flex items-center gap-1.5 rounded-md bg-green-500/10 px-2 py-1 font-medium text-green-700 dark:text-green-400">
               <Bell size={13} />
               {t("tasks.reminderCenter.permissionEnabled")}
             </div>
           )}
           {notifPermission === "denied" && (
-            <div className="flex items-center gap-1.5 text-red-500">
+            <div className="inline-flex items-center gap-1.5 rounded-md bg-red-500/10 px-2 py-1 font-medium text-red-600 dark:text-red-400">
               <BellOff size={13} />
               {t("tasks.reminderCenter.permissionDenied")}
             </div>
@@ -204,7 +210,7 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
             <button
               type="button"
               onClick={handleEnableNotification}
-              className="flex items-center gap-1.5 text-accent-primary hover:underline"
+              className="inline-flex items-center gap-1.5 rounded-md bg-accent-primary/10 px-2 py-1 font-medium text-accent-primary hover:bg-accent-primary/15 transition-colors"
             >
               <Bell size={13} />
               {t("tasks.reminderCenter.enableNotification")}
@@ -228,7 +234,29 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
               </button>
             </div>
           )}
-          {!isLoading && !error && overview && (
+          {!isLoading && !error && overview && isEmpty && (
+            <div className="flex flex-col items-center justify-center px-8 py-14 text-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-bg-hover text-tx-secondary">
+                <BellOff size={22} />
+              </div>
+              <div className="text-sm font-medium text-tx-primary">
+                {t("tasks.reminderCenter.emptyTitle")}
+              </div>
+              <div className="mt-1 max-w-[300px] text-xs leading-5 text-tx-secondary">
+                {t("tasks.reminderCenter.emptyDescription")}
+              </div>
+              <button
+                type="button"
+                onClick={load}
+                disabled={isLoading}
+                className="mt-5 inline-flex items-center gap-1.5 rounded-md border border-app-border bg-bg-primary px-3 py-1.5 text-xs font-medium text-tx-secondary shadow-sm hover:bg-bg-hover hover:text-tx-primary disabled:opacity-60 transition-colors"
+              >
+                <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />
+                {t("tasks.reminderCenter.refresh")}
+              </button>
+            </div>
+          )}
+          {!isLoading && !error && overview && !isEmpty && (
             <div>
               {GROUP_ORDER.map(({ key, icon }) => {
                 const items = overview[key];
@@ -238,7 +266,7 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
                     <button
                       type="button"
                       onClick={() => toggleGroup(key)}
-                      className="w-full flex items-center justify-between px-4 py-2 text-xs font-medium text-tx-secondary hover:bg-bg-hover transition-colors"
+                      className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-tx-secondary hover:bg-bg-hover transition-colors"
                     >
                       <span className="flex items-center gap-1.5">
                         {icon}
@@ -260,19 +288,19 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
                         {items.map((item) => (
                           <div
                             key={item.reminderId}
-                            className="relative border-b border-app-border/50"
+                            className="relative border-b border-app-border/60"
                           >
                             <div className="flex items-stretch">
                               {/* Left: clickable task area */}
                               <button
                                 type="button"
                                 onClick={() => handleClickItem(item)}
-                                className="flex-1 text-left px-4 py-2 hover:bg-bg-hover transition-colors"
+                                className="flex-1 text-left px-4 py-2.5 hover:bg-bg-hover transition-colors"
                               >
                                 <div className="text-sm text-tx-primary truncate">
                                   {item.taskTitle}
                                 </div>
-                                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-tx-tertiary">
+                                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-tx-secondary">
                                   {item.snoozedUntil ? (
                                     <span>
                                       {t("tasks.reminderCenter.snoozedUntil")}:{" "}
@@ -307,8 +335,10 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
                                     setActionMenuId(actionMenuId === item.reminderId ? null : item.reminderId);
                                     setSnoozeMenuId(null);
                                   }}
-                                  className="p-1 rounded text-tx-tertiary hover:text-tx-secondary hover:bg-bg-hover transition-colors"
+                                  className="p-1.5 rounded-md text-tx-tertiary hover:text-tx-primary hover:bg-bg-hover transition-colors"
                                   disabled={acting === item.reminderId}
+                                  title={t("tasks.reminderCenter.moreActions")}
+                                  aria-label={t("tasks.reminderCenter.moreActions")}
                                 >
                                   <MoreHorizontal size={14} />
                                 </button>
@@ -328,7 +358,7 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); handleClickItem(item); }}
-                                    className="w-full text-left px-3 py-1.5 text-xs text-tx-secondary hover:bg-bg-hover flex items-center gap-2"
+                                    className="w-full text-left px-3 py-1.5 text-xs text-tx-secondary hover:text-tx-primary hover:bg-bg-hover flex items-center gap-2"
                                   >
                                     <ExternalLink size={12} />
                                     {t("tasks.reminderCenter.goToTask")}
@@ -341,7 +371,7 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
                                         e.stopPropagation();
                                         setSnoozeMenuId(snoozeMenuId === item.reminderId ? null : item.reminderId);
                                       }}
-                                      className="w-full text-left px-3 py-1.5 text-xs text-tx-secondary hover:bg-bg-hover flex items-center gap-2"
+                                      className="w-full text-left px-3 py-1.5 text-xs text-tx-secondary hover:text-tx-primary hover:bg-bg-hover flex items-center gap-2"
                                     >
                                       <Clock size={12} />
                                       {t("tasks.reminderCenter.snooze")}
@@ -353,7 +383,7 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); handleDisableReminder(item); }}
                                       disabled={acting === item.reminderId}
-                                      className="w-full text-left px-3 py-1.5 text-xs text-tx-secondary hover:bg-bg-hover flex items-center gap-2"
+                                      className="w-full text-left px-3 py-1.5 text-xs text-tx-secondary hover:text-tx-primary hover:bg-bg-hover flex items-center gap-2"
                                     >
                                       <BellOff size={12} />
                                       {t("tasks.reminderCenter.disableReminder")}
@@ -365,7 +395,7 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); handleEnableReminder(item); }}
                                       disabled={acting === item.reminderId}
-                                      className="w-full text-left px-3 py-1.5 text-xs text-tx-secondary hover:bg-bg-hover flex items-center gap-2"
+                                      className="w-full text-left px-3 py-1.5 text-xs text-tx-secondary hover:text-tx-primary hover:bg-bg-hover flex items-center gap-2"
                                     >
                                       <Bell size={12} />
                                       {t("tasks.reminderCenter.enableReminder")}
@@ -391,7 +421,7 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
                                       type="button"
                                       onClick={(e) => { e.stopPropagation(); handleSnooze(item, opt.compute); }}
                                       disabled={acting === item.reminderId}
-                                      className="w-full text-left px-3 py-1.5 text-xs text-tx-secondary hover:bg-bg-hover"
+                                      className="w-full text-left px-3 py-1.5 text-xs text-tx-secondary hover:text-tx-primary hover:bg-bg-hover"
                                     >
                                       {t(`tasks.reminderCenter.snooze${opt.key}`)}
                                     </button>
@@ -404,7 +434,7 @@ export function ReminderCenter({ open, onClose, onSelectTask }: ReminderCenterPr
                       </div>
                     )}
                     {!isCollapsed && items.length === 0 && (
-                      <div className="px-4 py-2 text-xs text-tx-tertiary">
+                      <div className="px-4 py-2 text-xs text-tx-secondary">
                         {t("tasks.reminderCenter.empty")}
                       </div>
                     )}

@@ -369,7 +369,7 @@ function ComposeBox({ onPost }: { onPost: () => void }) {
   return (
     <div
       className={cn(
-        "bg-app-surface/60 backdrop-blur-sm rounded-2xl border border-app-border shadow-sm transition-all",
+        "relative z-40 bg-app-surface/60 backdrop-blur-sm rounded-2xl border border-app-border shadow-sm transition-all",
         isDragging && "ring-2 ring-accent-primary/50 border-accent-primary/40",
       )}
       onDragEnter={handleDragEnter}
@@ -468,7 +468,7 @@ function ComposeBox({ onPost }: { onPost: () => void }) {
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.9, y: -4 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute top-full left-0 mt-2 p-2.5 bg-app-elevated rounded-xl border border-app-border shadow-lg z-20 w-[220px]"
+                  className="absolute top-full left-0 mt-2 p-2.5 bg-app-elevated rounded-xl border border-app-border shadow-lg z-50 w-[220px]"
                 >
                   <div className="grid grid-cols-6 gap-1.5">
                     {MOODS.map(({ value: v, emoji }) => (
