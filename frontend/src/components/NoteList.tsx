@@ -1318,6 +1318,8 @@ export default function NoteList() {
   const [pendingNoteType, setPendingNoteType] = useState<"normal" | "word">("normal");
   const [dateFilter, setDateFilter] = useState<string | null>(null); // YYYY-MM-DD
   const [showCalendar, setShowCalendar] = useState(false);
+  const notesFetchSeqRef = useRef(0);
+  const notesQueryKeyRef = useRef("");
   // 排序偏好（持久化到 localStorage，不入 store；用户在不同设备/浏览器下可独立设置）
   const [sortPref, setSortPref] = useState<{ by: SortBy; dir: SortDir }>(() => loadSortPref());
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -1366,59 +1368,87 @@ export default function NoteList() {
     api.getSharedNoteIds().then((ids) => setSharedNoteIds(new Set(ids))).catch(() => {});
   }, [state.notes]);
 
+  const notesQueryKey = useMemo(() => JSON.stringify({
+    viewMode: state.viewMode,
+    selectedNotebookId: state.selectedNotebookId,
+    selectedTagId: state.selectedTagId,
+    searchQuery: state.searchQuery,
+    dateFilter,
+    sortBy: sortPref.by,
+    sortDir: sortPref.dir,
+  }), [
+    state.viewMode,
+    state.selectedNotebookId,
+    state.selectedTagId,
+    state.searchQuery,
+    dateFilter,
+    sortPref.by,
+    sortPref.dir,
+  ]);
+
   const fetchNotes = useCallback(async () => {
+    const requestSeq = ++notesFetchSeqRef.current;
+    const queryChanged = notesQueryKeyRef.current !== notesQueryKey;
+    notesQueryKeyRef.current = notesQueryKey;
     actions.setLoading(true);
+    if (queryChanged) actions.setNotes([]);
     let notes: NoteListItem[] = [];
-    // 通用排序参数：除"搜索"外的视图都附加。
-    // - 搜索：后端走 FTS rowid IN(...)，排序由命中相关性决定，强行覆盖会破坏体验。
-    const sortParams: Record<string, string> = {
-      sortBy: sortPref.by,
-      sortOrder: sortPref.dir,
-    };
-    if (state.viewMode === "notebook" && state.selectedNotebookId) {
-      const params: Record<string, string> = { notebookId: state.selectedNotebookId, ...sortParams };
-      if (dateFilter) { params.dateFrom = dateFilter; params.dateTo = dateFilter; }
-      notes = await api.getNotes(params);
-    } else if (state.viewMode === "favorites") {
-      const params: Record<string, string> = { isFavorite: "1", ...sortParams };
-      if (dateFilter) { params.dateFrom = dateFilter; params.dateTo = dateFilter; }
-      notes = await api.getNotes(params);
-    } else if (state.viewMode === "trash") {
-      const params: Record<string, string> = { isTrashed: "1", ...sortParams };
-      if (dateFilter) { params.dateFrom = dateFilter; params.dateTo = dateFilter; }
-      notes = await api.getNotes(params);
-    } else if (state.viewMode === "search" && state.searchQuery) {
-      const results = await api.search(state.searchQuery);
-      notes = results.map((r) => ({
-        id: r.id,
-        userId: r.userId || "",
-        notebookId: r.notebookId,
-        workspaceId: r.workspaceId ?? null,
-        title: r.title,
-        contentText: stripSearchMarks(r.snippetHtml || r.snippet),
-        titleHtml: r.titleHtml,
-        snippetHtml: r.snippetHtml || r.snippet,
-        isPinned: r.isPinned,
-        isFavorite: r.isFavorite,
-        isArchived: 0,
-        isTrashed: 0,
-        isLocked: 0,
-        version: 0,
-        createdAt: r.updatedAt,
-        updatedAt: r.updatedAt,
-      }));
-    } else if (state.viewMode === "tag" && state.selectedTagId) {
-      const params: Record<string, string> = { ...sortParams };
-      if (dateFilter) { params.dateFrom = dateFilter; params.dateTo = dateFilter; }
-      notes = await api.getNotesWithTag(state.selectedTagId, params);
-    } else {
-      const params: Record<string, string> = { ...sortParams };
-      if (dateFilter) { params.dateFrom = dateFilter; params.dateTo = dateFilter; }
-      notes = await api.getNotes(params);
+    try {
+      // 通用排序参数：除"搜索"外的视图都附加。
+      // - 搜索：后端走 FTS rowid IN(...)，排序由命中相关性决定，强行覆盖会破坏体验。
+      const sortParams: Record<string, string> = {
+        sortBy: sortPref.by,
+        sortOrder: sortPref.dir,
+      };
+      if (state.viewMode === "notebook" && state.selectedNotebookId) {
+        const params: Record<string, string> = { notebookId: state.selectedNotebookId, ...sortParams };
+        if (dateFilter) { params.dateFrom = dateFilter; params.dateTo = dateFilter; }
+        notes = await api.getNotes(params);
+      } else if (state.viewMode === "favorites") {
+        const params: Record<string, string> = { isFavorite: "1", ...sortParams };
+        if (dateFilter) { params.dateFrom = dateFilter; params.dateTo = dateFilter; }
+        notes = await api.getNotes(params);
+      } else if (state.viewMode === "trash") {
+        const params: Record<string, string> = { isTrashed: "1", ...sortParams };
+        if (dateFilter) { params.dateFrom = dateFilter; params.dateTo = dateFilter; }
+        notes = await api.getNotes(params);
+      } else if (state.viewMode === "search" && state.searchQuery) {
+        const results = await api.search(state.searchQuery);
+        notes = results.map((r) => ({
+          id: r.id,
+          userId: r.userId || "",
+          notebookId: r.notebookId,
+          workspaceId: r.workspaceId ?? null,
+          title: r.title,
+          contentText: stripSearchMarks(r.snippetHtml || r.snippet),
+          titleHtml: r.titleHtml,
+          snippetHtml: r.snippetHtml || r.snippet,
+          isPinned: r.isPinned,
+          isFavorite: r.isFavorite,
+          isArchived: 0,
+          isTrashed: 0,
+          isLocked: 0,
+          version: 0,
+          createdAt: r.updatedAt,
+          updatedAt: r.updatedAt,
+        }));
+      } else if (state.viewMode === "tag" && state.selectedTagId) {
+        const params: Record<string, string> = { ...sortParams };
+        if (dateFilter) { params.dateFrom = dateFilter; params.dateTo = dateFilter; }
+        notes = await api.getNotesWithTag(state.selectedTagId, params);
+      } else {
+        const params: Record<string, string> = { ...sortParams };
+        if (dateFilter) { params.dateFrom = dateFilter; params.dateTo = dateFilter; }
+        notes = await api.getNotes(params);
+      }
+      if (requestSeq !== notesFetchSeqRef.current) return;
+      actions.setNotes(notes);
+    } finally {
+      if (requestSeq === notesFetchSeqRef.current) {
+        actions.setLoading(false);
+      }
     }
-    actions.setNotes(notes);
-    actions.setLoading(false);
-  }, [state.viewMode, state.selectedNotebookId, state.searchQuery, state.selectedTagId, dateFilter, sortPref.by, sortPref.dir]);
+  }, [actions, notesQueryKey, state.viewMode, state.selectedNotebookId, state.searchQuery, state.selectedTagId, dateFilter, sortPref.by, sortPref.dir]);
 
   useEffect(() => {
     fetchNotes().catch(console.error);
