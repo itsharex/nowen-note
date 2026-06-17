@@ -354,6 +354,15 @@ export interface FileStats {
    * 老后端可能不下发该字段，前端按需要做兜底（视作三个 0）。
    */
   myUploads?: { total: number; referenced: number; unreferenced: number };
+  /** 当前附件全局存储模式。只包含非敏感摘要，不包含密钥。 */
+  storage?: {
+    mode: "local" | "object" | "fallback";
+    driver: "local" | "s3";
+    source: "settings" | "env" | "default";
+    bucket?: string;
+    endpoint?: string;
+    prefix?: string;
+  };
   byMime: Array<{ mime: string; count: number; bytes: number }>;
 }
 

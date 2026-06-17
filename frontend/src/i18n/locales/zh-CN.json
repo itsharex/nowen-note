@@ -754,6 +754,13 @@
     "deleteFailed": "删除失败",
     "iconPlaceholder": "🏢"
   },
+  "files": {
+    "storage": {
+      "local": "本地存储",
+      "objectEnabled": "对象存储已启用",
+      "objectFallback": "配置不完整，已回退本地"
+    }
+  },
   "dataManager": {
     "title": "数据管理",
     "description": "导入导出你的笔记数据，你的数据永远属于你自己",

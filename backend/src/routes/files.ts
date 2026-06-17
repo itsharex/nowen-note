@@ -47,6 +47,8 @@ import {
 } from "./attachments";
 import {
   deleteAttachmentObject,
+  getAttachmentStorageInfo,
+  readObjectStorageConfigPublic,
   writeAttachmentObject,
 } from "../services/attachment-storage";
 import {
@@ -548,6 +550,7 @@ app.get("/", requireWorkspaceFeature("files"), (c) => {
 //     images: { count, bytes },
 //     files:  { count, bytes },
 //     unreferenced: { count, bytes },   —— 孤儿视图徽标（含 24h 宽限期）
+//     storage: { mode, driver, source, bucket?, endpoint?, prefix? },
 //     byMime: [{ mime, count, bytes }] }
 // ---------------------------------------------------------------------------
 app.get("/stats", requireWorkspaceFeature("files"), (c) => {
@@ -658,6 +661,30 @@ app.get("/stats", requireWorkspaceFeature("files"), (c) => {
     myUploadsUnreferenced = myUploadsTotal - myUploadsReferenced;
   }
 
+  const storageInfo = getAttachmentStorageInfo();
+  const storageConfig = readObjectStorageConfigPublic();
+  const storageMode =
+    storageInfo.driver === "s3"
+      ? "object"
+      : storageConfig.enabled
+        ? "fallback"
+        : "local";
+  const storage =
+    storageMode === "local"
+      ? {
+          mode: storageMode,
+          driver: storageInfo.driver,
+          source: storageConfig.source,
+        }
+      : {
+          mode: storageMode,
+          driver: storageInfo.driver,
+          source: storageConfig.source,
+          bucket: storageInfo.bucket || storageConfig.bucket || undefined,
+          endpoint: storageInfo.endpoint || storageConfig.endpoint || undefined,
+          prefix: storageInfo.prefix || storageConfig.prefix || undefined,
+        };
+
   return c.json({
     total,
     totalBytes,
@@ -669,6 +696,7 @@ app.get("/stats", requireWorkspaceFeature("files"), (c) => {
       referenced: myUploadsReferenced,
       unreferenced: myUploadsUnreferenced,
     },
+    storage,
     byMime: rows,
   });
 });

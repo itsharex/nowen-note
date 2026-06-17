@@ -24,6 +24,7 @@
  *   复用 AppContext，与 Sidebar / NoteList 的跳转路径一致。
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
@@ -237,6 +238,7 @@ function invalidateFileListCache(): void {
 
 
 export default function FileManager() {
+  const { t } = useTranslation();
   const { state } = useApp();
   const actions = useAppActions();
 
@@ -924,6 +926,34 @@ export default function FileManager() {
     return `共 ${stats.total} 个文件 · ${humanSize(stats.totalBytes)}（图片 ${stats.images.count} · 其他 ${stats.files.count}）`;
   }, [stats]);
 
+  const storageBadge = useMemo(() => {
+    const storage = stats?.storage;
+    if (!storage) return null;
+    const detail = [storage.bucket, storage.prefix ? `/${storage.prefix}` : ""].filter(Boolean).join(" · ");
+    if (storage.mode === "object") {
+      return {
+        label: t("files.storage.objectEnabled", { defaultValue: "Object storage enabled" }),
+        detail,
+        className: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+        dotClassName: "bg-emerald-500",
+      };
+    }
+    if (storage.mode === "fallback") {
+      return {
+        label: t("files.storage.objectFallback", { defaultValue: "Incomplete config, using local storage" }),
+        detail,
+        className: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+        dotClassName: "bg-amber-500",
+      };
+    }
+    return {
+      label: t("files.storage.local", { defaultValue: "Local storage" }),
+      detail: "",
+      className: "border-app-border bg-app-bg text-tx-secondary",
+      dotClassName: "bg-zinc-400",
+    };
+  }, [stats?.storage, t]);
+
   return (
     <div
       className="flex-1 flex flex-col h-full bg-app-bg overflow-hidden relative"
@@ -959,6 +989,24 @@ export default function FileManager() {
             </p>
           </div>
         </div>
+
+        {storageBadge && (
+          <div
+            className={cn(
+              "hidden sm:flex max-w-[280px] items-center gap-2 rounded-full border px-2.5 py-1 text-[11px]",
+              storageBadge.className,
+            )}
+            title={storageBadge.detail ? `${storageBadge.label} · ${storageBadge.detail}` : storageBadge.label}
+          >
+            <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", storageBadge.dotClassName)} />
+            <span className="whitespace-nowrap font-medium">{storageBadge.label}</span>
+            {storageBadge.detail && (
+              <span className="hidden max-w-[140px] truncate opacity-75 lg:inline">
+                {storageBadge.detail}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="flex-1" />
 
