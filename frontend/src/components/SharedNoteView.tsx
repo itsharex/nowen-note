@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Globe, Lock, AlertCircle, Loader2, FileText, MessageCircle, Send, RefreshCw, Edit3, Check, UserCircle2 } from "lucide-react";
+import { Globe, Lock, AlertCircle, Loader2, FileText, MessageCircle, Send, RefreshCw, Edit3, Check, UserCircle2, ListTree, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, resolveAttachmentUrl } from "@/lib/api";
 import { ShareInfo, SharedNoteContent, ShareComment, Note } from "@/types";
@@ -28,6 +28,13 @@ const sharedLowlight = createLowlight(common);
 
 /** 访客昵称本地存储 key，用户在同一浏览器上只需要填写一次 */
 const GUEST_NAME_KEY = "nowen-guest-name";
+const SHARE_HEADER_OFFSET_PX = 72;
+
+interface SharedOutlineHeading {
+  id: string;
+  level: number;
+  text: string;
+}
 
 interface SharedNoteViewProps {
   shareToken: string;
@@ -80,7 +87,16 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
   // PM HTML 渲染容器 ref：用于在内容注入后扫描 .shared-mermaid-block 占位，
   // 异步把每个占位替换为 mermaid 渲染出的 SVG（避开 dangerouslySetInnerHTML
   // 无法挂载 React 子树的限制）
+  const pageScrollRef = useRef<HTMLDivElement | null>(null);
   const pmRenderRef = useRef<HTMLDivElement | null>(null);
+  const desktopOutlineScrollRef = useRef<HTMLDivElement | null>(null);
+  const mobileOutlineScrollRef = useRef<HTMLDivElement | null>(null);
+  const desktopOutlineItemRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const mobileOutlineItemRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const [outlineHeadings, setOutlineHeadings] = useState<SharedOutlineHeading[]>([]);
+  const [activeOutlineId, setActiveOutlineId] = useState<string>("");
+  const [isDesktopOutlineOpen, setIsDesktopOutlineOpen] = useState(true);
+  const [isMobileOutlineOpen, setIsMobileOutlineOpen] = useState(false);
 
   useEffect(() => { guestNameRef.current = guestName; }, [guestName]);
   useEffect(() => { accessTokenRef.current = accessToken; }, [accessToken]);
@@ -617,6 +633,135 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [content?.noteId, shareToken, content?.permission, content?.isLocked]);
 
+  const isReadOnlyContent = !(isEditing && (content?.permission === "edit" || content?.permission === "edit_auth"));
+
+  useEffect(() => {
+    if (!isReadOnlyContent) {
+      setOutlineHeadings([]);
+      setActiveOutlineId("");
+      desktopOutlineItemRefs.current.clear();
+      mobileOutlineItemRefs.current.clear();
+      return;
+    }
+
+    const host = pmRenderRef.current;
+    if (!host || !content?.content) {
+      setOutlineHeadings([]);
+      setActiveOutlineId("");
+      return;
+    }
+
+    const usedIds = new Set<string>();
+    const headings = Array.from(host.querySelectorAll<HTMLHeadingElement>("h1, h2, h3, h4, h5, h6"))
+      .map((heading, index) => {
+        const level = Number(heading.tagName.slice(1)) || 1;
+        const currentId = heading.id.trim();
+        let id = currentId || `shared-heading-${index}`;
+        let fallbackIndex = index;
+        while (usedIds.has(id)) {
+          id = `shared-heading-${fallbackIndex++}`;
+        }
+        usedIds.add(id);
+        if (heading.id !== id) heading.id = id;
+        return {
+          id,
+          level,
+          text: heading.textContent?.trim() || `H${level}`,
+        };
+      });
+
+    setOutlineHeadings((prev) => {
+      const unchanged =
+        prev.length === headings.length &&
+        prev.every((item, index) => {
+          const next = headings[index];
+          return item.id === next.id && item.level === next.level && item.text === next.text;
+        });
+      return unchanged ? prev : headings;
+    });
+    setActiveOutlineId((prev) => headings.some((heading) => heading.id === prev) ? prev : headings[0]?.id || "");
+  }, [content?.content, isReadOnlyContent]);
+
+  useEffect(() => {
+    const root = pageScrollRef.current;
+    if (!root || outlineHeadings.length === 0 || !isReadOnlyContent) return;
+
+    let rafId = 0;
+    const updateActiveHeading = () => {
+      rafId = 0;
+      const rootTop = root.getBoundingClientRect().top;
+      const activationLine = rootTop + SHARE_HEADER_OFFSET_PX + 24;
+      let nextActive = outlineHeadings[0]?.id || "";
+
+      for (const heading of outlineHeadings) {
+        const el = document.getElementById(heading.id);
+        if (!el) continue;
+        if (el.getBoundingClientRect().top <= activationLine) {
+          nextActive = heading.id;
+        } else {
+          break;
+        }
+      }
+
+      setActiveOutlineId((prev) => (prev === nextActive ? prev : nextActive));
+    };
+    const scheduleUpdate = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(updateActiveHeading);
+    };
+
+    scheduleUpdate();
+    root.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      root.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+    };
+  }, [outlineHeadings, isReadOnlyContent]);
+
+  useEffect(() => {
+    if (!activeOutlineId) return;
+    const keepVisible = (
+      container: HTMLDivElement | null,
+      item: HTMLButtonElement | undefined
+    ) => {
+      if (!container || !item) return;
+      const containerRect = container.getBoundingClientRect();
+      const itemRect = item.getBoundingClientRect();
+      if (itemRect.top < containerRect.top) {
+        container.scrollTop -= containerRect.top - itemRect.top;
+      } else if (itemRect.bottom > containerRect.bottom) {
+        container.scrollTop += itemRect.bottom - containerRect.bottom;
+      }
+    };
+
+    keepVisible(desktopOutlineScrollRef.current, desktopOutlineItemRefs.current.get(activeOutlineId));
+    keepVisible(mobileOutlineScrollRef.current, mobileOutlineItemRefs.current.get(activeOutlineId));
+  }, [activeOutlineId]);
+
+  useEffect(() => {
+    if (isReadOnlyContent && outlineHeadings.length > 0) return;
+    setIsMobileOutlineOpen(false);
+  }, [isReadOnlyContent, outlineHeadings.length]);
+
+  useEffect(() => {
+    if (!isMobileOutlineOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsMobileOutlineOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMobileOutlineOpen]);
+
+  const handleOutlineSelect = useCallback((headingId: string, closeMobile = false) => {
+    const target = document.getElementById(headingId);
+    if (!target) return;
+    setActiveOutlineId(headingId);
+    if (closeMobile) setIsMobileOutlineOpen(false);
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
 
   // 分享页内的复制代码按钮事件委托，以及 mailto/tel 链接拦截
   const handleSharedContentClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -788,21 +933,44 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
   // 显示分享内容
   if (!content) return null;
 
-  let markdownHeadingIndex = 0;
-  const createMarkdownHeading = (level: 1 | 2 | 3 | 4) => {
-    const Tag = `h${level}` as keyof JSX.IntrinsicElements;
-    return ({ children, node: _node, ...props }: any) => {
-      const item = outlineItems[markdownHeadingIndex++];
-      return (
-        <Tag {...props} id={item?.id} className={cn("scroll-mt-24", props.className)}>
-          {children}
-        </Tag>
-      );
-    };
-  };
+  const showOutline = isReadOnlyContent && outlineHeadings.length > 0;
+  const showDesktopOutline = showOutline && isDesktopOutlineOpen;
+  const renderOutlineItems = (
+    itemRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>,
+    closeMobileOnSelect = false
+  ) => outlineHeadings.map((heading) => {
+    const active = heading.id === activeOutlineId;
+    return (
+      <button
+        key={heading.id}
+        ref={(node) => {
+          if (node) itemRefs.current.set(heading.id, node);
+          else itemRefs.current.delete(heading.id);
+        }}
+        type="button"
+        aria-current={active ? "true" : undefined}
+        title={heading.text}
+        onClick={() => handleOutlineSelect(heading.id, closeMobileOnSelect)}
+        className={cn(
+          "shared-note-outline-item",
+          active && "shared-note-outline-item-active",
+          heading.level === 1 && "font-semibold text-zinc-800 dark:text-zinc-100",
+          heading.level > 1 && "text-zinc-500 dark:text-zinc-400"
+        )}
+        style={{ paddingLeft: `${(heading.level - 1) * 12 + 12}px` }}
+      >
+        <span className="shared-note-outline-dot" />
+        <span className="truncate">{heading.text}</span>
+      </button>
+    );
+  });
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 overflow-y-auto" style={{ height: '100vh' }}>
+    <div
+      ref={pageScrollRef}
+      className="min-h-screen bg-zinc-50 dark:bg-zinc-950 overflow-y-auto"
+      style={{ height: "100vh", "--share-header-offset": `${SHARE_HEADER_OFFSET_PX}px` } as React.CSSProperties}
+    >
       {/* 顶部信息栏 */}
       <header className="sticky top-0 z-10 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border-b border-zinc-200 dark:border-zinc-800">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -825,6 +993,18 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {showOutline && (
+              <button
+                type="button"
+                onClick={() => setIsMobileOutlineOpen(true)}
+                className="lg:hidden flex items-center gap-1.5 px-2 py-1 text-[10px] rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+                aria-haspopup="dialog"
+                aria-expanded={isMobileOutlineOpen}
+              >
+                <ListTree size={12} />
+                大纲
+              </button>
+            )}
             {/* 更新提示 */}
             {hasUpdate && (
               <button
@@ -930,91 +1110,146 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
       <main
         className={cn(
           "mx-auto px-4 py-8",
-          showOutline ? "max-w-6xl xl:flex xl:items-start xl:gap-8" : "max-w-4xl"
+          showDesktopOutline
+            ? "max-w-6xl lg:grid lg:grid-cols-[minmax(0,56rem)_16rem] lg:gap-8 lg:items-start"
+            : "max-w-4xl"
         )}
       >
-        <article className="min-w-0 flex-1">
-        {isEditing && (content.permission === "edit" || content.permission === "edit_auth") && fakeNoteForEditing ? (
-          <div className="shared-note-editor">
-            <TiptapEditor
-              note={fakeNoteForEditing}
-              onUpdate={handleGuestSave}
-              editable={!content.isLocked}
-              isGuest
-            />
-          </div>
-        ) : contentFormat === "md" ? (
-          // 新编辑器保存的 Markdown：用 react-markdown 渲染
-          <div
-            ref={pmRenderRef}
-            className="shared-note-content prose prose-sm dark:prose-invert max-w-none
-              prose-headings:text-zinc-800 dark:prose-headings:text-zinc-200
-              prose-p:text-zinc-600 dark:prose-p:text-zinc-300
-              prose-a:text-indigo-500
-              prose-code:text-indigo-600 dark:prose-code:text-indigo-400
-              prose-blockquote:border-indigo-300 dark:prose-blockquote:border-indigo-700
-              prose-pre:bg-zinc-900 prose-pre:text-zinc-100
-              prose-img:rounded-lg prose-img:border prose-img:border-zinc-200 dark:prose-img:border-zinc-800"
-            onClick={handleSharedContentClick}
-          >
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              // rehype-raw 让 raw HTML（math 占位）能透传过 mdast→hast 阶段，
-              // 否则 ReactMarkdown 默认会丢弃 raw HTML 节点。
-              rehypePlugins={[rehypeRaw]}
-              components={{
-                h1: createMarkdownHeading(1),
-                h2: createMarkdownHeading(2),
-                h3: createMarkdownHeading(3),
-                h4: createMarkdownHeading(4),
-                // 拦截 mermaid 围栏代码块：react-markdown 把 ```mermaid 渲染成
-                // <pre><code class="language-mermaid">...</code></pre>。我们识别
-                // 出 language-mermaid 后用 MermaidView 直接出 SVG，其它语言保持
-                // 默认行为（依赖 prose 样式）。
-                code({ inline, className, children, ...props }: any) {
-                  const langMatch = /language-([\w-]+)/.exec(className || "");
-                  const lang = langMatch?.[1] || "";
-                  if (!inline && isMermaidLang(lang)) {
-                    return <MermaidView source={String(children).replace(/\n$/, "")} debounceMs={0} />;
-                  }
-                  return (
-                    <code className={className} {...props}>
-                      {children}
-                    </code>
-                  );
-                },
-              }}
+        <section className="min-w-0">
+          {isEditing && (content.permission === "edit" || content.permission === "edit_auth") && fakeNoteForEditing ? (
+            <div className="shared-note-editor">
+              <TiptapEditor
+                note={fakeNoteForEditing}
+                onUpdate={handleGuestSave}
+                editable={!content.isLocked}
+                isGuest
+              />
+            </div>
+          ) : detectFormat(content.content) === "md" ? (
+            // 新编辑器保存的 Markdown：用 react-markdown 渲染
+            <div
+              ref={pmRenderRef}
+              className="shared-note-content prose prose-sm dark:prose-invert max-w-none
+                prose-headings:text-zinc-800 dark:prose-headings:text-zinc-200
+                prose-p:text-zinc-600 dark:prose-p:text-zinc-300
+                prose-a:text-indigo-500
+                prose-code:text-indigo-600 dark:prose-code:text-indigo-400
+                prose-blockquote:border-indigo-300 dark:prose-blockquote:border-indigo-700
+                prose-pre:bg-zinc-900 prose-pre:text-zinc-100
+                prose-img:rounded-lg prose-img:border prose-img:border-zinc-200 dark:prose-img:border-zinc-800"
+              onClick={handleSharedContentClick}
             >
-              {preprocessMarkdownMath(
-                preprocessMarkdownFootnotes(
-                  content.content,
-                  computeFootnoteOrderFromMarkdown(content.content)
-                )
-              )}
-            </ReactMarkdown>
-          </div>
-        ) : (
-          <div
-            ref={pmRenderRef}
-            className="shared-note-content prose prose-sm dark:prose-invert max-w-none
-              prose-headings:text-zinc-800 dark:prose-headings:text-zinc-200
-              prose-p:text-zinc-600 dark:prose-p:text-zinc-300
-              prose-a:text-indigo-500
-              prose-code:text-indigo-600 dark:prose-code:text-indigo-400
-              prose-blockquote:border-indigo-300 dark:prose-blockquote:border-indigo-700"
-            onClick={handleSharedContentClick}
-            dangerouslySetInnerHTML={{ __html: renderedReadOnlyHtml }}
-          />
-        )}
-        </article>
-        {showOutline && (
-          <ShareOutline
-            items={outlineItems}
-            activeId={activeOutlineId}
-            onItemClick={handleOutlineClick}
-          />
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                // rehype-raw 让 raw HTML（math 占位）能透传过 mdast→hast 阶段，
+                // 否则 ReactMarkdown 默认会丢弃 raw HTML 节点。
+                rehypePlugins={[rehypeRaw]}
+                components={{
+                  // 拦截 mermaid 围栏代码块：react-markdown 把 ```mermaid 渲染成
+                  // <pre><code class="language-mermaid">...</code></pre>。我们识别
+                  // 出 language-mermaid 后用 MermaidView 直接出 SVG，其它语言保持
+                  // 默认行为（依赖 prose 样式）。
+                  code({ inline, className, children, ...props }: any) {
+                    const langMatch = /language-([\w-]+)/.exec(className || "");
+                    const lang = langMatch?.[1] || "";
+                    if (!inline && isMermaidLang(lang)) {
+                      return <MermaidView source={String(children).replace(/\n$/, "")} debounceMs={0} />;
+                    }
+                    return (
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    );
+                  },
+                }}
+              >
+                {preprocessMarkdownMath(
+                  preprocessMarkdownFootnotes(
+                    content.content,
+                    computeFootnoteOrderFromMarkdown(content.content)
+                  )
+                )}
+              </ReactMarkdown>
+            </div>
+          ) : (
+            <div
+              ref={pmRenderRef}
+              className="shared-note-content prose prose-sm dark:prose-invert max-w-none
+                prose-headings:text-zinc-800 dark:prose-headings:text-zinc-200
+                prose-p:text-zinc-600 dark:prose-p:text-zinc-300
+                prose-a:text-indigo-500
+                prose-code:text-indigo-600 dark:prose-code:text-indigo-400
+                prose-blockquote:border-indigo-300 dark:prose-blockquote:border-indigo-700"
+              onClick={handleSharedContentClick}
+              dangerouslySetInnerHTML={{ __html: renderContent(content.content) }}
+            />
+          )}
+        </section>
+
+        {showDesktopOutline && (
+          <aside className="shared-note-outline hidden lg:block">
+            <div className="shared-note-outline-header">
+              <div className="flex items-center gap-2 min-w-0">
+                <ListTree size={14} className="text-indigo-500" />
+                <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">大纲</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDesktopOutlineOpen(false)}
+                className="shared-note-outline-collapse"
+                aria-label="收起大纲"
+              >
+                收起
+              </button>
+            </div>
+            <div ref={desktopOutlineScrollRef} className="shared-note-outline-scroll py-2">
+              {renderOutlineItems(desktopOutlineItemRefs)}
+            </div>
+          </aside>
         )}
       </main>
+
+      {showOutline && !isDesktopOutlineOpen && (
+        <button
+          type="button"
+          onClick={() => setIsDesktopOutlineOpen(true)}
+          className="shared-note-outline-floating hidden lg:flex"
+          aria-label="展开大纲"
+        >
+          <ListTree size={14} />
+          大纲
+        </button>
+      )}
+
+      {showOutline && isMobileOutlineOpen && (
+        <div
+          className="shared-note-outline-mobile lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="大纲"
+          onClick={() => setIsMobileOutlineOpen(false)}
+        >
+          <div className="shared-note-outline-mobile-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="shared-note-outline-header">
+              <div className="flex items-center gap-2 min-w-0">
+                <ListTree size={15} className="text-indigo-500" />
+                <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">大纲</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileOutlineOpen(false)}
+                className="shared-note-outline-close"
+                aria-label="关闭大纲"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div ref={mobileOutlineScrollRef} className="shared-note-outline-scroll shared-note-outline-mobile-scroll py-2">
+              {renderOutlineItems(mobileOutlineItemRefs, true)}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 评论区域 */}
       {showComments && (
