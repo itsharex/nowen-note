@@ -2085,7 +2085,6 @@ export default function DiaryCenter() {
   }, [videoFeedHasMore, videoFeedLoadingMore, videoFeedNextCursor, activeRange]);
 
   // 发布后刷新
-  // 发布后刷新
   const handlePost = useCallback(() => {
     setNextCursor(null);
     loadTimeline(true);
