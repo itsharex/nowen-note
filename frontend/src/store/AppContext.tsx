@@ -20,6 +20,8 @@ interface AppState {
   /** 桌面端：笔记列表面板是否折叠（折叠后整列消失，编辑器占满）。
    *  与 sidebarCollapsed 完全平行的开关，互不影响。 */
   noteListCollapsed: boolean;
+  /** 桌面端：编辑器专注全屏。仅临时隐藏外侧导航，不改写各面板折叠偏好。 */
+  editorFullscreen: boolean;
   isLoading: boolean;
   /** 笔记切换时的加载状态：正在从后端获取完整笔记内容 */
   noteLoading: boolean;
@@ -44,6 +46,8 @@ type Action =
   | { type: "SET_SIDEBAR_WIDTH"; payload: number }
   | { type: "SET_NOTELIST_WIDTH"; payload: number }
   | { type: "TOGGLE_NOTELIST_COLLAPSED" }
+  | { type: "SET_EDITOR_FULLSCREEN"; payload: boolean }
+  | { type: "TOGGLE_EDITOR_FULLSCREEN" }
   | { type: "SET_LOADING"; payload: boolean }
   | { type: "SET_NOTE_LOADING"; payload: boolean }
   | { type: "UPDATE_NOTE_IN_LIST"; payload: Partial<NoteListItem> & { id: string } }
@@ -106,6 +110,7 @@ const initialState: AppState = {
   sidebarWidth: getSavedSidebarWidth(),
   noteListWidth: getSavedNoteListWidth(),
   noteListCollapsed: getSavedNoteListCollapsed(),
+  editorFullscreen: false,
   isLoading: false,
   noteLoading: false,
   syncStatus: "idle",
@@ -152,6 +157,10 @@ function reducer(state: AppState, action: Action): AppState {
       try { localStorage.setItem("nowen-notelist-collapsed", next ? "1" : "0"); } catch {}
       return { ...state, noteListCollapsed: next };
     }
+    case "SET_EDITOR_FULLSCREEN":
+      return { ...state, editorFullscreen: action.payload };
+    case "TOGGLE_EDITOR_FULLSCREEN":
+      return { ...state, editorFullscreen: !state.editorFullscreen };
     case "SET_LOADING":
       return { ...state, isLoading: action.payload };
     case "SET_NOTE_LOADING":
@@ -227,6 +236,8 @@ export function useAppActions() {
     setSidebarWidth: (v: number) => dispatch({ type: "SET_SIDEBAR_WIDTH", payload: v }),
     setNoteListWidth: (v: number) => dispatch({ type: "SET_NOTELIST_WIDTH", payload: v }),
     toggleNoteListCollapsed: () => dispatch({ type: "TOGGLE_NOTELIST_COLLAPSED" }),
+    setEditorFullscreen: (v: boolean) => dispatch({ type: "SET_EDITOR_FULLSCREEN", payload: v }),
+    toggleEditorFullscreen: () => dispatch({ type: "TOGGLE_EDITOR_FULLSCREEN" }),
     setLoading: (v: boolean) => dispatch({ type: "SET_LOADING", payload: v }),
     setNoteLoading: (v: boolean) => dispatch({ type: "SET_NOTE_LOADING", payload: v }),
     updateNoteInList: (v: Partial<NoteListItem> & { id: string }) => dispatch({ type: "UPDATE_NOTE_IN_LIST", payload: v }),

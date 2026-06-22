@@ -15,13 +15,6 @@ import { detectFormat } from "@/lib/contentFormat";
 import MermaidView from "@/components/MermaidView";
 import { isMermaidLang, renderMermaid } from "@/lib/mermaidRenderer";
 import { renderKatex } from "@/lib/katexRenderer";
-import ShareOutline from "@/components/share/ShareOutline";
-import {
-  addHeadingIdsToHtml,
-  extractOutlineFromHtml,
-  extractOutlineFromMarkdown,
-  extractOutlineFromTiptap,
-} from "@/lib/shareOutline";
 
 // 分享页独立的 lowlight 实例（与编辑器保持一致的 common 语法集合）
 const sharedLowlight = createLowlight(common);
@@ -134,67 +127,6 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
 
   /** 当前访问者是否是这条笔记的作者本人 */
   const isOwnerViewing = !!(viewerUserId && content?.ownerId && viewerUserId === content.ownerId);
-  const contentFormat = useMemo(() => detectFormat(content?.content || ""), [content?.content]);
-  const outlineItems = useMemo(() => {
-    if (!content?.content) return [];
-    if (contentFormat === "tiptap-json") return extractOutlineFromTiptap(content.content);
-    if (contentFormat === "html") return extractOutlineFromHtml(content.content);
-    if (contentFormat === "md") return extractOutlineFromMarkdown(content.content);
-    return [];
-  }, [content?.content, contentFormat]);
-  const renderedReadOnlyHtml = useMemo(() => {
-    if (!content?.content) return "";
-    return addHeadingIdsToHtml(renderContent(content.content));
-  }, [content?.content]);
-  const [activeOutlineId, setActiveOutlineId] = useState<string | undefined>(undefined);
-  const showOutline = !isEditing && outlineItems.length > 0;
-
-  const handleOutlineClick = useCallback((id: string) => {
-    const heading = document.getElementById(id);
-    if (!heading) return;
-    setActiveOutlineId(id);
-    heading.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
-
-  useEffect(() => {
-    if (!showOutline) {
-      setActiveOutlineId(undefined);
-      return;
-    }
-
-    const host = pmRenderRef.current;
-    if (!host) return;
-
-    const headings = outlineItems
-      .map((item) => host.querySelector<HTMLElement>(`#${cssEscape(item.id)}`))
-      .filter((heading): heading is HTMLElement => !!heading);
-
-    if (headings.length === 0) return;
-    setActiveOutlineId((current) => current || headings[0].id);
-
-    if (typeof IntersectionObserver === "undefined") return;
-
-    const visible = new Map<string, number>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const id = (entry.target as HTMLElement).id;
-          if (entry.isIntersecting) visible.set(id, entry.boundingClientRect.top);
-          else visible.delete(id);
-        });
-
-        if (visible.size === 0) return;
-        const nextId = Array.from(visible.entries()).sort((a, b) => a[1] - b[1])[0]?.[0];
-        if (nextId) {
-          setActiveOutlineId((current) => (current === nextId ? current : nextId));
-        }
-      },
-      { root: null, rootMargin: "-96px 0px -70% 0px", threshold: 0 }
-    );
-
-    headings.forEach((heading) => observer.observe(heading));
-    return () => observer.disconnect();
-  }, [outlineItems, showOutline]);
 
   /**
    * 分享页 PM 路径下 mermaid 块的异步渲染。
@@ -1378,13 +1310,6 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
  * 注意：此函数会被 dangerouslySetInnerHTML 消费，任何抛出都会让分享页白屏。
  * 因此无论 JSON 解析还是 Tiptap 节点遍历失败，都要兜底返回可显示的文本。
  */
-function cssEscape(value: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(value);
-  }
-  return value.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`);
-}
-
 function renderContent(content: string): string {
   if (!content) return "";
 

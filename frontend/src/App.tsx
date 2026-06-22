@@ -28,6 +28,7 @@ import Toaster from "@/components/Toaster";
 import { User } from "@/types";
 import { getServerUrl, setServerUrl, clearServerUrl, broadcastLogout, initializeServerUrlFromRuntime } from "@/lib/api";
 import { TASK_VIEW_SHELL_CLASS } from "@/lib/taskLayout";
+import { resolveEditorFocusLayout } from "@/lib/editorFocusLayout";
 import { bootstrap as syncBootstrap, teardown as syncTeardown, syncNow } from "@/lib/syncEngine";
 import { realtime } from "@/lib/realtime";
 import { useBackButton, hideSplashScreen, useStatusBarSync, useKeyboardLayout, isNativePlatform } from "@/hooks/useCapacitor";
@@ -350,7 +351,17 @@ function AppLayout() {
   const isDiaryView = state.viewMode === "diary";
   const isFilesView = state.viewMode === "files";
   const isRegularNoteBrowser = state.viewMode === "all" || state.viewMode === "notebook";
-  const showDesktopNoteList = !state.noteListCollapsed && !(userPrefs.showNotesInNotebookTree && isRegularNoteBrowser);
+  const editorFocusLayout = resolveEditorFocusLayout({
+    editorFullscreen: state.editorFullscreen,
+    railVisible,
+    sidebarCollapsed: state.sidebarCollapsed,
+    noteListCollapsed: state.noteListCollapsed,
+    showNotesInNotebookTree: userPrefs.showNotesInNotebookTree,
+    isRegularNoteBrowser,
+  });
+  const showRail = editorFocusLayout.showRail;
+  const showSidebar = editorFocusLayout.showSidebar;
+  const showDesktopNoteList = editorFocusLayout.showNoteList;
   const sidebarBackdropPointerStart = useRef<{ x: number; y: number } | null>(null);
 
   const handleSidebarBackdropPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -405,6 +416,12 @@ function AppLayout() {
     });
     return off;
   }, []);
+
+  useEffect(() => {
+    if (state.editorFullscreen && !state.activeNote) {
+      actions.setEditorFullscreen(false);
+    }
+  }, [actions, state.activeNote, state.editorFullscreen]);
 
 
   // P0: Android 返回键处理
@@ -594,8 +611,8 @@ function AppLayout() {
           但 Rail 仍在，模块切换永远 1 次点击可达。
           v16 P3 后续：Rail 三档模式（icon=48px 纯图标 / label=64px 图标+文字 / hidden=完全隐藏）；
           hidden 模式下若主侧栏也折叠，强制保留 Rail（避免完全无侧栏入口）。 */}
-      {railVisible && <NavRail />}
-      {!state.sidebarCollapsed && (
+      {showRail && <NavRail />}
+      {showSidebar && (
         <div
           className="hidden md:flex shrink-0"
           style={{ width: `${state.sidebarWidth}px` }}
@@ -603,7 +620,7 @@ function AppLayout() {
           <Sidebar variant="desktop" />
         </div>
       )}
-      <SidebarResizeHandle />
+      {showSidebar && <SidebarResizeHandle />}
 
       {/* ===== 主内容区 ===== */}
       {isTaskView ? (

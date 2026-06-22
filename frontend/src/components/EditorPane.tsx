@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Star, Pin, Trash2, Cloud, CloudOff, RefreshCw, Check, Loader2, ChevronLeft, FolderInput, ChevronRight, ChevronDown, X, ListTree, Lock, Unlock, Tag as TagIcon, Type, MoreHorizontal, Share2, History, MessageCircle, FileCode, Eye, Pencil, CloudUpload, PanelLeft, Paperclip, Search, Sparkles, Network } from "lucide-react";
+import { Star, Pin, Trash2, Cloud, CloudOff, RefreshCw, Check, Loader2, ChevronLeft, FolderInput, ChevronRight, ChevronDown, X, ListTree, Lock, Unlock, Tag as TagIcon, Type, MoreHorizontal, Share2, History, MessageCircle, FileCode, Eye, Pencil, CloudUpload, PanelLeft, Paperclip, Search, Sparkles, Network, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import TiptapEditor, { HeadingItem } from "@/components/TiptapEditor";
@@ -102,6 +102,7 @@ export default function EditorPane() {
    */
   const isViewLocked = !!activeNote && viewLockedIds.has(activeNote.id);
   const effectiveLocked = !!activeNote?.isLocked || isViewLocked;
+  const showDesktopOutline = showOutline && !state.editorFullscreen;
 
   // �бʼ�ʱ��ƫ��Ӧ��"�򿪼�����"��
   // ����ֻ�� activeNote.id �仯ʱ��һ�Σ������� prefs.lockOnOpen���������û���
@@ -127,6 +128,10 @@ export default function EditorPane() {
     // ��ǰ�򿪵ıʼǣ���к���֡�����ֻ�ڡ����ʼǡ����ʱ����Ч��
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeNote?.id]);
+
+  const toggleEditorFullscreen = useCallback(() => {
+    actions.setEditorFullscreen(!state.editorFullscreen);
+  }, [actions, state.editorFullscreen]);
 
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showMobileMoveMenu, setShowMobileMoveMenu] = useState(false);
@@ -2325,13 +2330,25 @@ export default function EditorPane() {
             </Button>
           </div>
 
+          {/* 全屏 */}
+          <Button
+            variant="ghost" size="icon" className="h-7 w-7"
+            onClick={toggleEditorFullscreen}
+            title={state.editorFullscreen ? '退出全屏' : '编辑器全屏'}
+            aria-label={state.editorFullscreen ? '退出全屏' : '编辑器全屏'}
+          >
+            {state.editorFullscreen
+              ? <Minimize2 size={14} className="text-accent-primary" />
+              : <Maximize2 size={14} />}
+          </Button>
+
           {/* ��� */}
           <Button
             variant="ghost" size="icon" className="h-7 w-7"
             onClick={() => setShowOutline(!showOutline)}
-            title={showOutline ? t('editor.hideOutline') : t('editor.showOutline')}
+            title={showDesktopOutline ? t('editor.hideOutline') : t('editor.showOutline')}
           >
-            <ListTree size={14} className={cn(showOutline && "text-accent-primary")} />
+            <ListTree size={14} className={cn(showDesktopOutline && "text-accent-primary")} />
           </Button>
 
           {/* ���� */}
@@ -2869,7 +2886,7 @@ export default function EditorPane() {
         )}
       </AnimatePresence>
 
-      {showOutline && (
+      {showDesktopOutline && (
           <OutlinePanel
             headings={headings}
             onSelect={(pos) => scrollToRef.current?.(pos)}
