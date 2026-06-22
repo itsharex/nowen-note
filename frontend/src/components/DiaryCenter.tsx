@@ -149,9 +149,6 @@ function ComposeBox({ onPost }: { onPost: () => void }) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const recordInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
-  const recordInputRef = useRef<HTMLInputElement>(null);
   // dragOver/Leave 计数：浏览器会在子元素切换时狂抛 enter/leave 事件，
   // 直接 setState 会闪烁。用计数器保证只有真正离开容器才隐藏高亮。
   const dragCounterRef = useRef(0);
