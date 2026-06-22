@@ -284,7 +284,7 @@ export function TaskCalendarView({
 
       {/* Mobile: selected date task list at bottom */}
       {selectedDate && (
-        <div className="md:hidden border-t border-app-border bg-app-surface overflow-y-auto max-h-[30vh]">
+        <div className="md:hidden border-t border-app-border bg-app-surface overflow-y-auto max-h-[45vh]">
           <div className="px-4 py-2 border-b border-app-border/50">
             <span className="text-xs font-semibold text-tx-primary">
               {(isZh ? format(selectedDate, "M/d EEE") : format(selectedDate, "EEE, MMM d", { locale: dateLocale }))}

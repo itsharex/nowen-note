@@ -1208,7 +1208,8 @@
       "failed": "Operation failed",
       "deleteConfirm": "Delete this template?",
       "itemCount": "{{count}} items"
-    }
+    },
+    "add": "Add"
   },
   "tags": {
     "addTagPlaceholder": "Add tag...",

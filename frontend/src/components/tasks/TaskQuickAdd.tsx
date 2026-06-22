@@ -196,11 +196,19 @@ export function TaskQuickAdd({
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
           title={t('tasks.insertImage')}
-          className="flex-shrink-0 p-1 rounded hover:bg-app-hover text-tx-tertiary hover:text-accent-primary transition-colors disabled:opacity-50"
+          className="flex-shrink-0 p-1 rounded hover:bg-app-hover text-tx-tertiary hover:text-accent-primary transition-colors disabled:opacity-50 hidden md:block"
         >
           {uploading
             ? <Loader2 size={16} className="animate-spin" />
             : <ImagePlus size={16} />}
+        </button>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!value.trim()}
+          className="flex-shrink-0 px-2.5 py-1 rounded-full text-xs font-medium bg-accent-primary text-white disabled:opacity-40 md:hidden"
+        >
+          {t('tasks.add')}
         </button>
         <input
           ref={fileRef}

@@ -36,6 +36,7 @@ export function TaskBoardView({
 }) {
   // Drag state
   const [dragId, setDragId] = useState<string | null>(null);
+  const isMobile = typeof navigator !== "undefined" && /Mobi|Android/i.test(navigator.userAgent);
   const [dragOverCol, setDragOverCol] = useState<TaskStatus | null>(null);
 
   const handleDragStart = useCallback((id: string, e: React.DragEvent) => {
@@ -141,7 +142,7 @@ export function TaskBoardView({
                     layout
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    draggable
+                    draggable={!isMobile}
                     onDragStart={(e) => handleDragStart(task.id, e as unknown as React.DragEvent)}
                     onDragEnd={handleDragEnd}
                     className={cn(

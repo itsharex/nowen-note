@@ -94,6 +94,7 @@ export default function TaskCenter() {
   const [editProjectColor, setEditProjectColor] = useState("#6366f1");
   const [showProjectMenu, setShowProjectMenu] = useState<string | null>(null);
   const [mobileProjectOpen, setMobileProjectOpen] = useState(false);
+  const isMobile = typeof navigator !== "undefined" && /Mobi|Android/i.test(navigator.userAgent);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showReminderCenter, setShowReminderCenter] = useState(false);
   const [reminderBadgeCount, setReminderBadgeCount] = useState(0);
@@ -866,7 +867,7 @@ export default function TaskCenter() {
                         "relative",
                         dragOverId === item.node.id && dragId !== item.node.id && "before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-accent-primary before:rounded-full before:-translate-y-1"
                       )}
-                      draggable={!selectMode && !sortByDueTime}
+                      draggable={!selectMode && !sortByDueTime && !isMobile}
                       onDragStart={(e) => handleDragStart(item.node.id, e)}
                       onDragOver={(e) => handleDragOver(item.node.id, e)}
                       onDrop={() => handleDrop(item.node.id)}
@@ -904,7 +905,7 @@ export default function TaskCenter() {
                         "relative",
                         dragOverId === task.id && dragId !== task.id && "before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-accent-primary before:rounded-full before:-translate-y-1"
                       )}
-                      draggable={!selectMode && !sortByDueTime}
+                      draggable={!selectMode && !sortByDueTime && !isMobile}
                       onDragStart={(e) => handleDragStart(task.id, e)}
                       onDragOver={(e) => handleDragOver(task.id, e)}
                       onDrop={() => handleDrop(task.id)}

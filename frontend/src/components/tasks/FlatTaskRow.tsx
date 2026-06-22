@@ -160,7 +160,7 @@ export const FlatTaskRow = React.forwardRef<HTMLDivElement, {
           {onCreateChild && (
             <button
               onClick={(e) => { e.stopPropagation(); setShowSubtaskInput(true); }}
-              className="opacity-0 group-hover:opacity-100 flex-shrink-0 p-0.5 rounded hover:bg-app-hover text-tx-tertiary hover:text-accent-primary transition-all"
+              className="opacity-100 md:opacity-0 md:group-hover:opacity-100 flex-shrink-0 p-0.5 rounded hover:bg-app-hover text-tx-tertiary hover:text-accent-primary transition-all"
               title={t('tasks.addChild')}
             >
               <Plus size={14} />

@@ -1372,7 +1372,8 @@
       "dependencyCreateFailed": "创建依赖失败",
       "dependencyDeleted": "依赖已删除",
       "dependencyDeleteFailed": "删除依赖失败"
-    }
+    },
+    "add": "添加"
   },
   "tags": {
     "addTagPlaceholder": "添加标签...",
