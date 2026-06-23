@@ -400,3 +400,4 @@ function MoveSidebarNoteModal({
           git add frontend/src/components/Sidebar.tsx .github/workflows/auto-fix-note-contextmenu.yml
           git commit -m "fix: unify notebook tree note context menu (NOTEBOOK-TREE-NOTE-CONTEXTMENU-01)"
           git push
+# trigger: 2
