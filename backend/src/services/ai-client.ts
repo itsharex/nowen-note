@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AI Client 适配层
  *
  * 统一不同 AI provider 的调用方式，兼容 OpenAI 格式和多种非标准格式。
@@ -26,6 +26,111 @@ export interface CallAIOptions {
   temperature?: number;
   max_tokens?: number;
   timeout_ms?: number;
+}
+
+const FINAL_MARKER_RE = /(?:^|\n)\s*(最终答案|最终标题|标题|答案|Final|Answer|Result)\s*[:：]\s*/gi;
+const QUOTE_RE = /^[\s"'“”‘’「」『』《》#*`\-:：]+|[\s"'“”‘’「」『』《》#*`\-:：。.!！?？]+$/g;
+
+function isLikelyReasoningLine(line: string): boolean {
+  const s = line.trim();
+  if (!s) return false;
+  return [
+    /^思考过程\s*[:：]?/,
+    /^推理过程\s*[:：]?/,
+    /^分析过程\s*[:：]?/,
+    /^首先[，,].*(用户|我需要|我们需要|要求)/,
+    /^用户(要求|想要|希望|需要)/,
+    /^我(需要|会|应该|将|先|可以)/,
+    /^我们(需要|可以|应该|先)/,
+    /^接下来[，,]/,
+    /^根据(用户|提供的|以上)/,
+    /标题长度在\s*20\s*字以内/,
+    /只返回标题文本/,
+    /不要加引号或其他标点/,
+  ].some((re) => re.test(s));
+}
+
+/** 删除推理模型常见的思考块和推理段落。 */
+export function stripAiReasoning(raw: string): string {
+  if (!raw) return "";
+  let text = String(raw).replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
+
+  // XML/类 XML 思考块：<think>...</think>、<reasoning>...</reasoning>
+  text = text.replace(/<\s*(think|reasoning)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "");
+  // 没有闭合标签时，先移除到最终答案标记前；如果没有标记，则移除到结尾。
+  text = text.replace(/<\s*(think|reasoning)[^>]*>[\s\S]*?(?=(?:最终答案|最终标题|标题|答案|Final|Answer|Result)\s*[:：]|$)/gi, "");
+  text = text.replace(/<\s*\/\s*(think|reasoning)\s*>/gi, "");
+
+  // Markdown 代码围栏里的 reasoning / think。
+  text = text.replace(/```\s*(think|reasoning)[\s\S]*?```/gi, "");
+
+  // 中文显式推理段：有最终标记时只删除标记前的推理段。
+  text = text.replace(/(?:^|\n)\s*(思考过程|推理过程|分析过程)\s*[:：][\s\S]*?(?=(?:\n\s*)?(最终答案|最终标题|标题|答案|Final|Answer|Result)\s*[:：])/gi, "\n");
+
+  return text
+    .split("\n")
+    .filter((line) => !isLikelyReasoningLine(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** 优先提取最终答案标记后的内容，再做推理清洗。 */
+export function extractFinalAnswer(raw: string): string {
+  const stripped = stripAiReasoning(raw);
+  if (!stripped) return "";
+
+  let match: RegExpExecArray | null;
+  let lastEnd = -1;
+  FINAL_MARKER_RE.lastIndex = 0;
+  while ((match = FINAL_MARKER_RE.exec(stripped)) !== null) {
+    lastEnd = FINAL_MARKER_RE.lastIndex;
+  }
+
+  const picked = lastEnd >= 0 ? stripped.slice(lastEnd) : stripped;
+  return stripAiReasoning(picked)
+    .replace(/^\s*[-*•]\s*/gm, "")
+    .trim();
+}
+
+function cleanOneLineTitle(line: string): string {
+  return line
+    .replace(/^\s*(最终标题|标题|最终答案|答案|Final|Answer|Result)\s*[:：]\s*/i, "")
+    .replace(/^#+\s*/, "")
+    .replace(QUOTE_RE, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+/** 从 AI 输出中提取不含推理过程的短标题。 */
+export function extractAiTitle(raw: string, maxLength = 20): string {
+  const answer = extractFinalAnswer(raw);
+  const candidates = answer
+    .split(/\n+/)
+    .map((line) => cleanOneLineTitle(line))
+    .filter(Boolean)
+    .filter((line) => !isLikelyReasoningLine(line));
+
+  let title = candidates[0] || cleanOneLineTitle(answer);
+  if (!title || isLikelyReasoningLine(title)) return "";
+
+  // 如果模型仍返回解释句，优先取句号、冒号后更像标题的一段。
+  title = title
+    .replace(/^这篇笔记(主要)?(讲述|介绍|讨论|关于)/, "")
+    .replace(/^根据内容(可知|来看)?/, "")
+    .replace(/^可以命名为/, "")
+    .replace(/^建议标题为/, "");
+
+  const sentence = title.split(/[。.!！?？；;]/).find((part) => part.trim()) || title;
+  title = cleanOneLineTitle(sentence);
+
+  if (!title || isLikelyReasoningLine(title)) return "";
+  return title.length > maxLength ? title.slice(0, maxLength) : title;
+}
+
+/** 从 OpenAI-compatible / Gemini 等响应中抽最终助手文本，不拼 reasoning_content。 */
+export function normalizeAiAssistantMessage(data: Record<string, unknown>): string {
+  return extractFinalAnswer(extractTextFromChatCompletion(data));
 }
 
 // ===== 核心函数 =====
@@ -68,8 +173,7 @@ export async function callAIChat(
   }
 
   const data = (await res.json()) as Record<string, unknown>;
-  const text = extractTextFromChatCompletion(data);
-  return text;
+  return normalizeAiAssistantMessage(data);
 }
 
 /**
@@ -161,6 +265,22 @@ export async function* callAIChatStream(
 
 // ===== 文本提取 =====
 
+function readContentPart(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value.map((part) => {
+      if (typeof part === "string") return part;
+      if (part && typeof part === "object") {
+        const obj = part as Record<string, unknown>;
+        if (typeof obj.text === "string") return obj.text;
+        if (typeof obj.content === "string") return obj.content;
+      }
+      return "";
+    }).join("");
+  }
+  return "";
+}
+
 /**
  * 从 chat completion JSON 响应中提取文本。
  * 兼容多种 provider 的返回格式。
@@ -172,21 +292,15 @@ export function extractTextFromChatCompletion(data: Record<string, unknown>): st
     const choice = choices[0] as Record<string, unknown>;
     // non-stream: message.content
     const message = choice.message as Record<string, unknown> | undefined;
-    if (message && typeof message.content === "string" && message.content) {
-      return message.content;
+    if (message) {
+      const messageContent = readContentPart(message.content);
+      if (messageContent) return messageContent;
     }
     // stream frame: delta.content
     const delta = choice.delta as Record<string, unknown> | undefined;
-    // DeepSeek reasoning model: reasoning_content (thinking tokens)
-    if (message && typeof message.reasoning_content === "string" && message.reasoning_content) {
-      return message.reasoning_content;
-    }
-    if (delta && typeof delta.content === "string" && delta.content) {
-      return delta.content;
-    }
-    // DeepSeek reasoning model stream: delta.reasoning_content
-    if (delta && typeof (delta as any).reasoning_content === "string" && (delta as any).reasoning_content) {
-      return (delta as any).reasoning_content;
+    if (delta) {
+      const deltaContent = readContentPart(delta.content);
+      if (deltaContent) return deltaContent;
     }
     if (typeof choice.text === "string" && choice.text) {
       return choice.text;
@@ -200,8 +314,9 @@ export function extractTextFromChatCompletion(data: Record<string, unknown>): st
 
   // 3. output.text (某些 API)
   const output = data.output as Record<string, unknown> | undefined;
-  if (output && typeof output.text === "string" && output.text) {
-    return output.text;
+  if (output) {
+    const outputText = readContentPart(output.text);
+    if (outputText) return outputText;
   }
 
   // 4. 顶层 response / content / text
@@ -238,9 +353,12 @@ function parseOpenAIStreamDelta(json: Record<string, unknown>): string {
   if (!Array.isArray(choices) || choices.length === 0) return "";
   const choice = choices[0] as Record<string, unknown>;
   const delta = choice.delta as Record<string, unknown> | undefined;
-  if (delta && typeof delta.content === "string") return delta.content;
-  if (delta && typeof delta.reasoning_content === "string") return delta.reasoning_content;
-  // 某些 provider 在最后一个 chunk 只有 finish_reason 无 content
+  if (delta) {
+    const content = readContentPart(delta.content);
+    if (content) return content;
+  }
+  // 关键：不要返回 delta.reasoning_content / message.reasoning_content。
+  // DeepSeek、MiMo 等推理模型会把思考过程放到这些字段里，前端不应展示、保存或插入。
   return "";
 }
 
@@ -249,9 +367,9 @@ function parseOpenAIStreamDelta(json: Record<string, unknown>): string {
 /**
  * 清理错误文本，移除可能的 API Key 片段。
  */
-export function sanitizeError(text: string): string {
+export function sanitizeError(text: unknown): string {
   // 移除常见 API key 格式
-  return text
+  return String(text || "")
     .replace(/sk-[a-zA-Z0-9_-]{20,}/g, "sk-****")
     .replace(/Bearer\s+[a-zA-Z0-9_.-]{20,}/g, "Bearer ****")
     .slice(0, 300);
