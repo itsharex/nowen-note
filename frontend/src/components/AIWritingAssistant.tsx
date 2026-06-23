@@ -10,6 +10,8 @@ import { useTranslation } from "react-i18next";
 import { confirm as confirmDialog } from "@/components/ui/confirm";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { extractFinalAnswer } from "@/lib/aiOutput";
+import { buildAiContext } from "@/lib/aiContextBuilder";
 
 type AIAction = "continue" | "rewrite" | "polish" | "shorten" | "expand" | "translate_en" | "translate_zh" | "summarize" | "explain" | "fix_grammar" | "format_markdown" | "format_code" | "custom";
 
@@ -105,10 +107,17 @@ export default function AIWritingAssistant({
     setShowCustomInput(false);
 
     try {
+      const ctx = buildAiContext({ action, selectedText, contentText: fullText, maxInputTokens: 1800, question: action === "custom" ? prompt : undefined });
+      const editActions = new Set(["polish", "rewrite", "shorten", "expand", "fix_grammar", "format_markdown", "format_code"]);
+      if (!selectedText && editActions.has(action) && ctx.truncated) {
+        toast.info(t("ai.noteTooLongSelectFirst") || "当前笔记较长，建议先选中一段文字处理，或使用分段处理全文。");
+      } else if (ctx.notice) {
+        toast.info(ctx.notice);
+      }
       await api.aiChat(
         action,
         selectedText,
-        fullText.slice(0, 2000),
+        ctx.promptText,
         (chunk) => {
           setResult(prev => prev + chunk);
         },
