@@ -5,7 +5,7 @@ import {
   CalendarDays, AlertTriangle, CheckCheck, Inbox,
   Search, X as XIcon, GripVertical,
   CheckSquare, Trash2, Square,
-  LayoutGrid, LayoutList, Calendar as CalendarIcon, BarChart3, FolderOpen, Plus, ChevronRight, Bell,
+  LayoutGrid, LayoutList, Calendar as CalendarIcon, BarChart3, FolderOpen, Plus, ChevronRight, Bell, Maximize2, Minimize2,
   MoreHorizontal, Trash2 as TrashIcon, FileText,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -98,6 +98,7 @@ export default function TaskCenter() {
   const isMobile = typeof navigator !== "undefined" && /Mobi|Android/i.test(navigator.userAgent);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showReminderCenter, setShowReminderCenter] = useState(false);
+  const [taskFullscreen, setTaskFullscreen] = useState(false);
   const [reminderBadgeCount, setReminderBadgeCount] = useState(0);
   const [sortByDueTime, setSortByDueTime] = useState(false);
 
@@ -540,8 +541,18 @@ export default function TaskCenter() {
     }
   };
 
+  // Esc 键退出全屏
+  useEffect(() => {
+    if (!taskFullscreen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTaskFullscreen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [taskFullscreen]);
+
   return (
-    <div className={TASK_CENTER_ROOT_CLASS}>
+    <div className={cn(TASK_CENTER_ROOT_CLASS, taskFullscreen && "fixed inset-0 z-[80] bg-app-bg")}>
       {/* Left: Sidebar Filters + Projects (desktop) */}
       <div className="hidden md:flex w-52 shrink-0 flex-col border-r border-app-border bg-app-surface overflow-y-auto" style={{ paddingTop: "var(--safe-area-top)" }}>
         <div className="px-4 py-4 border-b border-app-border">
@@ -732,6 +743,13 @@ export default function TaskCenter() {
               title={t("tasks.sortByDueTime")}
             >
               <CalendarDays size={14} />
+            </button>
+            <button
+              onClick={() => setTaskFullscreen((v) => !v)}
+              className="p-1.5 rounded-md transition-colors text-tx-tertiary hover:text-tx-secondary hover:bg-app-hover"
+              title={taskFullscreen ? t("tasks.exitFullscreen") : t("tasks.enterFullscreen")}
+            >
+              {taskFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
             </button>
           </div>
           <div className="flex items-center gap-2">

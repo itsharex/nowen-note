@@ -1232,7 +1232,9 @@
       "confirmDisable": "Disabling will stop calendar sync. Continue?",
       "rotated": "Link has been reset",
       "hint": "Calendar sync is not real-time. Refresh frequency depends on your device or calendar app."
-    }
+    },
+    "enterFullscreen": "Fullscreen",
+    "exitFullscreen": "Exit fullscreen"
   },
   "tags": {
     "addTagPlaceholder": "Add tag...",
