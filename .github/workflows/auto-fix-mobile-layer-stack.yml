@@ -1,0 +1,92 @@
+name: Auto Fix Mobile Layer Stack
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/auto-fix-mobile-layer-stack.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Patch mobile drawer and diary compose layer
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if old not in text:
+                  raise SystemExit(f'Marker not found: {label}')
+              return text.replace(old, new, 1)
+
+          app = Path('frontend/src/App.tsx')
+          text = app.read_text(encoding='utf-8-sig')
+
+          text = replace_once(
+              text,
+              '  const isFilesView = state.viewMode === "files";\n  const isRegularNoteBrowser = state.viewMode === "all" || state.viewMode === "notebook";',
+              '  const isFilesView = state.viewMode === "files";\n  const isRegularNoteBrowser = state.viewMode === "all" || state.viewMode === "notebook";\n  const isMobileDrawerNoteContext =\n    state.viewMode === "all" ||\n    state.viewMode === "notebook" ||\n    state.viewMode === "favorites" ||\n    state.viewMode === "search" ||\n    state.viewMode === "tag";',
+              'add mobile drawer note context',
+          )
+
+          text = replace_once(
+              text,
+              '  useEffect(() => {\n    if (state.editorFullscreen && !state.activeNote) {\n      actions.setEditorFullscreen(false);\n    }\n  }, [actions, state.activeNote, state.editorFullscreen]);\n\n',
+              '  useEffect(() => {\n    if (state.editorFullscreen && !state.activeNote) {\n      actions.setEditorFullscreen(false);\n    }\n  }, [actions, state.activeNote, state.editorFullscreen]);\n\n  // MOBILE-LAYER-STACK-01：切到说说/待办/思维导图/AI/文件/回收站等非笔记模块时，\n  // 关闭移动端抽屉，避免旧的笔记本目录树残留到新模块上方。\n  useEffect(() => {\n    if (!isMobileDrawerNoteContext) {\n      actions.setMobileSidebar(false);\n    }\n    // 只响应模块切换；用户在非笔记模块主动打开抽屉时，仍允许展示精简 NavRail。\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [state.viewMode]);\n\n',
+              'insert close drawer on non note view',
+          )
+
+          text = replace_once(
+              text,
+              '      {/* ===== 移动端：抽屉式侧边栏 =====\n          v16 P3 后续：与桌面端对齐，抽屉内部也拆成 NavRail + Sidebar 双栏。\n          - NavRail variant="mobile"：48/64px，顶部含关闭 X 与图标/文字模式切换；\n                                       不接受 hidden 模式（抽屉里没意义）。\n          - Sidebar variant="mobile"：主区只渲染 WorkspaceSwitcher + 搜索 + 笔记本 + 标签。\n          抽屉总宽 max-w 从 340 → 380：Rail 约占 48-64px，主区保持 ~320px 与改造前持平。 */}',
+              '      {/* ===== 移动端：抽屉式侧边栏 =====\n          MOBILE-LAYER-STACK-01：移动端只在笔记上下文渲染二级 Sidebar。\n          非笔记模块（说说/待办/思维导图/AI/文件/回收站）只展示 NavRail，\n          避免“主导航 + 笔记本目录 + 遮罩 + 模块弹窗”多层叠加。 */}',
+              'update mobile drawer comment',
+          )
+
+          text = replace_once(
+              text,
+              '               className="fixed inset-y-0 left-0 z-50 w-[88%] max-w-[380px] md:hidden shadow-2xl flex overflow-hidden"',
+              '               className={`fixed inset-y-0 left-0 z-50 md:hidden shadow-2xl flex overflow-hidden ${isMobileDrawerNoteContext ? "w-[88%] max-w-[380px]" : "w-auto max-w-[80px]"}`}',
+              'mobile drawer width class',
+          )
+
+          text = replace_once(
+              text,
+              '              <NavRail variant="mobile" />\n              <div className="flex-1 min-w-0 overflow-hidden">\n                <Sidebar />\n              </div>',
+              '              <NavRail variant="mobile" />\n              {isMobileDrawerNoteContext && (\n                <div className="flex-1 min-w-0 overflow-hidden">\n                  <Sidebar />\n                </div>\n              )}',
+              'conditional mobile sidebar',
+          )
+
+          app.write_text(text, encoding='utf-8')
+
+          diary = Path('frontend/src/components/DiaryCenter.tsx')
+          text = diary.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              '        "relative z-40 bg-app-surface/60 backdrop-blur-sm rounded-2xl border border-app-border shadow-sm transition-all",',
+              '        "relative z-0 bg-app-surface/60 backdrop-blur-sm rounded-2xl border border-app-border shadow-sm transition-all",',
+              'diary compose z-index',
+          )
+          diary.write_text(text, encoding='utf-8')
+          PY
+      - name: Validate frontend
+        run: |
+          cd frontend
+          npm install
+          npx tsc -b
+          npx vite build
+      - name: Commit fix and remove temporary workflow
+        run: |
+          rm .github/workflows/auto-fix-mobile-layer-stack.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/App.tsx frontend/src/components/DiaryCenter.tsx .github/workflows/auto-fix-mobile-layer-stack.yml
+          git commit -m "fix: 优化移动端抽屉与弹窗层级 (MOBILE-LAYER-STACK-01)"
+          git push
