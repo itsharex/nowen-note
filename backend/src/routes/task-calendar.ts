@@ -111,6 +111,7 @@ taskCalendar.get("/feed", (c) => {
   return c.json({
     feed: {
       id: row.id,
+      token: row.token,
       enabled: !!row.enabled,
       includeCompleted: !!row.includeCompleted,
       includeDescription: !!row.includeDescription,
@@ -138,6 +139,7 @@ taskCalendar.post("/feed", (c) => {
     return c.json({
       feed: {
         id: existing.id,
+        token: existing.token,
         enabled: true,
         includeCompleted: !!existing.includeCompleted,
         includeDescription: !!existing.includeDescription,
@@ -154,6 +156,7 @@ taskCalendar.post("/feed", (c) => {
   return c.json({
     feed: {
       id,
+      token,
       enabled: true,
       includeCompleted: false,
       includeDescription: true,
@@ -204,6 +207,7 @@ taskCalendar.patch("/feed", async (c) => {
   return c.json({
     feed: {
       id: updated.id,
+      token: updated.token,
       enabled: !!updated.enabled,
       includeCompleted: !!updated.includeCompleted,
       includeDescription: !!updated.includeDescription,

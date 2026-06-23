@@ -1209,7 +1209,30 @@
       "deleteConfirm": "Delete this template?",
       "itemCount": "{{count}} items"
     },
-    "add": "Add"
+    "add": "Add",
+    "calendarFeed": {
+      "title": "Calendar Subscription",
+      "loading": "Loading...",
+      "enable": "Enable Calendar Subscription",
+      "created": "Calendar subscription enabled",
+      "updated": "Settings updated",
+      "error": "Operation failed, please try again",
+      "description": "Export tasks as a calendar subscription link for iPhone, Android or third-party calendar apps. Reminders are handled by the system calendar, independent of Nowen Note.",
+      "active": "Active",
+      "disabled": "Disabled",
+      "lastAccess": "Last accessed",
+      "link": "Subscription Link",
+      "copied": "Link copied",
+      "includeCompleted": "Export completed tasks",
+      "includeDescription": "Export descriptions",
+      "defaultAlarm": "Default reminder time",
+      "rotate": "Reset link",
+      "disable": "Disable subscription",
+      "confirmRotate": "Resetting the link will immediately invalidate the old one. Continue?",
+      "confirmDisable": "Disabling will stop calendar sync. Continue?",
+      "rotated": "Link has been reset",
+      "hint": "Calendar sync is not real-time. Refresh frequency depends on your device or calendar app."
+    }
   },
   "tags": {
     "addTagPlaceholder": "Add tag...",
