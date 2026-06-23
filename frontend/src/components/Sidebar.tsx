@@ -7,7 +7,7 @@ import {
   Sparkles, NotebookPen, Smile, GripVertical,
   FolderInput, Check, Home, Download, FolderOpen,
   Columns2, Columns3, FileType2, Link2, FileText,
-  Pin, PinOff, StarOff, Lock, Unlock,
+  Pin, PinOff, StarOff, Lock, Unlock, Image,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,7 @@ import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 import { useRailMode, nextRailMode } from "@/hooks/useRailMode";
 import { api, broadcastLogout, getCurrentWorkspace } from "@/lib/api";
-import { exportNotebook } from "@/lib/exportService";
+import { exportNotebook, exportNoteAsImage } from "@/lib/exportService";
 import { Note, Notebook, NoteListItem, ViewMode, WorkspaceFeatures } from "@/types";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
@@ -967,6 +967,9 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
         label: note.isLocked === 1 ? t("noteList.unlock") || "解锁" : t("noteList.lock") || "锁定",
         icon: note.isLocked === 1 ? <Unlock size={14} /> : <Lock size={14} />,
       },
+      { id: "sep_export", label: "", separator: true },
+      { id: "export_png", label: t("note.exportAsPng"), icon: <Image size={14} /> },
+      { id: "export_jpg", label: t("note.exportAsJpg"), icon: <Image size={14} /> },
       { id: "sep1", label: "", separator: true },
       {
         id: "trash",
@@ -1469,6 +1472,31 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
           updateCachedNote(targetId, { isLocked: next });
           if (state.activeNote?.id === targetId) {
             actions.setActiveNote({ ...state.activeNote, isLocked: next });
+          }
+          break;
+        }
+        case "export_png":
+        case "export_jpg": {
+          const format = actionId === "export_png" ? "png" : "jpg";
+          const toastId = toast.info(t("note.exportImageExporting"), 0);
+          try {
+            const fullNote = await api.getNote(targetId);
+            const ok = await exportNoteAsImage(
+              {
+                id: fullNote.id,
+                title: fullNote.title,
+                content: fullNote.content,
+                contentText: fullNote.contentText,
+                updatedAt: fullNote.updatedAt,
+              },
+              { format }
+            );
+            toast.dismiss(toastId);
+            ok ? toast.success(t("note.exportImageSuccess")) : toast.error(t("note.exportImageFailed"));
+          } catch (err) {
+            toast.dismiss(toastId);
+            console.error("Sidebar note image export failed:", err);
+            toast.error(t("note.exportImageFailed"));
           }
           break;
         }
