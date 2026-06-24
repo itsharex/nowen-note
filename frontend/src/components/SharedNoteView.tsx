@@ -90,6 +90,17 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
   const [activeOutlineId, setActiveOutlineId] = useState<string>("");
   const [isDesktopOutlineOpen, setIsDesktopOutlineOpen] = useState(true);
   const [isMobileOutlineOpen, setIsMobileOutlineOpen] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState<{ src: string; alt?: string } | null>(null);
+
+  // Lightbox Esc 关闭 + 滚动锁
+  useEffect(() => {
+    if (!lightboxImage) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setLightboxImage(null); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+  }, [lightboxImage]);
 
   useEffect(() => { guestNameRef.current = guestName; }, [guestName]);
   useEffect(() => { accessTokenRef.current = accessToken; }, [accessToken]);
@@ -695,9 +706,17 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
   }, []);
 
 
-  // 分享页内的复制代码按钮事件委托，以及 mailto/tel 链接拦截
+  // 分享页内的复制代码按钮事件委托，以及 mailto/tel 链接拦截、图片预览
   const handleSharedContentClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
+
+    // ---- 0. 点击图片时打开 lightbox 预览 ----
+    const img = target.closest("img") as HTMLImageElement | null;
+    if (img && img.closest(".shared-note-content")) {
+      e.preventDefault();
+      setLightboxImage({ src: img.currentSrc || img.src, alt: img.alt || "" });
+      return;
+    }
 
     // ---- 1. 拦截 mailto: / tel: / sms: 等会唤起系统客户端的链接 ----
     // 笔记里常会出现邮箱地址（作者信息、联系方式等），autolink 后变成
@@ -1298,6 +1317,29 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
           </div>
         </div>
       )}
+
+      {/* 图片预览 Lightbox */}
+      {lightboxImage && (
+        <div
+          className="fixed inset-0 z-[150] bg-black/80 flex items-center justify-center"
+          onClick={() => setLightboxImage(null)}
+        >
+          <button
+            onClick={() => setLightboxImage(null)}
+            className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
+            aria-label="关闭预览"
+          >
+            <X size={18} />
+          </button>
+          <img
+            src={lightboxImage.src}
+            alt={lightboxImage.alt || ""}
+            className="max-w-[92vw] max-h-[88vh] object-contain select-none"
+            onClick={(e) => e.stopPropagation()}
+            draggable={false}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1630,7 +1672,11 @@ function renderNode(node: any): string {
     case "image": {
       const src = resolveAttachmentUrl(node.attrs?.src || "");
       const alt = node.attrs?.alt || "";
-      return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" />`;
+      const imgWidth = node.attrs?.width;
+      const imgHeight = node.attrs?.height;
+      const wAttr = imgWidth ? ` width="${imgWidth}"` : "";
+      const hAttr = imgHeight ? ` height="${imgHeight}"` : "";
+      return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}"${wAttr}${hAttr} />`;
     }
     case "table":
       return `<table>${renderChildren(node)}</table>`;
