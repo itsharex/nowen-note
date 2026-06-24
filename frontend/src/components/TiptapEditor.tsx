@@ -669,6 +669,23 @@ function createKeyboardExtension(flushSaveRef: React.MutableRefObject<() => void
       const isInBulletOrOrdered = () =>
         editor.isActive("bulletList") || editor.isActive("orderedList") || editor.isActive("listItem");
 
+      // 图片 NodeSelection 选中时 Enter / Shift-Enter 插入 hardBreak 或新段落
+      const handleEnterOnImage = (shift: boolean) => {
+        const { state, view } = editor;
+        const { selection, schema } = state;
+        if (!(selection instanceof NodeSelection)) return false;
+        if (selection.node.type.name !== "image") return false;
+
+        const hardBreak = schema.nodes.hardBreak;
+        if (!hardBreak) return false;
+
+        // 在图片后面插入 hardBreak，光标移到 hardBreak 后
+        const tr = state.tr.insert(selection.to, hardBreak.create());
+        tr.setSelection(TextSelection.create(tr.doc, selection.to + 1));
+        view.dispatch(tr.scrollIntoView());
+        return true;
+      };
+
       const handleTab = (delta: 1 | -1) => {
         // 表格：交给 tiptap-table 默认的 goToNextCell/goToPreviousCell
         if (isInTable()) return false;
@@ -768,7 +785,8 @@ function createKeyboardExtension(flushSaveRef: React.MutableRefObject<() => void
         },
         Tab: () => handleTab(1),
         "Shift-Tab": () => handleTab(-1),
-        Enter: () => handleEnterInListItem(),
+        "Shift-Enter": () => handleEnterOnImage(true),
+        Enter: () => handleEnterOnImage(false) || handleEnterInListItem(),
         "Mod-s": () => {
           flushSaveRef.current?.();
           return true; // 返回 true 阻止浏览器默认的"保存网页"对话框
