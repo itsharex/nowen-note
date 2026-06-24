@@ -17,6 +17,7 @@ import { toast } from "@/lib/toast";
 import { exportSingleNote, exportSingleNoteAsPDF, exportSingleNoteAsImage, exportNoteAsImage } from "@/lib/exportService";
 import { realtime } from "@/lib/realtime"
 import { syncNow } from "@/lib/syncEngine"
+import { deleteNote as deleteLocalNote } from "@/lib/localStore"
 import { confirm } from "@/components/ui/confirm";
 import { highlightTextNode, sanitizeSearchHtml, stripSearchMarks } from "@/lib/searchHighlight";
 // "导入 Word 文档" 走 dynamic import（见 createNoteInNotebook），减少首屏 bundle 体积。
@@ -1632,6 +1633,10 @@ export default function NoteList() {
       if (myConnectionId && msg.actorConnectionId === myConnectionId) return;
       // 立即从列表移除
       actions.removeNoteFromList(noteId);
+      // 永久删除时同步清理 IndexedDB 本地缓存，防止旧缓存把已删笔记 put 回去
+      if (msg.trashed !== true) {
+        void deleteLocalNote(noteId).catch(() => {});
+      }
       // 异步 syncNow 兜底：确保 IndexedDB 中的 isTrashed / 删除状态与服务端一致
       void syncNow().catch(() => {});
     });

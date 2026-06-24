@@ -417,17 +417,24 @@ function AppLayout() {
     return off;
   }, []);
 
-  // SYNC-DELETE-01-B: 当前打开的笔记被其它端删除/回收时，关闭编辑器
+  // SYNC-DELETE-01-B: 当前打开的笔记被其它端删除/回收时，关闭编辑器并提示
   useEffect(() => {
     const off = realtime.on("note:deleted", (msg: any) => {
       const noteId = msg?.noteId || msg?.id;
       if (!noteId) return;
       if (state.activeNote?.id === noteId) {
         actions.setActiveNote(null);
+        import("@/lib/toast").then(({ toast }) => {
+          if (msg.trashed) {
+            toast.info(t('noteList.noteMovedToTrash') || "该笔记已被移入回收站");
+          } else {
+            toast.info(t('noteList.noteDeleted') || "该笔记已被删除");
+          }
+        }).catch(() => {});
       }
     });
     return off;
-  }, [actions, state.activeNote]);
+  }, [actions, state.activeNote, t]);
 
   useEffect(() => {
     if (state.editorFullscreen && !state.activeNote) {
