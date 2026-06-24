@@ -4290,8 +4290,8 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
             onMouseUp={handlePreviewMouseUp}
             onMouseLeave={handlePreviewMouseUp}
           >
-            {/* 工具栏 */}
-            <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+            {/* 桌面端：顶部工具栏 */}
+            <div className="hidden md:flex absolute top-4 right-4 items-center gap-2 z-10">
               <button
                 onClick={() => setImageZoom(prev => Math.min(5, prev + 0.25))}
                 className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
@@ -4324,6 +4324,49 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
                 <X size={18} />
               </button>
             </div>
+
+            {/* 移动端：顶部只保留关闭按钮 */}
+            <button
+              onClick={(e) => { e.stopPropagation(); setPreviewImage(null); setImageZoom(1); setImageDrag({ x: 0, y: 0 }); }}
+              className="md:hidden fixed right-4 z-[120] w-11 h-11 rounded-full bg-black/50 hover:bg-black/70 backdrop-blur text-white flex items-center justify-center transition-colors"
+              style={{ top: "calc(env(safe-area-inset-top, 0px) + 12px)" }}
+              title="关闭"
+            >
+              <X size={20} />
+            </button>
+
+            {/* 移动端：底部缩放工具栏 */}
+            <div
+              className="md:hidden fixed left-1/2 z-[120] flex items-center gap-2 px-4 py-2.5 rounded-full bg-black/55 backdrop-blur border border-white/10 text-white shadow-lg"
+              style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)", transform: "translateX(-50%)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setImageZoom(prev => Math.max(0.1, prev - 0.25))}
+                className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+                title="缩小"
+              >
+                <ZoomOut size={20} />
+              </button>
+              <button
+                onClick={() => { setImageZoom(1); setImageDrag({ x: 0, y: 0 }); }}
+                className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+                title="重置"
+              >
+                <RotateCcw size={18} />
+              </button>
+              <span className="text-white/80 text-sm font-mono min-w-[48px] text-center select-none">
+                {Math.round(imageZoom * 100)}%
+              </span>
+              <button
+                onClick={() => setImageZoom(prev => Math.min(5, prev + 0.25))}
+                className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+                title="放大"
+              >
+                <ZoomIn size={20} />
+              </button>
+            </div>
+
             {/* 图片
                 注意：缩放/平移交给 framer-motion 的独立 transform 通道（scale/x/y）来驱动，
                 不能再写 style.transform 字符串——motion 会接管 transform 并覆盖外部 style，
