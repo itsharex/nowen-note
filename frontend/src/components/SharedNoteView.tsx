@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Globe, Lock, AlertCircle, Loader2, FileText, MessageCircle, Send, RefreshCw, Edit3, Check, UserCircle2, ListTree, X } from "lucide-react";
+import { Globe, Lock, AlertCircle, Loader2, FileText, MessageCircle, Send, RefreshCw, Edit3, Check, UserCircle2, ListTree, X, Plus, Minus, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, resolveAttachmentUrl } from "@/lib/api";
 import { ShareInfo, SharedNoteContent, ShareComment, Note } from "@/types";
@@ -91,11 +91,13 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
   const [isDesktopOutlineOpen, setIsDesktopOutlineOpen] = useState(true);
   const [isMobileOutlineOpen, setIsMobileOutlineOpen] = useState(false);
   const [lightboxImage, setLightboxImage] = useState<{ src: string; alt?: string } | null>(null);
+  const [lightboxScale, setLightboxScale] = useState(1);
 
-  // Lightbox Esc 关闭 + 滚动锁
+  // Lightbox Esc 关闭 + 滚动锁 + 缩放
   useEffect(() => {
     if (!lightboxImage) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setLightboxImage(null); };
+    setLightboxScale(1);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setLightboxImage(null); setLightboxScale(1); } };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -131,35 +133,6 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
       }
     });
     return () => cancelAnimationFrame(raf);
-  }, [content?.content]);
-
-  // 分享页正文图片：Ctrl + 滚轮缩放
-  useEffect(() => {
-    const root = pmRenderRef.current;
-    if (!root) return;
-    console.log("[ShareWheel] effect mounted, root =", root.tagName, "imgs =", root.querySelectorAll("img").length);
-    const MIN_W = 60;
-    const onWheel = (e: WheelEvent) => {
-      console.log("[ShareWheel] wheel event", { ctrl: e.ctrlKey, meta: e.metaKey, target: (e.target as HTMLElement).tagName });
-      if (!e.ctrlKey && !e.metaKey) return;
-      const target = e.target as HTMLElement;
-      const img = target.closest("img") as HTMLImageElement | null;
-      if (!img || !root.contains(img)) {
-        console.log("[ShareWheel] no img found");
-        return;
-      }
-      e.preventDefault();
-      const cur = img.getBoundingClientRect().width || parseFloat(img.style.width) || img.naturalWidth || 300;
-      const factor = e.deltaY > 0 ? 0.9 : 1.1;
-      const next = Math.max(MIN_W, Math.min(img.naturalWidth * 2, Math.round(cur * factor)));
-      console.log("[ShareWheel] zoom", { cur, factor, next, naturalW: img.naturalWidth });
-      img.style.width = next + "px";
-      img.style.maxWidth = "none";
-      img.style.height = "auto";
-      img.setAttribute("width", String(next));
-    };
-    root.addEventListener("wheel", onWheel, { passive: false });
-    return () => root.removeEventListener("wheel", onWheel);
   }, [content?.content]);
 
   useEffect(() => { guestNameRef.current = guestName; }, [guestName]);
@@ -1402,28 +1375,68 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
         </div>
       )}
 
-      {/* 图片预览 Lightbox */}
-      {lightboxImage && (
-        <div
-          className="fixed inset-0 z-[150] bg-black/80 flex items-center justify-center"
-          onClick={() => setLightboxImage(null)}
-        >
-          <button
-            onClick={() => setLightboxImage(null)}
-            className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
-            aria-label="关闭预览"
+      {/* 图片预览 Lightbox（支持缩放） */}
+      {lightboxImage && (() => {
+        const clamp = (v: number) => Math.max(0.25, Math.min(4, Number(v.toFixed(2))));
+        return (
+          <div
+            className="fixed inset-0 z-[150] bg-black/80 flex items-center justify-center overflow-auto"
+            onClick={() => { setLightboxImage(null); setLightboxScale(1); }}
+            onWheel={(e) => {
+              if (!e.ctrlKey && !e.metaKey) return;
+              e.preventDefault();
+              setLightboxScale((v) => clamp(v * (e.deltaY > 0 ? 0.9 : 1.1)));
+            }}
           >
-            <X size={18} />
-          </button>
-          <img
-            src={lightboxImage.src}
-            alt={lightboxImage.alt || ""}
-            className="max-w-[92vw] max-h-[88vh] object-contain select-none"
-            onClick={(e) => e.stopPropagation()}
-            draggable={false}
-          />
-        </div>
-      )}
+            {/* 缩放控件 */}
+            <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxScale((v) => clamp(v - 0.25)); }}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
+                aria-label="缩小"
+              >
+                <Minus size={16} />
+              </button>
+              <span className="text-white/80 text-xs min-w-[40px] text-center select-none">
+                {Math.round(lightboxScale * 100)}%
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxScale((v) => clamp(v + 0.25)); }}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
+                aria-label="放大"
+              >
+                <Plus size={16} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxScale(1); }}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
+                aria-label="重置"
+              >
+                <RotateCcw size={14} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setLightboxImage(null); setLightboxScale(1); }}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center"
+                aria-label="关闭"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <img
+              src={lightboxImage.src}
+              alt={lightboxImage.alt || ""}
+              className="max-w-[92vw] max-h-[88vh] object-contain select-none"
+              style={{
+                transform: `scale(${lightboxScale})`,
+                transformOrigin: "center center",
+                transition: "transform 0.1s ease-out",
+              }}
+              onClick={(e) => e.stopPropagation()}
+              draggable={false}
+            />
+          </div>
+        );
+      })()}
     </div>
   );
 }
