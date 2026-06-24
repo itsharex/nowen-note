@@ -1392,38 +1392,32 @@ export default function MindMapCenter() {
 
   const handleMouseUp = useCallback(() => setIsPanning(false), []);
 
-  // 滚轮缩放：在画布区域滚轮直接缩放，以鼠标位置为中心
-  useEffect(() => {
+  // 滚轮缩放：直接绑定在画布 div 的 onWheel 上，避免 useEffect([]) 时 canvas 尚未挂载
+  const handleCanvasWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("input, textarea, [contenteditable='true']")) return;
+
+    e.preventDefault();
+
+    const raw = e.deltaY > 0 ? -1 : 1;
+    const magnitude = Math.min(Math.abs(e.deltaY), 100);
+    const delta = raw * magnitude * 0.003;
+
     const el = canvasRef.current;
     if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      // 输入框 / 编辑态内不拦截
-      const target = e.target as HTMLElement;
-      if (target.closest("input, textarea, [contenteditable='true']")) return;
+    const rect = el.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
 
-      e.preventDefault();
-
-      // 步进：取 deltaY 方向，幅度用 min 限制避免触控板一次跳太多
-      const raw = e.deltaY > 0 ? -1 : 1;
-      const magnitude = Math.min(Math.abs(e.deltaY), 100);
-      const delta = raw * magnitude * 0.003;
-
-      const rect = el.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
-      setZoom((z) => {
-        const newZoom = Math.max(0.3, Math.min(2.5, z + delta));
-        const scale = newZoom / z;
-        setPan((p) => ({
-          x: mouseX - (mouseX - p.x) * scale,
-          y: mouseY - (mouseY - p.y) * scale,
-        }));
-        return newZoom;
-      });
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
+    setZoom((z) => {
+      const newZoom = Math.max(0.3, Math.min(2.5, z + delta));
+      const scale = newZoom / z;
+      setPan((p) => ({
+        x: mouseX - (mouseX - p.x) * scale,
+        y: mouseY - (mouseY - p.y) * scale,
+      }));
+      return newZoom;
+    });
   }, []);
 
   // 触摸手势（移动端）
@@ -2370,6 +2364,7 @@ export default function MindMapCenter() {
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
+                onWheel={handleCanvasWheel}
 
                 onTouchStart={handleTouchStart}
                 onTouchMove={handleTouchMove}
