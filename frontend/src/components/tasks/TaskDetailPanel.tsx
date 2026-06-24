@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
 import { Flag, Trash2, X, Bell, BellOff, CheckCircle2, Circle, Plus, Clock, Repeat, Link2, CalendarDays, Loader2 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhCN, enUS } from "date-fns/locale";
@@ -250,12 +249,8 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
   };
 
   return (
-    <motion.div
+    <div
       ref={ref}
-      initial={{ x: 320, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: 320, opacity: 0 }}
-      transition={{ type: "spring", damping: 25, stiffness: 300 }}
       className={cn(
         "h-full border-l border-app-border bg-app-surface flex flex-col shrink-0",
         "fixed inset-0 z-30 w-full border-l-0",
@@ -767,7 +762,7 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
           {t("tasks.deleteTask")}
         </button>
       </div>
-    </motion.div>
+    </div>
   );
 });
 

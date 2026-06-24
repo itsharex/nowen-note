@@ -1020,27 +1020,25 @@ export default function TaskCenter() {
         />
       )}
 
-      {/* Right: Detail Panel */}
-      <AnimatePresence>
-        {selectedTask && (
-          <TaskDetailPanel
-            key={selectedTask.id}
-            task={selectedTask}
-            treeNode={selectedTreeNode}
-            onClose={() => setSelectedTaskId(null)}
-            onUpdate={handleUpdate}
-            onDelete={handleDelete}
-            allTasks={tasks}
-            onToggle={handleToggle}
-            onSelectTask={(taskId) => setSelectedTaskId(taskId)}
-            onCreated={async () => { await loadTasks(); const s = await api.getTaskStats(); setStats(s); refreshCounts(); }}
-            onReminderCountChange={handleReminderCountChange}
-            dependencies={dependencies}
-            onCreateDependency={async (predId, succId) => { try { await api.createTaskDependency({ predecessorTaskId: predId, successorTaskId: succId }); await loadDependencies(); toast.success(t("tasks.toast.dependencyCreated")); } catch { toast.error(t("tasks.toast.dependencyCreateFailed")); } }}
-            onDeleteDependency={async (id) => { try { await api.deleteTaskDependency(id); await loadDependencies(); toast.success(t("tasks.toast.dependencyDeleted")); } catch { toast.error(t("tasks.toast.dependencyDeleteFailed")); } }}
-          />
-        )}
-      </AnimatePresence>
+      {/* Right: Detail Panel — direct flex sibling, no AnimatePresence to avoid layout gap */}
+      {selectedTask && (
+        <TaskDetailPanel
+          key={selectedTask.id}
+          task={selectedTask}
+          treeNode={selectedTreeNode}
+          onClose={() => setSelectedTaskId(null)}
+          onUpdate={handleUpdate}
+          onDelete={handleDelete}
+          allTasks={tasks}
+          onToggle={handleToggle}
+          onSelectTask={(taskId) => setSelectedTaskId(taskId)}
+          onCreated={async () => { await loadTasks(); const s = await api.getTaskStats(); setStats(s); refreshCounts(); }}
+          onReminderCountChange={handleReminderCountChange}
+          dependencies={dependencies}
+          onCreateDependency={async (predId, succId) => { try { await api.createTaskDependency({ predecessorTaskId: predId, successorTaskId: succId }); await loadDependencies(); toast.success(t("tasks.toast.dependencyCreated")); } catch { toast.error(t("tasks.toast.dependencyCreateFailed")); } }}
+          onDeleteDependency={async (id) => { try { await api.deleteTaskDependency(id); await loadDependencies(); toast.success(t("tasks.toast.dependencyDeleted")); } catch { toast.error(t("tasks.toast.dependencyDeleteFailed")); } }}
+        />
+      )}
 
       {/* Template Picker */}
       <AnimatePresence>
