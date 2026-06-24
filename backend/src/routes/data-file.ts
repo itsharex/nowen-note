@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 数据库文件（.data）级别的导出 / 导入 / 空间统计
  *
  * 与 /api/backups 的区别：
@@ -497,9 +497,14 @@ app.post("/cleanup-orphans", (c) => {
   if (isAdmin) {
     try {
       // 收集 DB 中已登记的全部 path（刚刚删的 DB 孤儿已经不在这批里，这正是我们要的）
+      // 收集 attachments + task_attachments 的已登记 path，防止待办图片被误删
       const rows = db.prepare("SELECT path FROM attachments").all() as { path: string }[];
+      const taskRows = db.prepare("SELECT path FROM task_attachments").all() as { path: string }[];
       const knownPaths = new Set<string>();
       for (const r of rows) {
+        if (r?.path) knownPaths.add(r.path);
+      }
+      for (const r of taskRows) {
         if (r?.path) knownPaths.add(r.path);
       }
       // 递归扫描目录（兼容 YYYY/MM/uuid.ext 子目录结构）
