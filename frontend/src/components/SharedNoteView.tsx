@@ -102,14 +102,34 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
     return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
   }, [lightboxImage]);
 
-  // DOM 后处理：统一给分享页正文图片补 width style，覆盖所有渲染路径
-  // （ReactMarkdown / dangerouslySetInnerHTML / 原始 HTML 透传）。
-  // 用 requestAnimationFrame 确保 ReactMarkdown 渲染完成后再处理。
+  // DOM 后处理 + DEBUG：统一给分享页正文图片补 width style
   useEffect(() => {
     const root = pmRenderRef.current;
     if (!root) return;
     const raf = requestAnimationFrame(() => {
       const imgs = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
+      // DEV 排查：输出 content 格式、是否含 width、每张 img 的 DOM 状态
+      if (import.meta.env.DEV) {
+        const fmt = detectFormat(content?.content || "");
+        const raw = content?.content || "";
+        console.log("[ShareImageDebug]", {
+          format: fmt,
+          contentHasJsonWidth: raw.includes('"width"'),
+          contentHasHtmlWidth: raw.includes("width="),
+          contentSlice: raw.slice(0, 500),
+          imgCount: imgs.length,
+          imgs: imgs.map((img, i) => ({
+            i,
+            src: (img.getAttribute("src") || "").slice(-40),
+            widthAttr: img.getAttribute("width"),
+            styleAttr: img.getAttribute("style"),
+            dataWidth: img.getAttribute("data-width"),
+            computedW: getComputedStyle(img).width,
+            renderedW: Math.round(img.getBoundingClientRect().width),
+            naturalW: img.naturalWidth,
+          })),
+        });
+      }
       for (const img of imgs) {
         const raw =
           img.style.width ||
