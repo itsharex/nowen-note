@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Link2, Trash2 } from "lucide-react";
+import { X, Link2, Trash2, Unlink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
+import { confirm } from "@/components/ui/confirm";
 import type { Notebook, NotebookMember, NotebookShareLink, UserPublicInfo } from "@/types";
 
 interface NotebookShareDialogProps {
@@ -77,6 +78,22 @@ export default function NotebookShareDialog({ notebook, onClose }: NotebookShare
     if (!shareUrl) return;
     await navigator.clipboard.writeText(shareUrl);
     toast.success("链接已复制");
+  };
+
+  const revokeLink = async () => {
+    const ok = await confirm({
+      title: "撤销分享链接？",
+      description: "撤销后，旧链接将立即失效，已加入的成员不受影响。",
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.deleteNotebookShareLink(notebook.id);
+      setLink(null);
+      toast.success("分享链接已撤销");
+    } catch (err: any) {
+      toast.error(err?.message || "撤销失败");
+    }
   };
 
   return (
@@ -167,7 +184,17 @@ export default function NotebookShareDialog({ notebook, onClose }: NotebookShare
                 </div>
               </div>
               {shareUrl ? (
-                <Button variant="outline" onClick={copyLink}>复制</Button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button variant="outline" onClick={copyLink}>复制</Button>
+                  <Button
+                    variant="outline"
+                    onClick={revokeLink}
+                    className="text-red-500 hover:text-red-600 hover:border-red-300"
+                    aria-label="撤销分享链接"
+                  >
+                    <Unlink size={14} />
+                  </Button>
+                </div>
               ) : (
                 <Button variant="outline" onClick={createLink}>
                   <Link2 size={14} className="mr-1" />
