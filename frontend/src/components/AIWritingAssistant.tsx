@@ -12,6 +12,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { extractFinalAnswer } from "@/lib/aiOutput";
 import { buildAiContext } from "@/lib/aiContextBuilder";
+import { toast } from "@/lib/toast";
 
 type AIAction = "continue" | "rewrite" | "polish" | "shorten" | "expand" | "translate_en" | "translate_zh" | "summarize" | "explain" | "fix_grammar" | "format_markdown" | "format_code" | "custom";
 
