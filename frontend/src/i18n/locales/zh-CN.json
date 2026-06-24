@@ -168,6 +168,7 @@
     "favorite": "收藏",
     "lock": "锁定笔记",
     "unlock": "解锁笔记",
+    "export": "导出...",
     "exportAsMarkdown": "导出为 Markdown",
     "exportAsPDF": "导出为 PDF",
     "exportAsImage": "导出为图片",
