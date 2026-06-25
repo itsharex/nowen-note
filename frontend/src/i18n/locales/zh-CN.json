@@ -2183,6 +2183,14 @@
     "fileTypes": "同步文件类型",
     "lastSynced": "上次同步",
     "never": "从未同步",
-    "status": "状态"
+    "status": "状态",
+    "editConfig": "编辑配置",
+    "selectNotebook": "选择笔记本...",
+    "enableSync": "启用同步",
+    "selectNotebookFirst": "请先选择目标笔记本",
+    "noNotebooks": "暂无可用笔记本，请先创建一个笔记本",
+    "duplicatePath": "该文件夹已添加过",
+    "configCreated": "配置已创建，请选择目标笔记本后启用",
+    "configUpdated": "配置已更新"
   }
 }

@@ -2014,6 +2014,14 @@
     "fileTypes": "Sync File Types",
     "lastSynced": "Last Synced",
     "never": "Never",
-    "status": "Status"
+    "status": "Status",
+    "editConfig": "Edit Config",
+    "selectNotebook": "Select notebook...",
+    "enableSync": "Enable Sync",
+    "selectNotebookFirst": "select a target notebook first",
+    "noNotebooks": "No notebooks available. Please create one first.",
+    "duplicatePath": "This folder has already been added",
+    "configCreated": "Config created. Select a target notebook to enable sync.",
+    "configUpdated": "Config updated"
   }
 }
