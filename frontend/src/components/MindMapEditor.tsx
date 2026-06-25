@@ -793,11 +793,9 @@ export default function MindMapCenter() {
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
   // callback ref：画布挂载后保存 DOM，触发 useEffect 绑定 non-passive wheel listener
   const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
   const setCanvasNode = useCallback((node: HTMLDivElement | null) => {
-    canvasRef.current = node;
     setCanvasEl(node);
   }, []);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -1384,11 +1382,11 @@ export default function MindMapCenter() {
 
   // 平移（鼠标）
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 1 || (e.button === 0 && e.target === canvasRef.current) || (e.button === 0 && e.target === svgRef.current)) {
+    if (e.button === 1 || (e.button === 0 && e.target === canvasEl) || (e.button === 0 && e.target === svgRef.current)) {
       setIsPanning(true);
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
     }
-  }, [pan]);
+  }, [pan, canvasEl]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (isPanning) {
@@ -2493,7 +2491,7 @@ export default function MindMapCenter() {
                     <FloatingToolbar
                       position={(() => {
                         const svg = svgRef.current;
-                        const container = canvasRef.current;
+                        const container = canvasEl;
                         if (!svg || !container) return { x: 0, y: 0 };
                         const point = svg.createSVGPoint();
                         point.x = node.x + node.width / 2;
