@@ -1256,6 +1256,39 @@ export const api = {
       reason?: string;
     }>(`/folder-sync/import-file`, { method: "POST", body: JSON.stringify(data) }),
 
+    /** 导入附件文件（pdf/docx） */
+    importAttachment: async (payload: {
+      sourcePathHash: string;
+      relativePath: string;
+      filename: string;
+      sha256: string;
+      targetNotebookId: string;
+      existingNoteId?: string;
+      file: File | Blob;
+    }) => {
+      const token = getToken();
+      const form = new FormData();
+      form.append("file", payload.file);
+      form.append("sourcePathHash", payload.sourcePathHash);
+      form.append("relativePath", payload.relativePath);
+      form.append("filename", payload.filename);
+      form.append("sha256", payload.sha256);
+      form.append("targetNotebookId", payload.targetNotebookId);
+      if (payload.existingNoteId) form.append("existingNoteId", payload.existingNoteId);
+      const res = await fetch(`${getBaseUrl()}/folder-sync/import-attachment`, {
+        method: "POST",
+        credentials: "include",
+        headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: form,
+      });
+      const data = await res.json() as {
+        success: boolean; created: boolean; updated: boolean; skipped: boolean;
+        noteId: string; attachmentId?: string; sha256: string;
+      };
+      if (!res.ok) throw new Error((data as any).error || `HTTP ${res.status}`);
+      return data;
+    },
+
     checkDedup: (sourcePathHashes: string[]) =>
       request<Record<string, string>>(`/folder-sync/check-dedup`, { method: "POST", body: JSON.stringify({ sourcePathHashes }) }),
   },
@@ -1454,31 +1487,7 @@ export const api = {
     return data;
   },
 
-  // Folder Sync
-  folderSync: {
-    /** 导入文本文件（md/txt/html） */
-    importFile: (payload: {
-      sourcePathHash: string;
-      relativePath: string;
-      filename: string;
-      sha256: string;
-      targetNotebookId: string;
-      contentText?: string;
-      existingNoteId?: string;
-    }) => request<{ success: boolean; created: boolean; updated: boolean; skipped: boolean; noteId: string; sha256 }>("/folder-sync/import-file", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-    /** 导入附件文件（pdf/docx） */
-    importAttachment: async (payload: {
-      sourcePathHash: string;
-      relativePath: string;
-      filename: string;
-      sha256: string;
-      targetNotebookId: string;
-      existingNoteId?: string;
-      file: File | Blob;
-    }) => {
+  // Image Hosting
       const token = getToken();
       const form = new FormData();
       form.append("file", payload.file);

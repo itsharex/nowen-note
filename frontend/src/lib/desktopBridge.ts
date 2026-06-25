@@ -239,6 +239,16 @@ function getBridge(): NowenDesktopAPI | null {
 
 export const isDesktop = (): boolean => !!getBridge();
 
+/** 检查文件夹同步是否可用 */
+export function isFolderSyncAvailable(): boolean {
+  return !!(window as any).nowenDesktop?.folderSync;
+}
+
+/** 获取文件夹同步桥接 API */
+export function getFolderSyncBridge(): FolderSyncAPI | null {
+  return (window as any).nowenDesktop?.folderSync ?? null;
+}
+
 /**
  * 获取桌面端发布渠道标识：
  *   - "lite"    lite-only 发行版（electron-updater 仅从 latest-lite*.yml 拉取）

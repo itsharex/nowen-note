@@ -101,7 +101,7 @@ export async function uploadImage(options: ImageUploadOptions): Promise<ImageUpl
   }
 
   try {
-    const result = await api.uploadAttachment(file as File, noteId);
+    const result = await api.attachments.upload(noteId, file as File);
     return {
       success: true,
       url: result.url,
