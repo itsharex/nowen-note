@@ -94,7 +94,10 @@ import {
   Copy, ArrowUp,
   Phone,
   ExternalLink,
+  Eye,
+  Columns2,
 } from "lucide-react";
+import { MarkdownPreview } from "./MarkdownPreview";
 
 import { Note, Tag } from "@/types";
 import TagInput from "@/components/TagInput";
@@ -356,6 +359,12 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSettingContent = useRef(false);
+
+  // MARKDOWN-PREVIEW-MODE-01: 源码/预览/分屏模式
+  type MarkdownViewMode = "source" | "preview" | "split";
+  const [viewMode, setViewMode] = useState<MarkdownViewMode>("source");
+  const [previewMarkdown, setPreviewMarkdown] = useState(note.content || "");
+  const previewDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /**
    * ���༭�����һ���ɷ��� onUpdate �� markdown �ַ�����
@@ -732,12 +741,18 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
 
     const updateListener = EditorView.updateListener.of((update) => {
       if (!update.docChanged) return;
-      if (isSettingContent.current) return; // �����滻�ĵ�ʱ����������
+      if (isSettingContent.current) return;
 
       const text = update.state.doc.toString();
       setWordStats(computeStats(text));
       onHeadingsChangeRef.current?.(extractHeadings(update.view));
       scheduleSave();
+
+      // MARKDOWN-PREVIEW-MODE-01: 分屏模式下实时更新预览（debounce 200ms）
+      if (previewDebounceRef.current) clearTimeout(previewDebounceRef.current);
+      previewDebounceRef.current = setTimeout(() => {
+        setPreviewMarkdown(text);
+      }, 200);
     });
 
     /**
@@ -1314,10 +1329,61 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
 
           {!isGuest && <ToolbarDivider />}
           {!isGuest && (
-            <ToolbarButton onClick={openAIAssistant} title={tr("tiptap.aiAssistant") || "AI ����"}>
+            <ToolbarButton onClick={openAIAssistant} title={tr("tiptap.aiAssistant") || "AI 助手"}>
               <Sparkles size={iconSize} className="text-violet-500" />
             </ToolbarButton>
           )}
+
+          {/* MARKDOWN-PREVIEW-MODE-01: 视图模式切换 */}
+          <div className="ml-auto flex items-center gap-0.5 rounded-md border border-app-border overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setViewMode("source")}
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 text-[11px] font-medium transition-colors",
+                viewMode === "source"
+                  ? "bg-accent-primary/10 text-accent-primary"
+                  : "text-tx-tertiary hover:text-tx-secondary hover:bg-app-hover"
+              )}
+              title={tr("markdown.view.source") || "源码"}
+            >
+              <FileCode size={12} />
+              <span className="hidden sm:inline">{tr("markdown.view.source") || "源码"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                // 切换到预览时同步当前内容
+                const view = viewRef.current;
+                if (view) setPreviewMarkdown(view.state.doc.toString());
+                setViewMode("preview");
+              }}
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 text-[11px] font-medium transition-colors",
+                viewMode === "preview"
+                  ? "bg-accent-primary/10 text-accent-primary"
+                  : "text-tx-tertiary hover:text-tx-secondary hover:bg-app-hover"
+              )}
+              title={tr("markdown.view.preview") || "预览"}
+            >
+              <Eye size={12} />
+              <span className="hidden sm:inline">{tr("markdown.view.preview") || "预览"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("split")}
+              className={cn(
+                "flex items-center gap-1 px-2 py-1 text-[11px] font-medium transition-colors",
+                viewMode === "split"
+                  ? "bg-accent-primary/10 text-accent-primary"
+                  : "text-tx-tertiary hover:text-tx-secondary hover:bg-app-hover"
+              )}
+              title={tr("markdown.view.split") || "分屏"}
+            >
+              <Columns2 size={12} />
+              <span className="hidden sm:inline">{tr("markdown.view.split") || "分屏"}</span>
+            </button>
+          </div>
         </div>
       )}
 

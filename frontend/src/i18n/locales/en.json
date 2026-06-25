@@ -1983,5 +1983,16 @@
     "nowenPackageExporting": "Exporting Nowen package…",
     "nowenPackageSuccess": "Nowen package exported",
     "nowenPackageFailed": "Failed to export Nowen package"
+  },
+  "markdown": {
+    "view": {
+      "source": "Source",
+      "preview": "Preview",
+      "split": "Split"
+    },
+    "preview": {
+      "imageLoadFailed": "Image failed to load",
+      "empty": "No content"
+    }
   }
 }

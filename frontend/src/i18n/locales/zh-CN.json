@@ -2152,5 +2152,16 @@
     "nowenPackageExporting": "正在导出 Nowen 数据包…",
     "nowenPackageSuccess": "Nowen 数据包导出成功",
     "nowenPackageFailed": "Nowen 数据包导出失败"
+  },
+  "markdown": {
+    "view": {
+      "source": "源码",
+      "preview": "预览",
+      "split": "分屏"
+    },
+    "preview": {
+      "imageLoadFailed": "图片加载失败",
+      "empty": "暂无内容"
+    }
   }
 }
