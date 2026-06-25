@@ -1362,6 +1362,29 @@ export const api = {
     const qs = ws && ws !== "personal" ? `?workspaceId=${encodeURIComponent(ws)}` : "";
     return request<any[]>(`/export/notes${qs}`);
   },
+  /** 导出 Nowen 数据包（.nowen.zip） */
+  downloadNowenPackage: async (opts?: { notebookId?: string; includeSubNotebooks?: boolean; includeTrashed?: boolean }) => {
+    const ws = getCurrentWorkspace();
+    const params = new URLSearchParams();
+    if (ws && ws !== "personal") params.set("workspaceId", ws);
+    if (opts?.notebookId) params.set("notebookId", opts.notebookId);
+    if (opts?.includeSubNotebooks !== undefined) params.set("includeSubNotebooks", String(opts.includeSubNotebooks));
+    if (opts?.includeTrashed) params.set("includeTrashed", "true");
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    const res = await fetch(`${getBaseUrl()}/export/nowen-package${qs}`, {
+      credentials: "include",
+      headers: buildHeaders(),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: "Export failed" }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const contentDisp = res.headers.get("Content-Disposition") || "";
+    const filenameMatch = /filename\*?=(?:UTF-8'')?([^;\n]*)/i.exec(contentDisp);
+    const filename = filenameMatch ? decodeURIComponent(filenameMatch[1].replace(/"/g, "")) : "nowen-package.nowen.zip";
+    return { blob, filename };
+  },
   importNotes: (
     notes: { title: string; content: string; contentText: string; createdAt?: string; updatedAt?: string; notebookName?: string; notebookPath?: string[] }[],
     notebookId?: string,

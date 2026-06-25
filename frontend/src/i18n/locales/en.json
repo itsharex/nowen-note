@@ -1971,6 +1971,11 @@
       "richText": "Rich text note",
       "richTextShort": "RT",
       "html": "HTML note"
-    }
+    },
+    "nowenPackage": "Export Nowen Package",
+    "nowenPackageDesc": "For importing into another nowen-note instance. Preserves Markdown/rich-text formats, notebooks, tags, and attachments.",
+    "nowenPackageExporting": "Exporting Nowen package…",
+    "nowenPackageSuccess": "Nowen package exported",
+    "nowenPackageFailed": "Failed to export Nowen package"
   }
 }

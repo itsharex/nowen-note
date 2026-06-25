@@ -346,4 +346,45 @@ app.post("/import", async (c) => {
   }, 201);
 });
 
+// ====== Nowen 数据包导出 ======
+
+app.get("/nowen-package", async (c) => {
+  const db = getDb();
+  const userId = c.req.header("X-User-Id")!;
+  const wsRaw = c.req.query("workspaceId") ?? undefined;
+  const notebookId = c.req.query("notebookId") ?? undefined;
+  const includeSubNotebooks = c.req.query("includeSubNotebooks") !== "false";
+  const includeTrashed = c.req.query("includeTrashed") === "true";
+
+  // 闸门检查
+  const { sql: wsSql, param: wsParam } = workspaceFilter(wsRaw);
+  const denied = denyIfPersonalFeatureDisabled(userId, wsParam === null, "personalExportEnabled");
+  if (denied) return c.json(denied, 403);
+
+  try {
+    const { createNowenPackageExport } = await import("../services/nowenPackageExport");
+    const result = await createNowenPackageExport({
+      userId,
+      workspaceId: wsParam,
+      notebookId,
+      includeSubNotebooks,
+      includeTrashed,
+    });
+
+    return new Response(result.buffer, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/zip",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(result.filename)}"`,
+        "X-Export-Notes": String(result.stats.notes),
+        "X-Export-Attachments": String(result.stats.attachments),
+        "X-Export-Warnings": String(result.stats.warnings),
+      },
+    });
+  } catch (err: any) {
+    console.error("[export/nowen-package] Error:", err);
+    return c.json({ error: err.message || "Export failed", code: "EXPORT_FAILED" }, 500);
+  }
+});
+
 export default app;

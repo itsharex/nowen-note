@@ -2140,6 +2140,11 @@
       "richText": "富文本笔记",
       "richTextShort": "RT",
       "html": "HTML 笔记"
-    }
+    },
+    "nowenPackage": "导出 Nowen 数据包",
+    "nowenPackageDesc": "用于导入到另一个 nowen-note，保留 Markdown / 富文本原始格式、笔记本、标签和附件。",
+    "nowenPackageExporting": "正在导出 Nowen 数据包…",
+    "nowenPackageSuccess": "Nowen 数据包导出成功",
+    "nowenPackageFailed": "Nowen 数据包导出失败"
   }
 }

@@ -8,7 +8,7 @@ import {
   Lock, Eye, EyeOff, X,
   Mail, Send, Settings as SettingsIcon, ChevronDown, ChevronRight,
   BookOpen, ExternalLink,
-  User as UserIcon, Users, ServerCog,
+  User as UserIcon, Users, ServerCog, Package,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { exportAllNotes, ExportProgress } from "@/lib/exportService";
@@ -300,6 +300,7 @@ export default function DataManager() {
   // Export state
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingNowen, setIsExportingNowen] = useState(false);
 
   // Import state
   const [importFiles, setImportFiles] = useState<ImportFileInfo[]>([]);
@@ -347,6 +348,28 @@ export default function DataManager() {
       { inlineImages: exportInlineImages, workspaceId: effectiveWorkspaceId },
     );
     setIsExporting(false);
+  };
+
+  // Nowen 数据包导出
+  const handleExportNowenPackage = async () => {
+    setIsExportingNowen(true);
+    try {
+      const { blob, filename } = await api.downloadNowenPackage();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(t('note.nowenPackageSuccess'));
+    } catch (err: any) {
+      console.error("[NowenPackageExport] Failed:", err);
+      toast.error(t('note.nowenPackageFailed'));
+    } finally {
+      setIsExportingNowen(false);
+    }
   };
 
   // 拖拽处理
@@ -839,6 +862,40 @@ export default function DataManager() {
               </>
             )}
           </button>
+
+          {/* Nowen 数据包导出 */}
+          <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-700">
+            <div className="flex items-center gap-2 mb-2">
+              <Package size={16} className="text-violet-500" />
+              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                {t('note.nowenPackage')}
+              </span>
+            </div>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-3">
+              {t('note.nowenPackageDesc')}
+            </p>
+            <button
+              onClick={handleExportNowenPackage}
+              disabled={isExportingNowen || personalExportLocked}
+              className={`flex items-center justify-center w-full py-2 px-4 rounded-lg font-medium text-sm transition-all ${
+                isExportingNowen || personalExportLocked
+                  ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed"
+                  : "bg-violet-600 hover:bg-violet-700 text-white shadow-md hover:shadow-lg"
+              }`}
+            >
+              {isExportingNowen ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {t('note.nowenPackageExporting')}
+                </>
+              ) : (
+                <>
+                  <Package className="w-4 h-4 mr-2" />
+                  {t('note.nowenPackage')}
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </section>
       )}
