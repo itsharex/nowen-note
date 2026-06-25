@@ -19,6 +19,7 @@ type SearchRow = {
   snippetHtml: string;
   score: number;
   matchedField?: string; // 命中的字段：title, content, title+content
+  contentFormat?: string;
 };
 
 function escapeHtml(text: string): string {
@@ -108,7 +109,8 @@ app.get("/", (c) => {
         snippet(notes_fts, 1, '<mark>', '</mark>', '...', 60) AS snippet,
         highlight(notes_fts, 0, '<mark>', '</mark>') AS titleHtml,
         snippet(notes_fts, 1, '<mark>', '</mark>', '...', 60) AS snippetHtml,
-        rank AS score
+        rank AS score,
+        n.contentFormat
       FROM notes_fts
       JOIN notes n ON notes_fts.rowid = n.rowid
       WHERE notes_fts MATCH ? AND ${scopeSql} AND n.isTrashed = 0
@@ -133,7 +135,8 @@ app.get("/", (c) => {
       const likeRows = db.prepare(`
         SELECT n.id, n.userId, n.notebookId, n.workspaceId, n.title, n.contentText, n.updatedAt,
           CASE WHEN EXISTS(SELECT 1 FROM favorites f WHERE f.noteId = n.id AND f.userId = ?) THEN 1 ELSE 0 END AS isFavorite,
-          n.isPinned
+          n.isPinned,
+          n.contentFormat
         FROM notes n
         WHERE ${scopeSql} AND n.isTrashed = 0
           AND (${andConditions})

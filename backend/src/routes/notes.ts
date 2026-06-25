@@ -65,6 +65,7 @@ app.get("/", (c) => {
     notes.contentText, notes.isPinned,
     CASE WHEN EXISTS(SELECT 1 FROM favorites f WHERE f.noteId = notes.id AND f.userId = ?) THEN 1 ELSE 0 END AS isFavorite,
     notes.isLocked, notes.isArchived, notes.isTrashed, notes.version, notes.createdAt, notes.updatedAt,
+    notes.contentFormat,
     users.username AS creatorName
     FROM notes
     LEFT JOIN users ON users.id = notes.userId
