@@ -17,84 +17,17 @@ interface CalendarFeed {
   updatedAt: string;
 }
 
-const CALENDAR_FEED_TEXT = {
-  zh: {
-    title: "日历订阅",
-    loading: "加载中...",
-    enable: "启用日历订阅",
-    created: "日历订阅已启用",
-    updated: "设置已更新",
-    error: "操作失败，请重试",
-    description: "将待办导出为系统日历订阅链接，可在 iPhone、Android 或第三方日历中订阅。手机提醒由系统日历负责，不依赖 Nowen Note 后台运行。",
-    active: "已启用",
-    disabled: "已禁用",
-    lastAccess: "最近访问",
-    link: "订阅链接",
-    copied: "链接已复制",
-    includeCompleted: "导出已完成待办",
-    includeDescription: "导出描述内容",
-    defaultAlarm: "默认提醒时间",
-    rotate: "重置链接",
-    disable: "禁用订阅",
-    confirmRotate: "重置订阅链接后，旧链接会立即失效。确定继续吗？",
-    confirmDisable: "禁用后，手机日历将无法继续同步这个订阅。确定继续吗？",
-    rotated: "订阅链接已重置",
-    hint: "日历订阅不是实时推送，刷新频率取决于手机系统或日历 App。",
-    alarm0: "准时提醒",
-    alarm5: "提前 5 分钟",
-    alarm10: "提前 10 分钟",
-    alarm30: "提前 30 分钟",
-    alarm60: "提前 1 小时",
-    alarm1440: "提前 1 天",
-  },
-  en: {
-    title: "Calendar Subscription",
-    loading: "Loading...",
-    enable: "Enable Calendar Subscription",
-    created: "Calendar subscription enabled",
-    updated: "Settings updated",
-    error: "Operation failed, please try again",
-    description: "Export tasks as a system calendar subscription link for iPhone, Android, or third-party calendar apps. Reminders are handled by the system calendar and do not depend on Nowen Note running in the background.",
-    active: "Active",
-    disabled: "Disabled",
-    lastAccess: "Last accessed",
-    link: "Subscription link",
-    copied: "Link copied",
-    includeCompleted: "Export completed tasks",
-    includeDescription: "Export descriptions",
-    defaultAlarm: "Default reminder time",
-    rotate: "Reset link",
-    disable: "Disable subscription",
-    confirmRotate: "Resetting the subscription link will immediately invalidate the old one. Continue?",
-    confirmDisable: "Disabling this subscription will stop calendar sync on subscribed devices. Continue?",
-    rotated: "Subscription link reset",
-    hint: "Calendar subscription is not real-time. Refresh frequency depends on your device or calendar app.",
-    alarm0: "At due time",
-    alarm5: "5 minutes before",
-    alarm10: "10 minutes before",
-    alarm30: "30 minutes before",
-    alarm60: "1 hour before",
-    alarm1440: "1 day before",
-  },
-} as const;
-
-function getCalendarFeedText(language: string | undefined) {
-  return language?.toLowerCase().startsWith("zh")
-    ? CALENDAR_FEED_TEXT.zh
-    : CALENDAR_FEED_TEXT.en;
-}
-
 export function TaskCalendarFeedSettings() {
-  const { i18n } = useTranslation();
-  const text = useMemo(() => getCalendarFeedText(i18n.language), [i18n.language]);
+  const { t } = useTranslation();
+
   const alarmOptions = useMemo(() => [
-    { value: 0, label: text.alarm0 },
-    { value: 5, label: text.alarm5 },
-    { value: 10, label: text.alarm10 },
-    { value: 30, label: text.alarm30 },
-    { value: 60, label: text.alarm60 },
-    { value: 1440, label: text.alarm1440 },
-  ], [text]);
+    { value: 0, label: t("tasks.calendarFeed.alarm0") },
+    { value: 5, label: t("tasks.calendarFeed.alarm5") },
+    { value: 10, label: t("tasks.calendarFeed.alarm10") },
+    { value: 30, label: t("tasks.calendarFeed.alarm30") },
+    { value: 60, label: t("tasks.calendarFeed.alarm60") },
+    { value: 1440, label: t("tasks.calendarFeed.alarm1440") },
+  ], [t]);
 
   const [feed, setFeed] = useState<CalendarFeed | null>(null);
   const [loading, setLoading] = useState(true);
@@ -130,50 +63,50 @@ export function TaskCalendarFeedSettings() {
       setActionLoading("create");
       const res = await api.taskCalendarFeed.create();
       setFeed(res.feed);
-      toast.success(text.created);
+      toast.success(t("tasks.calendarFeed.created"));
     } catch {
-      toast.error(text.error);
+      toast.error(t("tasks.calendarFeed.error"));
     } finally {
       setActionLoading(null);
     }
-  }, [text]);
+  }, [t]);
 
   const handleUpdate = useCallback(async (data: Partial<CalendarFeed>) => {
     try {
       setActionLoading("update");
       const res = await api.taskCalendarFeed.update(data);
       setFeed(res.feed);
-      toast.success(text.updated);
+      toast.success(t("tasks.calendarFeed.updated"));
     } catch {
-      toast.error(text.error);
+      toast.error(t("tasks.calendarFeed.error"));
     } finally {
       setActionLoading(null);
     }
-  }, [text]);
+  }, [t]);
 
   const handleDisable = useCallback(async () => {
-    if (!window.confirm(text.confirmDisable)) return;
+    if (!window.confirm(t("tasks.calendarFeed.confirmDisable"))) return;
     try {
       setActionLoading("disable");
       await handleUpdate({ enabled: false });
     } finally {
       setActionLoading(null);
     }
-  }, [handleUpdate, text]);
+  }, [handleUpdate, t]);
 
   const handleRotate = useCallback(async () => {
-    if (!window.confirm(text.confirmRotate)) return;
+    if (!window.confirm(t("tasks.calendarFeed.confirmRotate"))) return;
     try {
       setActionLoading("rotate");
       await api.taskCalendarFeed.rotateToken();
       await loadFeed();
-      toast.success(text.rotated);
+      toast.success(t("tasks.calendarFeed.rotated"));
     } catch {
-      toast.error(text.error);
+      toast.error(t("tasks.calendarFeed.error"));
     } finally {
       setActionLoading(null);
     }
-  }, [loadFeed, text]);
+  }, [loadFeed, t]);
 
   const handleCopy = useCallback(async () => {
     if (!feed?.token) return;
@@ -181,7 +114,7 @@ export function TaskCalendarFeedSettings() {
     const url = `${baseUrl}/api/task-calendar/feed/${feed.token}.ics`;
     try {
       await navigator.clipboard.writeText(url);
-      toast.success(text.copied);
+      toast.success(t("tasks.calendarFeed.copied"));
     } catch {
       const ta = document.createElement("textarea");
       ta.value = url;
@@ -189,9 +122,9 @@ export function TaskCalendarFeedSettings() {
       ta.select();
       document.execCommand("copy");
       document.body.removeChild(ta);
-      toast.success(text.copied);
+      toast.success(t("tasks.calendarFeed.copied"));
     }
-  }, [feed?.token, text]);
+  }, [feed?.token, t]);
 
   const icsUrl = feed?.token
     ? `${getBaseUrl().replace(/\/api$/, "")}/api/task-calendar/feed/${feed.token}.ics`
@@ -205,7 +138,7 @@ export function TaskCalendarFeedSettings() {
         className="flex items-center gap-1 px-2 py-1 text-xs text-tx-tertiary rounded-md"
       >
         <Loader2 size={13} className="animate-spin" />
-        {text.loading}
+        {t("tasks.calendarFeed.loading")}
       </button>
     );
   }
@@ -224,7 +157,7 @@ export function TaskCalendarFeedSettings() {
         ) : (
           <Calendar size={13} />
         )}
-        {text.enable}
+        {t("tasks.calendarFeed.enable")}
       </button>
     );
   }
@@ -245,7 +178,7 @@ export function TaskCalendarFeedSettings() {
         )}
       >
         <Calendar size={13} />
-        {text.title}
+        {t("tasks.calendarFeed.title")}
       </button>
 
       {expanded && (
@@ -264,7 +197,7 @@ export function TaskCalendarFeedSettings() {
           >
             {/* 标题栏 */}
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium text-tx-primary">{text.title}</h4>
+              <h4 className="text-sm font-medium text-tx-primary">{t("tasks.calendarFeed.title")}</h4>
               <button
                 type="button"
                 onClick={() => setExpanded(false)}
@@ -277,25 +210,25 @@ export function TaskCalendarFeedSettings() {
 
             {/* 说明 */}
             <p className="text-xs text-tx-tertiary leading-relaxed">
-              {text.description}
+              {t("tasks.calendarFeed.description")}
             </p>
 
             {/* 状态 */}
             <div className="flex items-center gap-2 text-xs">
               <span className={cn("w-2 h-2 rounded-full", feed.enabled ? "bg-green-500" : "bg-gray-400")} />
               <span className="text-tx-secondary">
-                {feed.enabled ? text.active : text.disabled}
+                {feed.enabled ? t("tasks.calendarFeed.active") : t("tasks.calendarFeed.disabled")}
               </span>
               {feed.lastAccessedAt && (
                 <span className="text-tx-tertiary ml-auto">
-                  {text.lastAccess}: {new Date(feed.lastAccessedAt).toLocaleDateString()}
+                  {t("tasks.calendarFeed.lastAccess")}: {new Date(feed.lastAccessedAt).toLocaleDateString()}
                 </span>
               )}
             </div>
 
             {/* 订阅链接 */}
             <div className="space-y-1">
-              <label className="block text-xs text-tx-tertiary">{text.link}</label>
+              <label className="block text-xs text-tx-tertiary">{t("tasks.calendarFeed.link")}</label>
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -322,7 +255,7 @@ export function TaskCalendarFeedSettings() {
                 disabled={actionLoading === "update"}
                 className="rounded border-app-border text-accent-primary focus:ring-accent-primary/30"
               />
-              <span className="text-xs text-tx-secondary">{text.includeCompleted}</span>
+              <span className="text-xs text-tx-secondary">{t("tasks.calendarFeed.includeCompleted")}</span>
             </label>
 
             {/* 导出描述 */}
@@ -334,12 +267,12 @@ export function TaskCalendarFeedSettings() {
                 disabled={actionLoading === "update"}
                 className="rounded border-app-border text-accent-primary focus:ring-accent-primary/30"
               />
-              <span className="text-xs text-tx-secondary">{text.includeDescription}</span>
+              <span className="text-xs text-tx-secondary">{t("tasks.calendarFeed.includeDescription")}</span>
             </label>
 
             {/* 默认提醒时间 */}
             <div className="space-y-1">
-              <label className="block text-xs text-tx-tertiary">{text.defaultAlarm}</label>
+              <label className="block text-xs text-tx-tertiary">{t("tasks.calendarFeed.defaultAlarm")}</label>
               <select
                 value={feed.defaultAlarmMinutes}
                 onChange={(e) => handleUpdate({ defaultAlarmMinutes: Number(e.target.value) })}
@@ -365,7 +298,7 @@ export function TaskCalendarFeedSettings() {
                 ) : (
                   <RefreshCw size={13} />
                 )}
-                {text.rotate}
+                {t("tasks.calendarFeed.rotate")}
               </button>
               <button
                 type="button"
@@ -378,13 +311,13 @@ export function TaskCalendarFeedSettings() {
                 ) : (
                   <Trash2 size={13} />
                 )}
-                {text.disable}
+                {t("tasks.calendarFeed.disable")}
               </button>
             </div>
 
             {/* 提示 */}
             <p className="text-[11px] text-tx-tertiary leading-relaxed">
-              {text.hint}
+              {t("tasks.calendarFeed.hint")}
             </p>
           </div>
         </div>
