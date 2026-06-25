@@ -365,6 +365,12 @@ app.post("/import-attachment", async (c) => {
     } catch { /* ignore */ }
 
     // 提取 PDF/DOCX 文本写入 contentText（事务外执行，失败不影响上传结果）
+    let extracted = false;
+    let extractedChars = 0;
+    let extractionTruncated = false;
+    let extractionError: string | undefined;
+    let noText = false;
+
     const EXTRACT_START = "<!-- nowen-folder-sync-extracted:start -->";
     const EXTRACT_END = "<!-- nowen-folder-sync-extracted:end -->";
     try {
@@ -375,22 +381,32 @@ app.post("/import-attachment", async (c) => {
         filename,
         size: fileBuffer.length,
       });
-      if (extractResult.text && extractResult.text.trim()) {
-        const truncated = extractResult.text.slice(0, 200000);
+      if (extractResult.skipReason) {
+        noText = extractResult.skipReason === "empty";
+        if (!noText) extractionError = extractResult.skipReason;
+      } else if (extractResult.text && extractResult.text.trim()) {
+        const fullText = extractResult.text;
+        const truncated = fullText.slice(0, 200000);
+        extracted = true;
+        extractedChars = truncated.length;
+        extractionTruncated = fullText.length > 200000;
         // 读取当前 contentText，替换或追加提取文本块
         const current = db.prepare("SELECT contentText FROM notes WHERE id = ?").get(updateNoteId) as { contentText: string } | undefined;
         const base = (current?.contentText || "").split(EXTRACT_START)[0].trimEnd();
         const newContentText = `${base}\n\n${EXTRACT_START}\n${truncated}\n${EXTRACT_END}`;
         db.prepare("UPDATE notes SET contentText = ? WHERE id = ?").run(newContentText, updateNoteId);
+      } else {
+        noText = true;
       }
-    } catch (e) {
-      // 提取失败只记日志，不影响附件上传成功
+    } catch (e: any) {
+      extractionError = e?.message?.slice(0, 200) || "extraction failed";
       console.warn("[folder-sync] text extraction failed for", filename, e);
     }
 
     return c.json({
       success: true, created: isNew, updated: !isNew, skipped: false,
       noteId: updateNoteId, attachmentId, sha256,
+      extracted, extractedChars, extractionTruncated, extractionError, noText,
     });
   } catch (err: any) {
     // 回滚事务

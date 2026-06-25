@@ -1494,7 +1494,12 @@ export const api = {
         headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: form,
       });
-      const data = await res.json();
+      const data = await res.json() as {
+        success: boolean; created: boolean; updated: boolean; skipped: boolean;
+        noteId: string; attachmentId?: string; sha256: string;
+        extracted?: boolean; extractedChars?: number; extractionTruncated?: boolean;
+        extractionError?: string; noText?: boolean;
+      };
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       return data;
     },

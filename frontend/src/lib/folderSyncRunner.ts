@@ -118,6 +118,14 @@ export async function runFolderSyncOnce(folderId: string, options: SyncRunOption
           await fs.markUploadResult(folderId, candidate.relativePath, { success: true, noteId: res.noteId, attachmentId: res.attachmentId });
           if (res.created) imported++;
           else if (res.updated) updated++;
+          // 记录文本提取状态
+          if (res.extracted) {
+            try { await fs.appendLog(folderId, "extract_ok", `${candidate.filename}: extracted ${res.extractedChars} chars${res.extractionTruncated ? " (truncated)" : ""}`); } catch {}
+          } else if (res.noText) {
+            try { await fs.appendLog(folderId, "extract_no_text", `${candidate.filename}: no text found (image-only PDF?)`); } catch {}
+          } else if (res.extractionError) {
+            try { await fs.appendLog(folderId, "extract_failed", `${candidate.filename}: ${res.extractionError}`); } catch {}
+          }
         } else {
           await fs.markUploadResult(folderId, candidate.relativePath, { success: false, error: "Import attachment failed" });
           uploadFailed++;

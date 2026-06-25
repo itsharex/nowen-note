@@ -2253,6 +2253,10 @@
     "interval1d": "每天",
     "nextSync": "下次同步",
     "nextSyncSoon": "即将同步",
-    "hasAttachment": "附件"
+    "hasAttachment": "附件",
+    "extracted": "已提取",
+    "extractionFailed": "提取失败",
+    "noExtractedText": "无文本",
+    "extractionTruncated": "已截断"
   }
 }

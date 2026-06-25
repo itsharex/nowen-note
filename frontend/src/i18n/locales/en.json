@@ -2084,6 +2084,10 @@
     "interval1d": "Every day",
     "nextSync": "Next sync",
     "nextSyncSoon": "Sync soon",
-    "hasAttachment": "attachment"
+    "hasAttachment": "attachment",
+    "extracted": "extracted",
+    "extractionFailed": "extraction failed",
+    "noExtractedText": "no text",
+    "extractionTruncated": "truncated"
   }
 }
