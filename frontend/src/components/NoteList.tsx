@@ -2956,7 +2956,7 @@ export default function NoteList() {
               }}
               onClose={() => setShowSortMenu(false)}
               showNoteTime={showNoteTime}
-              onToggleShowTime={() => userPrefs.setUserPref("showNoteListUpdatedTime", !userPrefs.prefs.showNoteListUpdatedTime)}
+              onToggleShowTime={() => userPrefs.setPref("showNoteListUpdatedTime", !userPrefs.prefs.showNoteListUpdatedTime)}
             />
           )}
         </div>
@@ -3058,7 +3058,7 @@ export default function NoteList() {
               }}
               onClose={() => setShowSortMenu(false)}
               showNoteTime={showNoteTime}
-              onToggleShowTime={() => userPrefs.setUserPref("showNoteListUpdatedTime", !userPrefs.prefs.showNoteListUpdatedTime)}
+              onToggleShowTime={() => userPrefs.setPref("showNoteListUpdatedTime", !userPrefs.prefs.showNoteListUpdatedTime)}
             />
           )}
         </div>

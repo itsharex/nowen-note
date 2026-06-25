@@ -78,7 +78,7 @@ const INTERVAL_OPTIONS: { value: number | null; labelKey: string; defaultLabel: 
   { value: 1440, labelKey: "folderSync.interval1d", defaultLabel: "每天" },
 ];
 
-function getIntervalLabel(intervalMinutes: number | null | undefined, t: (k: string, d?: string) => string): string {
+function getIntervalLabel(intervalMinutes: number | null | undefined, t: any): string {
   const opt = INTERVAL_OPTIONS.find((o) => o.value === (intervalMinutes ?? null));
   return opt ? t(opt.labelKey, { defaultValue: opt.defaultLabel }) : t("folderSync.intervalManual", { defaultValue: "仅手动" });
 }

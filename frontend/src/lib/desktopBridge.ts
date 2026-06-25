@@ -131,7 +131,7 @@ export interface FolderSyncIndexItem {
   size: number;
   mtimeMs: number;
   sha256: string;
-  status: "new" | "unchanged" | "changed" | "deleted" | "skipped" | "error";
+  status: "new" | "unchanged" | "changed" | "deleted" | "skipped" | "error" | "synced";
   lastScannedAt: string;
   lastSyncedAt: string | null;
   noteId?: string | null;

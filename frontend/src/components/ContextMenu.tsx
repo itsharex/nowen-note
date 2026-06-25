@@ -202,7 +202,7 @@ function MoveContextNoteModal({
       await api.updateNote(note.id, { notebookId: selectedId } as any);
       actions.updateNoteInList({ id: note.id, notebookId: selectedId });
       if (state.activeNote?.id === note.id) {
-        actions.setActiveNote({ ...state.activeNote, notebookId: selectedId });
+        actions.setActiveNote({ ...state.activeNote, notebookId: selectedId } as any);
         actions.setSelectedNotebook(selectedId);
       }
       actions.refreshNotebooks();

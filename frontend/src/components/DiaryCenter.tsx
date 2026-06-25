@@ -32,6 +32,7 @@ import {
   isDiaryDraftExpired,
   type DiaryDraftMedia,
 } from "@/lib/diaryDraft";
+import SayCalendarView from "@/components/diary/SayCalendarView";
 
 // 心情选项
 const MOODS = [
@@ -2144,7 +2145,7 @@ export default function DiaryCenter() {
         <SayCalendarView
           onClose={() => setCalendarOpen(false)}
           onWriteEntry={() => setCalendarOpen(false)}
-          onLocateItem={(id) => {
+          onLocateItem={(id: string) => {
             const found = items.find((x) => x.id === id);
             if (found) {
               setItems((prev) => {

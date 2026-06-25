@@ -34,7 +34,7 @@ export default function SayCalendarView({
   const [loading, setLoading] = useState(false);
 
   const grid = useMemo(() => getMonthGrid(year, month), [year, month]);
-  const itemsByDate = useMemo(() => groupDiariesByDate(items), [items]);
+  const itemsByDate = useMemo(() => groupDiariesByDate(items) as Map<string, Diary[]>, [items]);
 
   const fetchMonthItems = useCallback(async () => {
     const from = formatDateKey(year, month, 1);
