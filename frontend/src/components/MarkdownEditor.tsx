@@ -1,24 +1,27 @@
 /**
- * MarkdownEditor ���� CodeMirror 6 ������ Markdown �ʼǱ༭����MD Ǩ�� �� �׶� 1 �Ǽܣ�
- * ----------------------------------------------------------------------------------
- * ���Ŀ�꣺
- *   - props �� TiptapEditor ��ȫһ�£�`EditorPane` δ����һ���滻
- *   - �򿪱ʼ�ʱͨ�� `normalizeToMarkdown` ������ʷ Tiptap JSON
- *   - ����ʱд Markdown ���ı� + �� `markdownToPlainText` ���� contentText
- *   - ��� (`onHeadingsChange`) �� @lezer/markdown �� syntax tree ����
- *   - 500ms debounce��Ctrl/Cmd+S ���� flushSave
- *   - �л��ʼ� (note.id) ʱ�ؽ� doc��ͬһ�ʼǵ� note.content �仯���汾�ָ���Ҳ���ؽ�
- *   - ��ɫ/��ɫ������� `<html class="dark">` �л�
+ * MarkdownEditor —— 基于 CodeMirror 6 的 Markdown 笔记编辑器
+ * ---
+ * 设计目标：
+ *   - 与 TiptapEditor 共享 EditorPane 上层能力（标题、标签、保存、只读、AI 等）
+ *   - 原生 Markdown 笔记直接以 Markdown 纯文本保存到 notes.content
+ *   - 保存时通过 markdownToPlainText 生成 contentText，保证搜索可用
+ *   - 大纲 (onHeadingsChange) 通过 @lezer/markdown 的 syntax tree 提取
+ *   - 500ms debounce + Ctrl/Cmd+S 手动 flushSave
+ *   - 切换笔记 (note.id) 时重建 doc；同一笔记的 note.content 变化（版本恢复）也会重建
+ *   - 暗色/亮色主题跟随 `<html class="dark">` 切换
  *
- * ���׶�ֻʵ��"��С������"�汾��
- *   - ��������� + ��ǩ��
- *   - CM6 �༭�� + MD �﷨���� + �����Ƕ������
- *   - ���������� / Tab ���� / ���� / ��������
- *   - ����ͳ��
- *   - `extractHeadings` + `scrollTo`
+ * 当前能力：
+ *   - Markdown 源码编辑 + 工具栏
+ *   - CM6 编辑器 + MD 语法高亮 + 嵌入代码块高亮
+ *   - 基础快捷键 / Tab 缩进 / 撤销 / 自动补全
+ *   - 字数统计
+ *   - extractHeadings + scrollTo
  *
- * �����׶λ�½�����ϣ���������б�����ͼƬճ����Bubble ѡ����ʽ����AI ������ڡ�
- * װ����Ⱦ�������ֺš������ͼ�껯�ȣ���
+ * 后续可扩展：
+ *   - Markdown 预览 / 分屏预览
+ *   - 图片粘贴上传
+ *   - 更完整的表格编辑
+ *   - Mermaid / KaTeX 预览增强
  */
 
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
