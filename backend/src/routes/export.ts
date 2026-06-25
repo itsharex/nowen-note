@@ -395,8 +395,12 @@ app.post("/import/nowen-package", async (c) => {
   const importMode = (c.req.query("importMode") as "new-root" | "into-target") || "new-root";
   const targetNotebookId = c.req.query("targetNotebookId") || undefined;
 
+  // 解析 workspaceId
+  const wsRaw = c.req.query("workspaceId") ?? undefined;
+  const { sql: wsSql, param: wsParam } = workspaceFilter(wsRaw);
+
   // 闸门检查
-  const isPersonalScope = !c.req.query("workspaceId");
+  const isPersonalScope = wsParam === null;
   const denied = denyIfPersonalFeatureDisabled(userId, isPersonalScope, "personalImportEnabled");
   if (denied) return c.json(denied, 403);
 
@@ -417,6 +421,7 @@ app.post("/import/nowen-package", async (c) => {
     const { importNowenPackage } = await import("../services/nowenPackageImport");
     const result = await importNowenPackage(zipBuffer, {
       userId,
+      workspaceId: wsParam,
       targetNotebookId,
       importMode,
       dryRun,
