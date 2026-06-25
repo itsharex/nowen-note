@@ -299,6 +299,9 @@ function ConfigCard({
                   <div key={item.relativePath} className="flex items-center gap-2 text-[11px] py-0.5 group">
                     {statusIcon(item.status)}
                     <span className="text-tx-secondary truncate flex-1" title={item.relativePath}>{item.relativePath}</span>
+                    {item.attachmentId && (
+                      <span className="text-[9px] px-1 py-0 rounded bg-accent-primary/10 text-accent-primary shrink-0">📎</span>
+                    )}
                     <span className="text-tx-tertiary shrink-0">{formatBytes(item.size)}</span>
                     {item.status === "synced" && item.noteId && (
                       <button type="button" onClick={() => onOpenNote(item.noteId!)}
