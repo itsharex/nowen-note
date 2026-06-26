@@ -1570,6 +1570,7 @@ export default function FileManager() {
         )}
       </AnimatePresence>
     </div>
+    </div>
   );
 }
 
