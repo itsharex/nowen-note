@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Shield,
@@ -33,18 +33,49 @@ import {
 export default function SecuritySettings() {
   const { t } = useTranslation();
   const [isDemo, setIsDemo] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const prevUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     api
       .getMe()
       .then((u) => {
-        if (!cancelled) setIsDemo(!!(u as any)?.isDemo);
+        if (cancelled) return;
+        setIsDemo(!!(u as any)?.isDemo);
+        setCurrentUserId(u.id);
+        // 用户切换时重置子组件（通过 key 变化触发 remount）
+        prevUserIdRef.current = u.id;
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // 监听 storage 事件：当其他 tab 登出/登入时，当前 tab 的 token 变了，
+  // 需要重新拉取用户信息。否则 SettingsModal 没有 remount，SecuritySettings
+  // 的 useEffect([], []) 不会重新执行。
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "nowen-token") {
+        const newToken = e.newValue;
+        if (newToken) {
+          api.getMe().then((u) => {
+            setIsDemo(!!(u as any)?.isDemo);
+            setCurrentUserId(u.id);
+            prevUserIdRef.current = u.id;
+          }).catch(() => {});
+        } else {
+          // token 被清除（登出），重置状态
+          setIsDemo(false);
+          setCurrentUserId(null);
+          prevUserIdRef.current = null;
+        }
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   return (
@@ -60,9 +91,10 @@ export default function SecuritySettings() {
           </div>
         </div>
       )}
-      {!isDemo && <PasswordSection />}
-      {!isDemo && <TwoFactorSection />}
-      <SessionsSection />
+      {/* 用 key={currentUserId} 强制子组件在用户切换时完全 remount，清除所有旧状态 */}
+      {!isDemo && <PasswordSection key={`pwd-${currentUserId}`} />}
+      {!isDemo && <TwoFactorSection key={`2fa-${currentUserId}`} />}
+      <SessionsSection key={`sess-${currentUserId}`} />
     </div>
   );
 }

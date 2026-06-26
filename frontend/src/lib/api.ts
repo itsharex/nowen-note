@@ -447,6 +447,15 @@ export function broadcastLogout(reason?: string) {
   }
   try {
     localStorage.removeItem("nowen-token");
+    // 清理所有用户缓存（nowen-auth-user:*），防止切换账号后旧缓存被复用
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("nowen-auth-user:")) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
     // 其他 tab 监听到该 key 的 storage 事件后会自己 removeItem("nowen-token") 并回登录页
     localStorage.setItem("nowen-logout-broadcast", `${Date.now()}|${reason || ""}`);
     // 立即删除，这样下次登出也能再次触发（避免 value 相同被合并）
