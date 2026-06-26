@@ -22,33 +22,12 @@ import {
   getUserWorkspaceRole,
   requireWorkspaceFeature,
 } from "../middleware/acl";
+import { ensureMindmapSchema } from "../lib/mindmap-schema";
 
 const app = new Hono();
 
-// 确保 mindmaps 表存在（新库初始化路径；已存在的老库靠 v4 迁移兜底补列）
-function ensureTable() {
-  const db = getDb();
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS mindmaps (
-      id TEXT PRIMARY KEY,
-      userId TEXT NOT NULL,
-      workspaceId TEXT,
-      title TEXT NOT NULL DEFAULT '无标题导图',
-      data TEXT NOT NULL DEFAULT '{}',
-      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
-      updatedAt TEXT NOT NULL DEFAULT (datetime('now')),
-      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-    );
-    CREATE INDEX IF NOT EXISTS idx_mindmaps_user ON mindmaps(userId);
-    CREATE INDEX IF NOT EXISTS idx_mindmaps_updated ON mindmaps(updatedAt DESC);
-    CREATE INDEX IF NOT EXISTS idx_mindmaps_workspace ON mindmaps(workspaceId);
-  `);
-  // ?????? starred ?
-  try { db.exec(`ALTER TABLE mindmaps ADD COLUMN starred INTEGER NOT NULL DEFAULT 0`); } catch {}
-}
-
-// 初始化表
-ensureTable();
+// 初始化表（统一兜底：mindmaps + starred + folderId + mindmap_folders）
+ensureMindmapSchema();
 
 interface MindmapRow {
   id: string;

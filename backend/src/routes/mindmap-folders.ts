@@ -6,8 +6,12 @@ import {
   getUserWorkspaceRole,
   requireWorkspaceFeature,
 } from "../middleware/acl";
+import { ensureMindmapSchema } from "../lib/mindmap-schema";
 
 const app = new Hono();
+
+// 初始化表（统一兜底：mindmaps + starred + folderId + mindmap_folders）
+ensureMindmapSchema();
 
 interface FolderRow {
   id: string;
