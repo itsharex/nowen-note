@@ -1,6 +1,11 @@
 {
-  "generatedAt": "2026-06-25T10:06:01.914Z",
+  "generatedAt": "2026-06-26T00:50:06.699Z",
   "entries": [
+    {
+      "version": "1.2.3",
+      "date": "2026-06-26",
+      "body": "### 🐛 修复\n\n- ensure uploaded images render after local fallback (BUG-IMAGE-UPLOAD-PREVIEW-01) (b94deff)\n\n### ♻️ 重构\n\n- unify local attachment upload paths (ATTACHMENT-DIRECTORY-ORGANIZE-01-B) (bdf1431)\n\n### 🔧 其他\n\n- remove accidental noop file (f8b27a2)\n\n### 📌 杂项\n\n- noop (309d536)"
+    },
     {
       "version": "1.2.2",
       "date": "2026-06-25",
@@ -45,11 +50,6 @@
       "version": "1.1.14",
       "date": "2026-06-03",
       "body": "### ✨ 新增\n\n- 侧边栏重构、右键菜单优化及多语言支持增强 (3dadbcc)\n- 笔记内联到笔记本树，移除独立笔记列表列 (406d599)\n\n### 🐛 修复\n\n- 修复标题聚焦边框问题，使用 node 写入避免 PowerShell UTF-8 BOM 损坏 (94e2061)\n- 移除标题输入框聚焦时的粗边框 (b2154b5)\n- 修复 JSX style 模板字符串中缺失的反引号 (1da66ed)\n- 从原始文件重新应用笔记内联功能，修复 UTF-8 编码损坏 (9a8ed99)\n- 修复递归 NotebookItem 调用中 /> 位置错误和缺失 notes prop (bedd28f)\n- 恢复被 Set-Content UTF8 编码破坏的 emoji 字符 (a6b9296)\n- 修复字号/颜色弹窗点击外部关闭逻辑，优化自定义颜色交互 (cc4bd64)\n\n### 🔧 其他\n\n- 提交剩余改动 (157e2e8)\n\n### 📌 杂项\n\n- 优化用户体验和编辑器功能 (f671a3d)"
-    },
-    {
-      "version": "1.1.13",
-      "date": "2026-06-02",
-      "body": "### 🐛 修复\n\n- restrict color-mix focus fallback to form elements only (f9e58ec)\n- Backspace at line start now correctly decreases indent (Office-like behavior) (aadc88a)\n- add CSS fallbacks for older Android WebViews (Xiaomi 8 black screen) (aa9a2fd)"
     }
   ]
 }

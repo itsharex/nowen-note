@@ -243,6 +243,24 @@ QQ 群：`1093473044`
 
 > 最近 5 个版本的更新内容，完整历史见 [CHANGELOG.md](./CHANGELOG.md)。
 
+### v1.2.3 - 2026-06-26
+
+### 🐛 修复
+
+- ensure uploaded images render after local fallback (BUG-IMAGE-UPLOAD-PREVIEW-01) (b94deff)
+
+### ♻️ 重构
+
+- unify local attachment upload paths (ATTACHMENT-DIRECTORY-ORGANIZE-01-B) (bdf1431)
+
+### 🔧 其他
+
+- remove accidental noop file (f8b27a2)
+
+### 📌 杂项
+
+- noop (309d536)
+
 ### v1.2.2 - 2026-06-25
 
 ### ✨ 新增
@@ -602,21 +620,5 @@ QQ 群：`1093473044`
 ### 📝 文档
 
 - 添加完整官网教程体系（47篇教程 + 索引 + 规划） (210f537)
-
-### v1.1.18 - 2026-06-09
-
-### ✨ 新增
-
-- 更新Android组件和Tiptap编辑器功能 (c489050)
-- 增强Tiptap编辑器功能并优化用户体验 (ce05f9e)
-- 添加鸿蒙ArkWeb原生应用项目 (f63e84f)
-- 添加鸿蒙ArkWeb WebView原生适配支持 (f6d4923)
-
-### 🐛 修复
-
-- 移动端Sidebar约束宽度防溢出，移除选择时自动关闭侧边栏的逻辑 (03bb588)
-- 移除NavRail点击导航项后自动关闭移动端侧边栏的逻辑 (a429f1a)
-- 移动端侧边栏遮罩区分点击/滑动，禁用手势关闭侧边栏，添加overflow-hidden防溢出 (948e447)
-- 优化Android WebView选择菜单处理，使用委托模式替代直接返回null (fa20e06)
 
 <!-- CHANGELOG:END -->

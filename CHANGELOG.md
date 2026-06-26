@@ -12,6 +12,25 @@
 
 <!-- ADD_NEW_HERE -->
 
+## v1.2.3 - 2026-06-26
+
+### 🐛 修复
+
+- ensure uploaded images render after local fallback (BUG-IMAGE-UPLOAD-PREVIEW-01) (b94deff)
+
+### ♻️ 重构
+
+- unify local attachment upload paths (ATTACHMENT-DIRECTORY-ORGANIZE-01-B) (bdf1431)
+
+### 🔧 其他
+
+- remove accidental noop file (f8b27a2)
+
+### 📌 杂项
+
+- noop (309d536)
+
+
 ## v1.2.2 - 2026-06-25
 
 ### ✨ 新增
