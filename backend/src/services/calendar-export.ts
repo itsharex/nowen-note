@@ -159,7 +159,7 @@ function toPublic(row: CalendarExportTarget): CalendarExportTargetPublic {
   };
 }
 
-// ====== S3 签名上传（复用 image-hosting.ts 逻辑） ======
+// ====== S3 签名上传 ======
 
 function sha256(data: Buffer | string): string {
   return crypto.createHash("sha256").update(data).digest("hex");
@@ -175,22 +175,57 @@ function buildS3SignedRequest(
   cfg: CalendarExportTargetConfig,
   body?: Buffer,
   contentType?: string,
+  extraHeaders?: Record<string, string>,
 ): { url: string; headers: Record<string, string> } {
   const now = new Date();
   const dateStamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z").slice(0, 8);
   const amzDate = now.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
 
-  const host = new URL(cfg.endpoint).host;
-  const encodedKey = objectKey.split("/").map(encodeURIComponent).join("/");
-  const canonicalUri = `/${encodedKey}`;
-
-  const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${sha256(body || Buffer.alloc(0))}\nx-amz-date:${amzDate}\n`;
-  const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
+  const endpointUrl = new URL(cfg.endpoint);
+  const endpointHost = endpointUrl.host;
   const payloadHash = sha256(body || Buffer.alloc(0));
 
-  const canonicalQueryString = "";
+  // path-style:  https://s3.amazonaws.com/{bucket}/{key}
+  // virtual-hosted-style: https://{bucket}.s3.amazonaws.com/{key}
+  //
+  // 关键：canonicalUri、Host header、真实 URL 必须三者一致。
+  let requestHost: string;
+  let canonicalUri: string;
+  let requestUrl: string;
+
+  const encodedKey = objectKey.split("/").map(encodeURIComponent).join("/");
+
+  if (cfg.usePathStyle) {
+    // path-style: host 不变，路径包含 bucket
+    requestHost = endpointHost;
+    canonicalUri = `/${cfg.bucket}/${encodedKey}`;
+    requestUrl = `${cfg.endpoint}/${cfg.bucket}/${encodedKey}`;
+  } else {
+    // virtual-hosted-style: host 前缀加 bucket，路径不含 bucket
+    requestHost = `${cfg.bucket}.${endpointHost}`;
+    canonicalUri = `/${encodedKey}`;
+    requestUrl = `${endpointUrl.protocol}//${requestHost}/${encodedKey}`;
+  }
+
+  // 构建签名 headers —— 所有参与签名的 header 必须在 canonicalHeaders 中
+  const signingHeaders: Record<string, string> = {
+    "host": requestHost,
+    "x-amz-content-sha256": payloadHash,
+    "x-amz-date": amzDate,
+  };
+  if (contentType) signingHeaders["content-type"] = contentType;
+  if (extraHeaders) {
+    for (const [k, v] of Object.entries(extraHeaders)) {
+      signingHeaders[k.toLowerCase()] = v;
+    }
+  }
+
+  const sorted = Object.keys(signingHeaders).sort();
+  const canonicalHeaders = sorted.map((k) => `${k}:${signingHeaders[k]}\n`).join("");
+  const signedHeaders = sorted.join(";");
+
   const canonicalRequest = [
-    method, canonicalUri, canonicalQueryString,
+    method, canonicalUri, "",
     canonicalHeaders, signedHeaders, payloadHash,
   ].join("\n");
 
@@ -208,18 +243,21 @@ function buildS3SignedRequest(
 
   const authorization = `AWS4-HMAC-SHA256 Credential=${cfg.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
 
-  const url = cfg.usePathStyle
-    ? `${cfg.endpoint}/${cfg.bucket}/${encodedKey}`
-    : `${cfg.endpoint}/${encodedKey}`;
-
+  // 输出 headers（不含 host，fetch 会自动设置；但签名里已包含）
   const headers: Record<string, string> = {
     "x-amz-content-sha256": payloadHash,
     "x-amz-date": amzDate,
     "Authorization": authorization,
+    "Host": requestHost,
   };
   if (contentType) headers["Content-Type"] = contentType;
+  if (extraHeaders) {
+    for (const [k, v] of Object.entries(extraHeaders)) {
+      headers[k] = v;
+    }
+  }
 
-  return { url, headers };
+  return { url: requestUrl, headers };
 }
 
 // ====== 导出函数 ======
@@ -459,10 +497,11 @@ export async function exportNow(
     // 上传到 S3
     const objectKey = buildObjectKey(cfg, row.userId, row.feedId, false);
     const icsBuffer = Buffer.from(icsResult.body, "utf-8");
-    const { url, headers } = buildS3SignedRequest("PUT", objectKey, cfg, icsBuffer, "text/calendar; charset=utf-8");
-
-    // 添加 Cache-Control header
-    headers["Cache-Control"] = "public, max-age=300";
+    // Cache-Control 必须参与签名，否则 S3 兼容服务可能返回 SignatureDoesNotMatch
+    const { url, headers } = buildS3SignedRequest(
+      "PUT", objectKey, cfg, icsBuffer, "text/calendar; charset=utf-8",
+      { "cache-control": "public, max-age=300" },
+    );
 
     const res = await fetch(url, {
       method: "PUT",
