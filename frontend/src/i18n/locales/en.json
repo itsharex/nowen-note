@@ -1762,7 +1762,8 @@
     "calendarNoRecords": "No entries this day",
     "calendarWriteEntry": "Write an entry",
     "calendarToday": "Today",
-    "calendarEntryCount": "{{count}} entries"
+    "calendarEntryCount": "{{count}} entries",
+    "calendarTitle": "Calendar"
   },
   "download": {
     "title": "Downloads",

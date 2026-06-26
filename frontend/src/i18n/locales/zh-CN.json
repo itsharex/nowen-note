@@ -1931,7 +1931,8 @@
     "calendarNoRecords": "这一天还没有记录",
     "calendarWriteEntry": "写一条说说",
     "calendarToday": "今天",
-    "calendarEntryCount": "{{count}} 条记录"
+    "calendarEntryCount": "{{count}} 条记录",
+    "calendarTitle": "日历"
   },
   "download": {
     "title": "下载客户端",
