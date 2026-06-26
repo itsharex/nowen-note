@@ -3,6 +3,7 @@ import { marked, Renderer } from "marked";
 import i18n from "i18next";
 import { Editor, generateJSON, Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Underline from "@tiptap/extension-underline";
@@ -44,12 +45,17 @@ export const tiptapExtensions = [
   StarterKit.configure({
     codeBlock: false,
     heading: { levels: [1, 2, 3] },
-    // BLOCK-LINKS-UI-01-RV3: 允许 note: 协议，避免 schema repair 时丢失 note link
-    link: {
-      openOnClick: false,
-      autolink: true,
-      linkOnPaste: true,
-      protocols: ["http", "https", "mailto", "note"],
+  }),
+  // BLOCK-LINKS-UI-01-RV3: 显式配置 Link 扩展，允许 note: 协议
+  // 避免 repairTiptapJson round-trip 时丢失 note link
+  Link.configure({
+    openOnClick: false,
+    autolink: true,
+    linkOnPaste: true,
+    protocols: ["http", "https", "mailto", "note"],
+    HTMLAttributes: {
+      target: "_blank",
+      rel: "noopener noreferrer nofollow",
     },
   }),
   Image.configure({ inline: false, allowBase64: true }),
