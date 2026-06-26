@@ -1899,12 +1899,17 @@ export const api = {
 
   // 今日日记
   journals: {
-    /** 获取或创建今日日记 */
-    getOrCreateToday: () =>
-      request<{ id: string; title: string; isNew: boolean; [key: string]: any }>("/journals/today"),
-    /** 检查今日日记是否存在 */
-    checkToday: () =>
-      request<{ exists: boolean; noteId: string | null; title: string | null }>("/journals/check"),
+    /** 获取或创建今日日记（POST 语义，避免 GET 副作用） */
+    getOrCreateToday: (localDate?: string) =>
+      request<{ id: string; title: string; existed: boolean; [key: string]: any }>("/journals/today", {
+        method: "POST",
+        body: JSON.stringify({ localDate }),
+      }),
+    /** 检查今日日记是否存在（只读，不创建） */
+    checkToday: (date?: string) => {
+      const qs = date ? `?date=${encodeURIComponent(date)}` : "";
+      return request<{ exists: boolean; noteId: string | null; title: string | null }>(`/journals/check${qs}`);
+    },
     /** 获取日记列表 */
     list: (cursor?: string, limit?: number) => {
       const params = new URLSearchParams();

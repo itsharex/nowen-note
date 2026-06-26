@@ -4,14 +4,16 @@
  * 提供"一键创建今日日记"功能。
  *
  * 接口：
- *   GET  /api/journals/today   获取或创建今日日记
- *   GET  /api/journals/check   检查今日日记是否存在
+ *   POST /api/journals/today   获取或创建今日日记（显式操作，避免 GET 副作用）
+ *   GET  /api/journals/check   检查今日日记是否存在（只读，不创建）
+ *   GET  /api/journals/list    获取日记列表（按日期倒序）
  *
  * 设计决策：
  *   - 使用 note_type = 'journal' 区分日记和普通笔记
  *   - journal_date 使用 YYYY-MM-DD 格式，按用户本地日期
- *   - 唯一性通过查询保证（userId + journal_date + note_type = journal）
+ *   - 唯一性通过 UNIQUE 索引保证（userId + note_type + journal_date）
  *   - 标题默认使用日期格式 "2026-06-26"
+ *   - POST 语义：显式创建或获取，避免浏览器预请求/缓存误触发
  */
 
 import { Hono } from "hono";
@@ -26,10 +28,18 @@ const app = new Hono();
  * 重要：不使用 toISOString().slice(0, 10)，因为这会返回 UTC 日期，
  * 在 UTC+8 时区晚上/凌晨会生成前一天的日期。
  *
- * @param date 可选日期对象，默认当前时间
+ * @param dateStr 可选日期字符串，默认使用当前本地时间
  * @returns YYYY-MM-DD 格式的本地日期字符串
  */
-function getLocalDateKey(date: Date = new Date()): string {
+function getLocalDateKey(dateStr?: string): string {
+  let date: Date;
+
+  if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    // 前端传入的 YYYY-MM-DD 格式，直接使用
+    return dateStr;
+  }
+
+  date = new Date();
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
@@ -37,17 +47,21 @@ function getLocalDateKey(date: Date = new Date()): string {
 }
 
 /**
- * 获取或创建今日日记
+ * 获取或创建今日日记（POST 语义）
  *
- * 逻辑：
- * 1. 计算用户本地日期（YYYY-MM-DD）
- * 2. 查询是否已有今日日记
- * 3. 如果存在，返回已有日记
- * 4. 如果不存在，创建新日记并返回
+ * 为什么用 POST 而非 GET：
+ *   - GET 可能被浏览器预请求、缓存、爬虫、代理误触发
+ *   - POST 语义明确表示"创建或获取"，是幂等的写操作
+ *   - 避免用户意外触发日记创建
  *
- * 并发安全：使用 UNIQUE 约束或查询+插入的事务保证
+ * 并发安全：
+ *   - UNIQUE 索引 (userId, note_type, journal_date) 防止重复创建
+ *   - INSERT 冲突时回退查询已有日记
+ *
+ * body 参数：
+ *   - localDate: YYYY-MM-DD（可选，前端传入用户本地日期）
  */
-app.get("/today", async (c) => {
+app.post("/today", async (c) => {
   const db = getDb();
   const userId = c.req.header("X-User-Id") || "";
 
@@ -55,7 +69,16 @@ app.get("/today", async (c) => {
     return c.json({ error: "未授权" }, 401);
   }
 
-  const today = getLocalDateKey();
+  // 解析 body（可选）
+  let localDate: string | undefined;
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    localDate = body?.localDate;
+  } catch {
+    // body 解析失败不阻塞，使用服务端日期
+  }
+
+  const today = getLocalDateKey(localDate);
 
   // 查询是否已有今日日记
   const existing = db.prepare(`
@@ -68,10 +91,9 @@ app.get("/today", async (c) => {
   `).get(userId, today) as any;
 
   if (existing) {
-    // 已存在，返回
     return c.json({
       ...existing,
-      isNew: false,
+      existed: true,
     });
   }
 
@@ -107,12 +129,11 @@ app.get("/today", async (c) => {
 
     return c.json({
       ...created as any,
-      isNew: true,
+      existed: false,
     }, 201);
   } catch (err: any) {
-    // 并发创建时可能触发唯一约束冲突
+    // UNIQUE 约束冲突：并发创建时触发，回退查询已有日记
     if (String(err?.code || "").startsWith("SQLITE_CONSTRAINT")) {
-      // 冲突时重新查询
       const retry = db.prepare(`
         SELECT id, userId, notebookId, workspaceId, title, content, contentText,
                isPinned, isLocked, isArchived, isTrashed, version, sortOrder,
@@ -124,7 +145,7 @@ app.get("/today", async (c) => {
 
       return c.json({
         ...retry as any,
-        isNew: false,
+        existed: true,
       });
     }
     throw err;
@@ -132,7 +153,10 @@ app.get("/today", async (c) => {
 });
 
 /**
- * 检查今日日记是否存在（轻量接口，不创建）
+ * 检查今日日记是否存在（只读，不创建）
+ *
+ * query 参数：
+ *   - date: YYYY-MM-DD（可选，默认今天）
  */
 app.get("/check", (c) => {
   const db = getDb();
@@ -142,7 +166,8 @@ app.get("/check", (c) => {
     return c.json({ error: "未授权" }, 401);
   }
 
-  const today = getLocalDateKey();
+  const dateParam = c.req.query("date");
+  const today = getLocalDateKey(dateParam);
 
   const existing = db.prepare(`
     SELECT id, title

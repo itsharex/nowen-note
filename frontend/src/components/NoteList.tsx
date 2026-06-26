@@ -1810,7 +1810,7 @@ export default function NoteList() {
   const handleOpenTodayJournal = async () => {
     try {
       const result = await api.journals.getOrCreateToday();
-      if (result.isNew) {
+      if (!result.existed) {
         toast.success(t("journal.created", { defaultValue: "今日日记已创建" }));
       } else {
         toast.info(t("journal.opened", { defaultValue: "已打开今日日记" }));

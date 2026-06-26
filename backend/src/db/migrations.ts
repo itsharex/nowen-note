@@ -1611,7 +1611,8 @@ export const MIGRATIONS: Migration[] = [
   // 设计决策：
   //   - 使用 note_type 而非 category，更语义化
   //   - journal_date 使用 YYYY-MM-DD 格式，方便排序和唯一约束
-  //   - 唯一性通过后端查询保证（userId + journal_date + note_type = journal）
+  //   - 唯一索引：userId + note_type + journal_date 防止同一用户同一天创建多篇日记
+  //     SQLite 对 NULL 的 UNIQUE 行为：多个 NULL 视为不同值，所以普通笔记不受影响
   //   - 索引优化：idx_notes_journal_date 支持按日期查询日记
   {
     version: 34,
@@ -1629,7 +1630,13 @@ export const MIGRATIONS: Migration[] = [
       } catch {
         db.prepare("ALTER TABLE notes ADD COLUMN journal_date TEXT").run();
       }
-      // 索引：按用户 + 日期查询日记
+      // 唯一索引：防止同一用户同一天创建多篇日记
+      // SQLite 对 NULL 的 UNIQUE 行为：多个 NULL 视为不同值，普通笔记不受影响
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_journal_unique
+          ON notes(userId, note_type, journal_date);
+      `);
+      // 普通索引：支持按日期查询日记列表
       db.exec(`
         CREATE INDEX IF NOT EXISTS idx_notes_journal_date
           ON notes(userId, note_type, journal_date);
