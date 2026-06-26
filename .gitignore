@@ -56,3 +56,4 @@ dist-electron-lite/win-unpacked/resources
 dist-electron-lite/win-unpacked
 dist-electron-lite/.icon-ico
 dist-electron-lite
+tsconfig.tsbuildinfo
