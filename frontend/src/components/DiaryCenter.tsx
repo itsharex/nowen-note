@@ -2184,6 +2184,15 @@ export default function DiaryCenter() {
             customRange={customRange}
             onChange={handleFilterChange}
           />
+          {/* 日历面板按钮 */}
+          <button
+            onClick={() => setCalendarOpen(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-app-hover/60 text-tx-tertiary hover:text-tx-secondary hover:bg-app-hover transition-all"
+            title={t("diary.calendarTitle") || "日历视图"}
+          >
+            <Calendar size={11} />
+            <span>{t("diary.calendarTitle") || "日历"}</span>
+          </button>
 
           {/* 内容筛选栏 */}
           <div className="flex items-center gap-1.5 flex-wrap">
