@@ -1389,6 +1389,26 @@ const moveToTrash = useCallback(async () => {
       .catch(console.error);
   }, [activeNote, actions]);
 
+  // BLOCK-LINKS-JUMP-01: 打开笔记回调（用于笔记引用跳转）
+  const handleOpenNote = useCallback(async (noteId: string) => {
+    try {
+      const note = await api.getNote(noteId);
+      if (note) {
+        actions.setActiveNote(note);
+      }
+    } catch (err: any) {
+      console.error("Failed to open note:", err);
+      const msg = err?.message || "";
+      if (msg.includes("not found") || msg.includes("404")) {
+        toast.error(t("noteLink.noteNotFound", { defaultValue: "笔记不存在或已删除" }));
+      } else if (msg.includes("forbidden") || msg.includes("403")) {
+        toast.error(t("noteLink.noPermission", { defaultValue: "无权访问该笔记" }));
+      } else {
+        toast.error(t("noteLink.openFailed", { defaultValue: "打开笔记失败" }));
+      }
+    }
+  }, [actions, t]);
+
   const handleTagsChange = useCallback((tags: Tag[]) => {
     if (!activeNote) return;
     actions.setActiveNote({ ...activeNote, tags });
@@ -2749,6 +2769,7 @@ const moveToTrash = useCallback(async () => {
               onTagsChange={handleTagsChange}
               onHeadingsChange={setHeadings}
               onEditorReady={(fn) => { scrollToRef.current = fn; }}
+              onOpenNote={handleOpenNote}
               editable={!effectiveLocked && !modeSwitching}
               searchQuery={state.searchQuery}
             />

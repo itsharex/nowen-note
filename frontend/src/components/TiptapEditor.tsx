@@ -1406,6 +1406,13 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
     triggerFrom: 0,
   });
 
+  // BLOCK-LINKS-JUMP-01: 块级引用跳转状态
+  const [pendingBlockJump, setPendingBlockJump] = useState<{
+    targetNoteId: string;
+    blockId: string;
+    timestamp: number;
+  } | null>(null);
+
   // 斜杠命令事件处理器（稳定引用）
   const slashHandlers = useRef(createSlashEventHandlers());
   const slashExtension = useRef(
@@ -1706,12 +1713,24 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
             }
             return true;
           }
-          // 笔记引用链接：note:NOTE_ID 格式
+          // 笔记引用链接：note:NOTE_ID 或 note:NOTE_ID#blk:BLOCK_ID 格式
           if (href.startsWith("note:")) {
             event.preventDefault();
-            const noteId = href.slice(5);
+            const noteRef = href.slice(5);
+            const [noteId, blockIdPart] = noteRef.split("#");
+            const blockId = blockIdPart?.startsWith("blk:") ? blockIdPart.slice(4) : null;
+
             if (noteId && onOpenNote) {
               onOpenNote(noteId);
+
+              // 如果有 blockId，保存 pendingBlockJump 状态
+              if (blockId) {
+                setPendingBlockJump({
+                  targetNoteId: noteId,
+                  blockId,
+                  timestamp: Date.now(),
+                });
+              }
             }
             return true;
           }
@@ -2461,6 +2480,59 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
 
   // 切换笔记时同步编辑器内容
   const lastSyncedNoteIdRef = useRef<string | null>(null);
+
+  // BLOCK-LINKS-JUMP-01: 处理块级引用跳转
+  useEffect(() => {
+    if (!pendingBlockJump || !editor || !note) return;
+
+    // 检查当前笔记是否是目标笔记
+    if (note.id !== pendingBlockJump.targetNoteId) return;
+
+    const { blockId, timestamp } = pendingBlockJump;
+    let retryCount = 0;
+    const maxRetries = 20;
+    const retryInterval = 100; // 100ms
+
+    const tryJump = () => {
+      retryCount++;
+
+      // 在编辑器容器内查找目标元素
+      const container = editorScrollRef.current || scrollContainerRef.current;
+      if (!container) return;
+
+      const targetEl = container.querySelector(`[data-block-id="${blockId}"]`);
+
+      if (targetEl) {
+        // 找到目标元素，滚动到视图中
+        targetEl.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+
+        // 添加高亮效果
+        targetEl.classList.add("block-link-highlight");
+
+        // 2 秒后移除高亮
+        setTimeout(() => {
+          targetEl.classList.remove("block-link-highlight");
+        }, 2000);
+
+        // 清理 pendingBlockJump
+        setPendingBlockJump(null);
+      } else if (retryCount < maxRetries) {
+        // 没找到，继续重试
+        requestAnimationFrame(tryJump);
+      } else {
+        // 超时，显示提示
+        toast.info(t("noteLink.blockNotFound", { defaultValue: "引用的标题块已不存在或尚未加载" }));
+        setPendingBlockJump(null);
+      }
+    };
+
+    // 开始尝试跳转
+    requestAnimationFrame(tryJump);
+  }, [pendingBlockJump, editor, note, t]);
+
   useEffect(() => {
     // 切换笔记时立即清理旧的 debounce timer，防止旧笔记的保存请求泄漏
     if (debounceTimer.current) {

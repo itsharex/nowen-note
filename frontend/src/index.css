@@ -2660,3 +2660,42 @@ html[data-electron="darwin"][data-fullscreen="1"] main::before {
   --mm-menu-bg-dark: rgba(30,30,30,0.88);
   --mm-menu-border: rgba(255,255,255,0.08);
 }
+
+/* ===== 块级引用跳转高亮 ===== */
+/* BLOCK-LINKS-JUMP-01: 点击块级引用后高亮目标 heading */
+.block-link-highlight {
+  animation: block-link-highlight-fade 2s ease-out;
+}
+
+@keyframes block-link-highlight-fade {
+  0% {
+    background-color: rgba(99, 102, 241, 0.2); /* indigo-500/20 */
+    outline: 2px solid rgba(99, 102, 241, 0.4); /* indigo-500/40 */
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  100% {
+    background-color: transparent;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+  }
+}
+
+/* 深色模式下的高亮 */
+.dark .block-link-highlight {
+  animation: block-link-highlight-fade-dark 2s ease-out;
+}
+
+@keyframes block-link-highlight-fade-dark {
+  0% {
+    background-color: rgba(129, 140, 248, 0.2); /* indigo-400/20 */
+    outline: 2px solid rgba(129, 140, 248, 0.4); /* indigo-400/40 */
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  100% {
+    background-color: transparent;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+  }
+}
