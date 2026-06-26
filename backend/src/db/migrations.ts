@@ -1822,6 +1822,46 @@ export const MIGRATIONS: Migration[] = [
       `);
     },
   },
+
+  // ==========================================================================
+  // v39：日历 ICS 镜像导出到 S3（TASK-CALENDAR-EXPORT-STORAGE-01）
+  // --------------------------------------------------------------------------
+  // 新增 calendar_export_targets 表，存储用户的 S3 导出配置。
+  //   - 一个用户可以有多个 export target
+  //   - 一个 feed 可以对应多个 export target
+  //   - configJson 加密存储 S3 凭证
+  //   - 记录最后导出状态和错误信息
+  {
+    version: 39,
+    name: "calendar-export-targets",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS calendar_export_targets (
+          id TEXT PRIMARY KEY,
+          userId TEXT NOT NULL,
+          feedId TEXT NOT NULL,
+          type TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          name TEXT NOT NULL DEFAULT '',
+          configJson TEXT NOT NULL,
+          publicUrl TEXT,
+          lastExportAt TEXT,
+          lastStatus TEXT,
+          lastError TEXT,
+          createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+          updatedAt TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (feedId) REFERENCES task_calendar_feeds(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_calendar_export_targets_user
+          ON calendar_export_targets(userId);
+        CREATE INDEX IF NOT EXISTS idx_calendar_export_targets_feed
+          ON calendar_export_targets(feedId);
+        CREATE INDEX IF NOT EXISTS idx_calendar_export_targets_enabled
+          ON calendar_export_targets(enabled);
+      `);
+    },
+  },
 ];
 
 /** 当前代码已知的最高 schema 版本（== MIGRATIONS 里 max(version)）。 */
