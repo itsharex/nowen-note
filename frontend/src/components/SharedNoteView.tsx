@@ -1161,10 +1161,14 @@ export default function SharedNoteView({ shareToken }: SharedNoteViewProps) {
                         alt={String(alt || "")}
                         width={w || undefined}
                         style={{
+                          display: "inline-block",
                           width: w ? `${w}px` : undefined,
                           maxWidth: "100%",
                           height: "auto",
                           cursor: "zoom-in",
+                          verticalAlign: "middle",
+                          borderRadius: "8px",
+                          margin: "0.25rem 0.375rem",
                         }}
                       />
                     );
