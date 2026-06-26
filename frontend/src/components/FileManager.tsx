@@ -1256,11 +1256,11 @@ export default function FileManager() {
           ))}
         </div>
 
-        <div className="flex-1 hidden md:block" />
+        <div className="flex-1" />
 
-        {/* 搜索 + 排序：移动端合并为一行，桌面端分开 */}
-        <div className="flex items-center gap-2 w-full md:w-auto md:flex-1">
-          <div className="relative flex-1 md:w-56">
+        {/* 搜索 + 排序 */}
+        <div className="flex items-center gap-2">
+          <div className="relative w-40 md:w-56">
             <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-tx-tertiary" />
             <Input
               placeholder="按文件名搜索…"
@@ -1295,6 +1295,7 @@ export default function FileManager() {
                 </option>
               ))}
             </select>
+          </div>
         </div>
       </div>
 
