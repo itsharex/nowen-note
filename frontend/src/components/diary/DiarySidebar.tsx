@@ -119,7 +119,7 @@ export default function DiarySidebar({
           <button
             onClick={() => onMoodFilterChange("")}
             className={cn(
-              "p-2 rounded-lg text-xs font-medium transition-all",
+              "p-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap",
               !moodFilter
                 ? "bg-accent-primary/15 text-accent-primary"
                 : "text-tx-tertiary hover:bg-app-hover hover:text-tx-secondary",
