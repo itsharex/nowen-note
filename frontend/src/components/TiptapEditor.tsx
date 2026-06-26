@@ -2191,13 +2191,15 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
       const triggerIndex = textBefore.lastIndexOf("[[");
       if (triggerIndex !== -1) {
         const query = textBefore.slice(triggerIndex + 2);
+        // 计算 [[ 在文档中的位置
+        const triggerDocPos = $from.pos - ($from.parentOffset - triggerIndex);
         // 计算菜单位置
         const coords = editor.view.coordsAtPos($from.pos);
         setNoteLinkMenu({
           open: true,
           position: { top: coords.bottom + 8, left: coords.left },
           query,
-          triggerFrom: $from.pos - query.length,
+          triggerFrom: triggerDocPos,
         });
       } else {
         // 没有 [[ 触发，关闭菜单

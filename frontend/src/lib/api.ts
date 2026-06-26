@@ -1090,11 +1090,10 @@ export const api = {
     if (!query.trim()) return [];
     const params = new URLSearchParams();
     params.set("q", query.trim());
-    params.set("limit", String(limit));
-    // 只搜索标题，不搜索内容
-    params.set("searchMode", "title");
-    const data = await request<{ items: any[] }>(`/search?${params.toString()}`);
-    return (data.items || []).map((item: any) => ({
+    const data = await request<any>(`/search?${params.toString()}`);
+    // 后端返回数组或 { items: [...] }，兼容处理
+    const items = Array.isArray(data) ? data : (data?.items || []);
+    return items.slice(0, limit).map((item: any) => ({
       id: item.id,
       title: item.title,
       notebookId: item.notebookId,
