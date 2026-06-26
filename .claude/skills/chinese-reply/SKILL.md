@@ -1,6 +1,7 @@
 ---
 name: chinese-reply
 description: Force AI to always respond in Chinese (中文). Use this skill at the start of any conversation to ensure all responses are in Chinese.
+autoRun: true
 ---
 
 # Chinese Reply

@@ -2708,7 +2708,14 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
                           actions.setSelectedTags(remaining);
                         } else {
                           actions.clearSelectedTags();
-                          actions.setViewMode("all");
+                          // RV2: 只在当前是标签视图时才回退，不破坏笔记本/搜索等上下文
+                          if (state.viewMode === "tag") {
+                            if (state.selectedNotebookId) {
+                              actions.setViewMode("notebook");
+                            } else {
+                              actions.setViewMode("all");
+                            }
+                          }
                         }
                       }
                     } catch (err) {
