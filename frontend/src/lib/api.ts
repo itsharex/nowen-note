@@ -460,6 +460,8 @@ export function broadcastLogout(reason?: string) {
     localStorage.setItem("nowen-logout-broadcast", `${Date.now()}|${reason || ""}`);
     // 立即删除，这样下次登出也能再次触发（避免 value 相同被合并）
     localStorage.removeItem("nowen-logout-broadcast");
+    // 通知同 tab 内的组件（如 SecuritySettings）token 已变化
+    try { window.dispatchEvent(new CustomEvent("nowen:token-changed")); } catch {}
   } catch {
     /* 隐私模式下 localStorage 可能不可用，忽略 */
   }

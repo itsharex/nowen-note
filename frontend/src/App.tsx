@@ -1032,6 +1032,8 @@ function AuthGate() {
     setUser(userData);
     setActiveToken(token);
     setIsAuthenticated(true);
+    // 通知同 tab 内的组件（如 SecuritySettings）token 已变化，需要重新拉取用户信息
+    try { window.dispatchEvent(new CustomEvent("nowen:token-changed")); } catch {}
 
     // 登录引导回跳：支持来自分享页（edit_auth 权限）的 `/login?redirect=/share/<token>`。
     //

@@ -36,7 +36,9 @@ export default function SecuritySettings() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const prevUserIdRef = useRef<string | null>(null);
 
-  useEffect(() => {
+  // 拉取当前用户信息：mount 时 + token 变化时重新拉取，
+  // 防止切换账号后 SettingsModal 未卸载导致子组件保留旧用户数据。
+  const fetchUser = useCallback(() => {
     let cancelled = false;
     api
       .getMe()
@@ -44,14 +46,33 @@ export default function SecuritySettings() {
         if (cancelled) return;
         setIsDemo(!!(u as any)?.isDemo);
         setCurrentUserId(u.id);
-        // 用户切换时重置子组件（通过 key 变化触发 remount）
         prevUserIdRef.current = u.id;
       })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
+      .catch(() => {
+        if (!cancelled) {
+          setIsDemo(false);
+          setCurrentUserId(null);
+          prevUserIdRef.current = null;
+        }
+      });
+    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => fetchUser(), [fetchUser]);
+
+  // 监听 token 变化（同 tab 登录/登出 + 跨 tab 同步）
+  useEffect(() => {
+    const onTokenChanged = () => { fetchUser(); };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "nowen-token") fetchUser();
+    };
+    window.addEventListener("nowen:token-changed", onTokenChanged);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("nowen:token-changed", onTokenChanged);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [fetchUser]);
 
   // 监听 storage 事件：当其他 tab 登出/登入时，当前 tab 的 token 变了，
   // 需要重新拉取用户信息。否则 SettingsModal 没有 remount，SecuritySettings

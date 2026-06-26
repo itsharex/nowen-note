@@ -1323,13 +1323,22 @@ const SettingsModal = React.forwardRef<HTMLDivElement, SettingsModalProps>(
   const { siteConfig } = useSiteSettings();
   const [currentUser, setCurrentUser] = useState<{ id: string; role?: string } | null>(null);
 
-  useEffect(() => {
+  const fetchCurrentUser = useCallback(() => {
     let cancelled = false;
     api.getMe()
       .then((u) => { if (!cancelled) setCurrentUser({ id: u.id, role: (u as any).role }); })
-      .catch(() => {});
+      .catch(() => { if (!cancelled) setCurrentUser(null); });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => fetchCurrentUser(), [fetchCurrentUser]);
+
+  // 监听 token 变化，重新拉取当前用户（防止切换账号后残留旧用户信息）
+  useEffect(() => {
+    const onTokenChanged = () => { fetchCurrentUser(); };
+    window.addEventListener("nowen:token-changed", onTokenChanged);
+    return () => window.removeEventListener("nowen:token-changed", onTokenChanged);
+  }, [fetchCurrentUser]);
 
   // 监听"DataManager 完成导入后请求关闭弹窗"事件——用户在 DataManager 里
   // 把笔记导入到 ≠ 当前侧边栏的工作区，点击"切换到该工作区查看"按钮后，需要
