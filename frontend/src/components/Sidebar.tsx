@@ -18,7 +18,6 @@ import WorkspaceSwitcher from "@/components/WorkspaceSwitcher";
 import NotebookShareDialog from "@/components/NotebookShareDialog";
 import { useContextMenu } from "@/hooks/useContextMenu";
 import CreateNoteMenu, { type NoteType } from "@/components/CreateNoteMenu";
-import JournalArchive from "@/components/JournalArchive";
 import { useApp, useAppActions } from "@/store/AppContext";
 import { useSiteSettings } from "@/hooks/useSiteSettings";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
@@ -911,27 +910,6 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     }
   });
 
-  // 日记区域折叠状态 - 从 localStorage 恢复
-  const [journalsExpanded, setJournalsExpanded] = useState(() => {
-    try {
-      const saved = localStorage.getItem("nowen-journals-expanded");
-      return saved === null ? true : saved === "true";
-    } catch {
-      return true;
-    }
-  });
-
-  // 日记归档刷新令牌
-  const [journalRefreshToken, setJournalRefreshToken] = useState(0);
-
-  // 切换日记折叠状态时持久化到 localStorage
-  const toggleJournalsExpanded = useCallback(() => {
-    setJournalsExpanded((prev) => {
-      const next = !prev;
-      try { localStorage.setItem("nowen-journals-expanded", String(next)); } catch {}
-      return next;
-    });
-  }, []);
 
   // 笔记本区域折叠状态 - 从 localStorage 恢复
   const [notebooksExpanded, setNotebooksExpanded] = useState(() => {
@@ -1692,44 +1670,6 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     setEditValue(nb.name);
   };
 
-  // 今日日记
-  const handleCreateTodayJournal = useCallback(async () => {
-    try {
-      const result = await api.journals.getOrCreateToday();
-      if (!result.existed) {
-        toast.success(t("journal.created", { defaultValue: "今日日记已创建" }));
-      } else {
-        toast.info(t("journal.opened", { defaultValue: "已打开今日日记" }));
-      }
-      // 打开笔记
-      actions.setActiveNote(result as any);
-      actions.setMobileView("editor");
-      if (!isDesktop) {
-        actions.setMobileSidebar(false);
-      }
-      actions.refreshNotes();
-      // 刷新日记归档
-      setJournalRefreshToken((prev) => prev + 1);
-    } catch (err: any) {
-      console.error("Failed to open today journal:", err);
-      toast.error(err?.message || t("journal.error", { defaultValue: "打开今日日记失败" }));
-    }
-  }, [actions, isDesktop, t]);
-
-  // 打开笔记（从日记归档）
-  const handleOpenJournalNote = useCallback(async (noteId: string) => {
-    try {
-      const note = await api.getNote(noteId);
-      actions.setActiveNote(note);
-      actions.setMobileView("editor");
-      if (!isDesktop) {
-        actions.setMobileSidebar(false);
-      }
-    } catch (err: any) {
-      console.error("Failed to open journal note:", err);
-      toast.error(err?.message || "打开笔记失败");
-    }
-  }, [actions, isDesktop]);
 
   // 右键菜单操作分发
   const handleMenuAction = async (actionId: string) => {
@@ -2235,46 +2175,6 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
 
       {/* Separator——已移除：移动端导航迁出后无需在主区上方加分隔；
           WorkspaceSwitcher + 搜索 与笔记本的视觉间距已经足够。 */}
-
-      {/* Journals */}
-      <div className="px-3 flex items-center justify-between mb-1">
-        <button
-          onClick={() => toggleJournalsExpanded()}
-          className="flex items-center gap-1 hover:text-tx-secondary transition-colors"
-        >
-          <ChevronDown
-            size={12}
-            className={cn(
-              "text-tx-tertiary transition-transform duration-200",
-              !journalsExpanded && "-rotate-90"
-            )}
-          />
-          <span className="text-xs font-medium text-tx-tertiary uppercase tracking-wider">
-            {t('sidebar.journals', { defaultValue: '日记' })}
-          </span>
-        </button>
-      </div>
-
-      <AnimatePresence initial={false}>
-        {journalsExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0, overflow: "hidden" }}
-            animate={{ height: "auto", opacity: 1, overflow: "visible", transitionEnd: { overflow: "visible" } }}
-            exit={{ height: 0, opacity: 0, overflow: "hidden" }}
-            transition={{ duration: 0.2 }}
-            className="min-h-0"
-          >
-            <div className="px-2 pb-2 max-h-[300px] overflow-y-auto">
-              <JournalArchive
-                activeNoteId={state.activeNote?.id ?? null}
-                onOpenNote={handleOpenJournalNote}
-                onCreateToday={handleCreateTodayJournal}
-                refreshToken={journalRefreshToken}
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Notebooks */}
       <div className="px-3 flex items-center justify-between mb-1">
