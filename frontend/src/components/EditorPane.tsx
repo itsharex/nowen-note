@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Star, Pin, Trash2, Cloud, CloudOff, RefreshCw, Check, Loader2, ChevronLeft, FolderInput, ChevronRight, ChevronDown, X, ListTree, Lock, Unlock, Tag as TagIcon, Type, MoreHorizontal, Share2, History, MessageCircle, FileCode, FileText, Eye, Pencil, CloudUpload, PanelLeft, Paperclip, Search, Sparkles, Network, Maximize2, Minimize2, Image } from "lucide-react";
+import { Star, Pin, Trash2, Cloud, CloudOff, RefreshCw, Check, Loader2, ChevronLeft, FolderInput, ChevronRight, ChevronDown, X, ListTree, Lock, Unlock, Tag as TagIcon, Type, MoreHorizontal, Share2, History, MessageCircle, FileCode, FileText, Eye, Pencil, CloudUpload, PanelLeft, Paperclip, Search, Sparkles, Network, Maximize2, Minimize2, Image, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import TiptapEditor, { HeadingItem } from "@/components/TiptapEditor";
@@ -24,6 +24,7 @@ import ShareModal from "@/components/ShareModal";
 import VersionHistoryPanel from "@/components/VersionHistoryPanel";
 import CommentPanel from "@/components/CommentPanel";
 import NoteAttachmentsPanel from "@/components/NoteAttachmentsPanel";
+import BacklinksPanel from "@/components/BacklinksPanel";
 import MermaidView from "@/components/MermaidView";
 import {
   PresenceBar,
@@ -146,6 +147,9 @@ export default function EditorPane() {
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showCommentPanel, setShowCommentPanel] = useState(false);
   const [showAttachmentsPanel, setShowAttachmentsPanel] = useState(false);
+  const [showBacklinksPanel, setShowBacklinksPanel] = useState(false);
+  const [backlinksCount, setBacklinksCount] = useState<number | null>(null);
+  const [backlinksLoading, setBacklinksLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -878,6 +882,33 @@ export default function EditorPane() {
     setNoteIsHtml(isHtml);
     setNoteIsFullHtmlDoc(isFullDoc);
   }, [activeNote?.id]); // ֻ���л��ʼ�ʱ��⣬�༭�����в����Զ��л�
+
+  // BACKLINKS-02: 切换笔记时加载反向链接数量
+  useEffect(() => {
+    if (!activeNote?.id) {
+      setBacklinksCount(null);
+      return;
+    }
+    let cancelled = false;
+    setBacklinksLoading(true);
+    api.getBacklinks(activeNote.id)
+      .then((data) => {
+        if (!cancelled) {
+          setBacklinksCount(data.backlinks.length);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBacklinksCount(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setBacklinksLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [activeNote?.id]);
 
   /** �� presence �з����û��������ں����ʾ�� */
   const findUsername = useCallback(
@@ -2082,6 +2113,20 @@ const moveToTrash = useCallback(async () => {
                     <MessageCircle size={15} className="text-blue-500" />
                     <span>{t('editor.noteComments')}</span>
                   </button>
+                  {/* 反向链接 BACKLINKS-02 */}
+                  <button
+                    onClick={() => {
+                      setShowBacklinksPanel(true);
+                      setShowMobileMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-tx-secondary active:bg-app-hover transition-colors"
+                  >
+                    <Link2 size={15} className="text-emerald-500" />
+                    <span>反向链接</span>
+                    {!backlinksLoading && backlinksCount !== null && backlinksCount > 0 && (
+                      <span className="ml-auto text-xs text-tx-tertiary">{backlinksCount}</span>
+                    )}
+                  </button>
                   {/* ����Ŀ¼ */}
                   <button
                     onClick={() => {
@@ -2465,6 +2510,20 @@ const moveToTrash = useCallback(async () => {
             <MessageCircle size={14} className="text-blue-500" />
           </Button>
 
+          {/* 反向链接 BACKLINKS-02 */}
+          <Button
+            variant="ghost" size="icon" className="h-7 w-7 relative"
+            onClick={() => setShowBacklinksPanel(true)}
+            title="反向链接"
+          >
+            <Link2 size={14} className="text-emerald-500" />
+            {!backlinksLoading && backlinksCount !== null && backlinksCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] flex items-center justify-center rounded-full bg-emerald-500 text-white text-[9px] px-0.5 leading-none">
+                {backlinksCount > 99 ? "99+" : backlinksCount}
+              </span>
+            )}
+          </Button>
+
           {/* ����Ŀ¼ */}
           <Button
             variant="ghost" size="icon" className="h-7 w-7"
@@ -2761,6 +2820,15 @@ const moveToTrash = useCallback(async () => {
           noteId={activeNote.id}
           noteTitle={activeNote.title}
           onClose={() => setShowCommentPanel(false)}
+        />
+      )}
+
+      {/* 反向链接 BACKLINKS-02 */}
+      {showBacklinksPanel && (
+        <BacklinksPanel
+          noteId={activeNote.id}
+          noteTitle={activeNote.title}
+          onClose={() => setShowBacklinksPanel(false)}
         />
       )}
 

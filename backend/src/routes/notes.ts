@@ -14,6 +14,7 @@ import { broadcastNoteUpdated, broadcastNoteDeleted, broadcastYjsUpdate, broadca
 import { yFlush, yDestroyDoc, yReplaceContentAsUpdate } from "../services/yjs";
 import { deleteAttachmentFilesByNoteIds, extractInlineBase64Images } from "./attachments";
 import { syncReferences as syncAttachmentReferences } from "../lib/attachmentRefs";
+import { syncNoteLinks, getBacklinks } from "../lib/noteLinks";
 import { reclaimSpace } from "../lib/reclaimSpace";
 import { buildFtsSearchTerm } from "../lib/searchQuery";
 
@@ -464,6 +465,17 @@ app.post("/", async (c) => {
     }
   }
 
+  // BACKLINKS-02: 维护 note_links 引用关系（写时维护）。
+  // 失败仅打日志，不阻断笔记创建——引用关系缺失只会让"反向链接"暂时不准，
+  // 不影响主流程；下次该笔记 PUT 时会被重新 sync。
+  if (typeof finalContent === "string") {
+    try {
+      syncNoteLinks(db, userId, id, finalContent);
+    } catch (e) {
+      console.warn("[notes.post] syncNoteLinks failed:", e instanceof Error ? e.message : e);
+    }
+  }
+
   // Y1: SELECT 时 isFavorite 按 per-user 动态计算；新建笔记当前用户尚未收藏，结果必为 0。
   const note = db.prepare(`
     SELECT id, userId, notebookId, workspaceId, title, content, contentText, isPinned,
@@ -796,6 +808,16 @@ app.put("/:id", async (c) => {
     }
   }
 
+  // BACKLINKS-02: 同步 note_links 引用关系（仅在 content 字段被改动时）。
+  // 失败仅打日志不阻断保存。
+  if (body.content !== undefined && typeof body.content === "string") {
+    try {
+      syncNoteLinks(db, userId, id, body.content);
+    } catch (e) {
+      console.warn("[notes.put] syncNoteLinks failed:", e instanceof Error ? e.message : e);
+    }
+  }
+
   // Y1: 返回值里 isFavorite 按当前用户动态计算（EXISTS favorites 表），
   // 物理列 notes.isFavorite 已停止写入。
   const note = db.prepare(`
@@ -895,6 +917,35 @@ app.put("/:id", async (c) => {
   }
 
   return c.json({ ...note as any, tags });
+});
+
+// BACKLINKS-02: 获取笔记的反向链接（哪些笔记引用了当前笔记）
+app.get("/:id/backlinks", (c) => {
+  const db = getDb();
+  const userId = c.req.header("X-User-Id") || "";
+  const targetNoteId = c.req.param("id");
+
+  // 权限校验：用户必须对目标笔记有 read 权限
+  const { permission } = resolveNotePermission(targetNoteId, userId);
+  if (!hasPermission(permission, "read")) {
+    return c.json({ error: "笔记不存在或无权限", code: "NOT_FOUND" }, 404);
+  }
+
+  // 检查目标笔记是否存在且未被删除
+  const targetNote = db.prepare(
+    "SELECT id, isTrashed FROM notes WHERE id = ?"
+  ).get(targetNoteId) as { id: string; isTrashed: number } | undefined;
+
+  if (!targetNote) {
+    return c.json({ error: "笔记不存在", code: "NOT_FOUND" }, 404);
+  }
+
+  const limitParam = parseInt(c.req.query("limit") || "50", 10);
+  const limit = Math.min(Math.max(1, isNaN(limitParam) ? 50 : limitParam), 200);
+
+  const backlinks = getBacklinks(db, userId, targetNoteId, limit);
+
+  return c.json({ backlinks });
 });
 
 /**

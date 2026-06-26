@@ -1067,6 +1067,12 @@ export const api = {
     return p;
   },
   deleteNote: (id: string) => request(`/notes/${id}`, { method: "DELETE" }),
+
+  // BACKLINKS-02: 获取笔记的反向链接（哪些笔记引用了当前笔记）
+  getBacklinks: (noteId: string, limit = 50) =>
+    request<{ backlinks: Array<{ sourceNoteId: string; title: string; updatedAt: string; linkText: string | null }> }>(
+      `/notes/${noteId}/backlinks?limit=${limit}`
+    ),
   emptyTrash: () =>
     request<{
       success: boolean;

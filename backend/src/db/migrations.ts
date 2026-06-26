@@ -1656,6 +1656,35 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  // v36: note_links 笔记间引用关系表（BACKLINKS-02）
+  //   存储 [[note:UUID|标题]] 引用关系，支持反向链接查询。
+  //   - sourceNoteId: 包含引用的笔记
+  //   - targetNoteId: 被引用的笔记
+  //   - 唯一约束：同一用户同一对 source→target 只记一条（同一篇笔记多次引用同一目标只显示一次）
+  //   - 不存自引用（sourceNoteId === targetNoteId）
+  {
+    version: 36,
+    name: "note-links",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS note_links (
+          id TEXT PRIMARY KEY,
+          userId TEXT NOT NULL,
+          sourceNoteId TEXT NOT NULL,
+          targetNoteId TEXT NOT NULL,
+          linkText TEXT,
+          createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+          updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_note_links_user_pair
+          ON note_links(userId, sourceNoteId, targetNoteId);
+        CREATE INDEX IF NOT EXISTS idx_note_links_user_target
+          ON note_links(userId, targetNoteId);
+        CREATE INDEX IF NOT EXISTS idx_note_links_user_source
+          ON note_links(userId, sourceNoteId);
+      `);
+    },
+  },
 ];
 
 /** 当前代码已知的最高 schema 版本（== MIGRATIONS 里 max(version)）。 */
