@@ -216,6 +216,10 @@ function reducer(state: AppState, action: Action): AppState {
         notes: state.notes.filter((n) => n.id !== action.payload),
       };
     case "ADD_NOTE_TO_LIST":
+      // 如果笔记已存在，不重复添加（避免 AnimatePresence 中出现重复 key）
+      if (state.notes.some((n) => n.id === action.payload.id)) {
+        return state;
+      }
       return {
         ...state,
         notes: [action.payload, ...state.notes],
