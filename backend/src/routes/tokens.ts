@@ -19,6 +19,7 @@ import {
   API_TOKEN_PREFIX,
   pruneTokenUsage,
 } from "../lib/api-tokens";
+import { apiTokensRepository } from "../repositories";
 
 const app = new Hono();
 
@@ -32,23 +33,7 @@ pruneTokenUsage(getDb());
 /** 列出当前用户的 token（明文字段永远不返回） */
 app.get("/", (c) => {
   const userId = c.req.header("X-User-Id")!;
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT id, name, scopes, expiresAt, lastUsedAt, lastUsedIp, createdAt, revokedAt
-       FROM api_tokens WHERE userId = ?
-       ORDER BY revokedAt IS NOT NULL, createdAt DESC`,
-    )
-    .all(userId) as Array<{
-    id: string;
-    name: string;
-    scopes: string;
-    expiresAt: string | null;
-    lastUsedAt: string | null;
-    lastUsedIp: string | null;
-    createdAt: string;
-    revokedAt: string | null;
-  }>;
+  const rows = apiTokensRepository.listByUser(userId);
 
   return c.json({
     tokens: rows.map((r) => ({
@@ -115,11 +100,14 @@ app.post("/", async (c) => {
   const hash = hashApiToken(raw);
   const id = uuid();
 
-  const db = getDb();
-  db.prepare(
-    `INSERT INTO api_tokens (id, userId, name, tokenHash, scopes, expiresAt)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(id, userId, name, hash, JSON.stringify(normalizedScopes), expiresAt);
+  apiTokensRepository.create({
+    id,
+    userId,
+    name,
+    tokenHash: hash,
+    scopes: normalizedScopes,
+    expiresAt,
+  });
 
   return c.json(
     {
@@ -155,7 +143,6 @@ app.get("/usage", (c) => {
   const days =
     Number.isFinite(daysParam) && daysParam >= 1 && daysParam <= 90 ? daysParam : 7;
 
-  const db = getDb();
   // 生成今天、本期起点、上期起点（均 UTC）
   const today = new Date();
   const todayDay = today.toISOString().slice(0, 10);
@@ -170,44 +157,13 @@ app.get("/usage", (c) => {
     .slice(0, 10);
 
   // 近 days 天逐日聚合（仅本用户的 token）
-  const dailyRows = db
-    .prepare(
-      `SELECT u.day AS day, SUM(u.count) AS count
-       FROM api_token_usage u
-       JOIN api_tokens t ON t.id = u.tokenId
-       WHERE t.userId = ? AND u.day >= ? AND u.day <= ?
-       GROUP BY u.day
-       ORDER BY u.day ASC`,
-    )
-    .all(userId, startDay, todayDay) as Array<{ day: string; count: number }>;
+  const dailyRows = apiTokensRepository.getDailyUsage(userId, startDay, todayDay);
 
   // 上期总量（环比计算用）
-  const prevTotalRow = db
-    .prepare(
-      `SELECT COALESCE(SUM(u.count), 0) AS total
-       FROM api_token_usage u
-       JOIN api_tokens t ON t.id = u.tokenId
-       WHERE t.userId = ? AND u.day >= ? AND u.day <= ?`,
-    )
-    .get(userId, prevStartDay, prevEndDay) as { total: number };
+  const prevTotal = apiTokensRepository.getPrevPeriodTotal(userId, prevStartDay, prevEndDay);
 
   // 按 token 聚合（仅本用户的 token）
-  const byTokenRows = db
-    .prepare(
-      `SELECT t.id AS tokenId, t.name AS name, COALESCE(SUM(u.count), 0) AS count
-       FROM api_tokens t
-       LEFT JOIN api_token_usage u
-         ON u.tokenId = t.id AND u.day >= ? AND u.day <= ?
-       WHERE t.userId = ?
-       GROUP BY t.id
-       HAVING count > 0
-       ORDER BY count DESC`,
-    )
-    .all(startDay, todayDay, userId) as Array<{
-    tokenId: string;
-    name: string;
-    count: number;
-  }>;
+  const byTokenRows = apiTokensRepository.getUsageByToken(userId, startDay, todayDay);
 
   // 将 dailyRows 按 day 建索引，然后连续补零
   const dailyMap = new Map<string, number>();
@@ -224,24 +180,23 @@ app.get("/usage", (c) => {
   return c.json({
     days,
     total,
-    prevTotal: prevTotalRow.total || 0,
+    prevTotal: prevTotal || 0,
     series,
     byToken: byTokenRows,
   });
 });
 
 /** 吵销 token（软删，保留审计） */
-app.delete("/:id", (c) => {  const userId = c.req.header("X-User-Id")!;
+app.delete("/:id", (c) => {
+  const userId = c.req.header("X-User-Id")!;
   const id = c.req.param("id");
-  const db = getDb();
-  const row = db
-    .prepare("SELECT id, userId, revokedAt FROM api_tokens WHERE id = ?")
-    .get(id) as { id: string; userId: string; revokedAt: string | null } | undefined;
+
+  const row = apiTokensRepository.getByIdAndUser(id, userId);
   if (!row) return c.json({ error: "token 不存在" }, 404);
   if (row.userId !== userId) return c.json({ error: "无权操作该 token" }, 403);
   if (row.revokedAt) return c.json({ success: true, alreadyRevoked: true });
 
-  db.prepare("UPDATE api_tokens SET revokedAt = datetime('now') WHERE id = ?").run(id);
+  apiTokensRepository.revokeById(id);
   return c.json({ success: true });
 });
 

@@ -22,3 +22,45 @@ export interface CustomFont {
   fileSize: number;
   createdAt: string;
 }
+
+/** api_tokens 表结构（完整记录） */
+export interface ApiTokenRecord {
+  id: string;
+  userId: string;
+  name: string;
+  tokenHash: string;
+  scopes: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  lastUsedIp: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+/** api_tokens 列表项（不含 tokenHash） */
+export interface ApiTokenListItem {
+  id: string;
+  name: string;
+  scopes: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  lastUsedIp: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+}
+
+/** api_token_usage 聚合行 */
+export interface ApiTokenUsageRow {
+  day: string;
+  count: number;
+}
+
+/** 创建 api_token 输入 */
+export interface CreateApiTokenInput {
+  id: string;
+  userId: string;
+  name: string;
+  tokenHash: string;
+  scopes: string[];
+  expiresAt: string | null;
+}

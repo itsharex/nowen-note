@@ -8,6 +8,7 @@
 
 export { systemSettingsRepository } from "./systemSettingsRepository";
 export { customFontsRepository } from "./customFontsRepository";
+export { apiTokensRepository } from "./apiTokensRepository";
 
 // 类型导出
-export type { SystemSetting, CustomFont } from "./types";
+export type { SystemSetting, CustomFont, ApiTokenRecord, ApiTokenListItem, ApiTokenUsageRow, CreateApiTokenInput } from "./types";
