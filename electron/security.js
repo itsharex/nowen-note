@@ -62,8 +62,39 @@ function assertMainWindowSender(event) {
   return null;
 }
 
+/**
+ * 判断主窗口导航是否允许。
+ * 允许：同源导航、hash 路由、file:// 本地页面、data: 页面。
+ * 拒绝：外部 http/https、mailto、javascript/data/vbscript 等危险协议。
+ */
+function isAllowedMainWindowNavigation(targetUrl, currentUrl) {
+  try {
+    const target = new URL(targetUrl);
+    const current = new URL(currentUrl);
+
+    // 同源导航允许
+    if (target.origin === current.origin) return true;
+
+    // file:// 协议：只允许本地文件（生产环境）
+    if (target.protocol === "file:" && current.protocol === "file:") return true;
+
+    // data: 协议：允许（错误页面等）
+    if (target.protocol === "data:") return true;
+
+    // about:blank 允许
+    if (target.protocol === "about:") return true;
+
+    // 其他协议拒绝
+    return false;
+  } catch {
+    // URL 解析失败拒绝
+    return false;
+  }
+}
+
 module.exports = {
   isAllowedExternalUrl,
+  isAllowedMainWindowNavigation,
   isTrustedMainWindowSender,
   isTrustedSetupWindowSender,
   assertMainWindowSender,
