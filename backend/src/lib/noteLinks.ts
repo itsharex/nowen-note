@@ -30,6 +30,7 @@
 
 import type Database from "better-sqlite3";
 import { v4 as uuid } from "uuid";
+import { noteLinksRepository } from "../repositories";
 
 // BLOCK-LINKS-01: 引用链接条目
 export interface NoteLinkEntry {
@@ -191,7 +192,7 @@ export function syncNoteLinks(
  *   - 无权限的来源笔记（调用方应已做过权限校验）
  */
 export function getBacklinks(
-  db: Database.Database,
+  _db: Database.Database,
   userId: string,
   targetNoteId: string,
   limit: number = 50,
@@ -204,36 +205,5 @@ export function getBacklinks(
   targetBlockId: string | null;
   excerpt: string | null;
 }> {
-  try {
-    const rows = db.prepare(`
-      SELECT
-        nl.sourceNoteId,
-        n.title,
-        n.updatedAt,
-        nl.linkText,
-        nl.linkType,
-        nl.targetBlockId,
-        nl.excerpt
-      FROM note_links nl
-      JOIN notes n ON n.id = nl.sourceNoteId
-      WHERE nl.userId = ?
-        AND nl.targetNoteId = ?
-        AND n.isTrashed = 0
-      ORDER BY n.updatedAt DESC
-      LIMIT ?
-    `).all(userId, targetNoteId, limit) as Array<{
-      sourceNoteId: string;
-      title: string;
-      updatedAt: string;
-      linkText: string | null;
-      linkType: string;
-      targetBlockId: string | null;
-      excerpt: string | null;
-    }>;
-
-    return rows;
-  } catch (e) {
-    console.warn("[getBacklinks] failed:", e instanceof Error ? e.message : e);
-    return [];
-  }
+  return noteLinksRepository.getBacklinks(userId, targetNoteId, limit);
 }

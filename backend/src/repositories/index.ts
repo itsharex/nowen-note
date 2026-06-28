@@ -10,6 +10,7 @@ export { systemSettingsRepository } from "./systemSettingsRepository";
 export { customFontsRepository } from "./customFontsRepository";
 export { apiTokensRepository } from "./apiTokensRepository";
 export { calendarExportTargetsRepository } from "./calendarExportTargetsRepository";
+export { noteLinksRepository } from "./noteLinksRepository";
 
 // 类型导出
 export type {
@@ -25,4 +26,5 @@ export type {
   CreateCalendarExportTargetInput,
   UpdateCalendarExportTargetInput,
   UpdateCalendarExportTargetStatusInput,
+  BacklinkItem,
 } from "./types";

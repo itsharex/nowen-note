@@ -123,3 +123,16 @@ export interface UpdateCalendarExportTargetStatusInput {
   publicUrl?: string;
   lastError?: string;
 }
+
+// ===== Note Links =====
+
+/** 反向链接条目 */
+export interface BacklinkItem {
+  sourceNoteId: string;
+  title: string;
+  updatedAt: string;
+  linkText: string | null;
+  linkType: string;
+  targetBlockId: string | null;
+  excerpt: string | null;
+}
