@@ -23,6 +23,7 @@ import { Extension } from "@tiptap/react";
 import { markInputRule, markPasteRule, InputRule } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { markdownToHtml } from "@/lib/contentFormat";
+import { sanitizeForPaste } from "@/lib/sanitizeHtml";
 
 /* -------------------------------------------------------------------------- */
 /*  内联 mark 的 input / paste rule                                           */
@@ -366,10 +367,13 @@ export const MarkdownPasteHandler = Extension.create({
             }
             if (!rendered) return false;
 
+            // SEC-XSS-01-D: marked 输出清洗，防止 markdown 中嵌入的 XSS
+            const sanitized = sanitizeForPaste(rendered);
+
             // 用一个临时容器解析 HTML，再用 ProseMirror 的 clipboardParser 走标准
             // 路径，避免直接 insertContent(html) 在某些 schema 下丢失节点属性。
             const dom = document.createElement("div");
-            dom.innerHTML = rendered;
+            dom.innerHTML = sanitized;
 
             const slice = (view.props as any).clipboardParser
               ? (view.props as any).clipboardParser.parseSlice(dom, { preserveWhitespace: false })

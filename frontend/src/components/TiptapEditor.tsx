@@ -1,4 +1,5 @@
 import React, { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { sanitizeForPaste } from "@/lib/sanitizeHtml";
 import { createPortal } from "react-dom";
 import { useEditor, Editor, EditorContent, Extension, ReactNodeViewRenderer } from "@tiptap/react";
 import { Plugin, PluginKey } from "prosemirror-state";
@@ -1861,7 +1862,8 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
           }
 
           const text = event.clipboardData?.getData("text/plain") || "";
-          const html = event.clipboardData?.getData("text/html") || "";
+          // SEC-XSS-01-D: 剪贴板 HTML 进入任何处理路径前先清洗
+          const html = sanitizeForPaste(event.clipboardData?.getData("text/html") || "");
 
           // 2) 若当前光标在代码块内：不管来源是 html 还是 text，始终保留原始文本 + 换行
           const { state: stCode } = view;
@@ -2103,7 +2105,8 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
             const doConvert = () => {
               try {
                 if (view.isDestroyed) return;
-                const convertedHtml = markdownToSimpleHtml(text);
+                // SEC-XSS-01-D: marked 输出清洗，防止 markdown 中嵌入的 XSS
+                const convertedHtml = sanitizeForPaste(markdownToSimpleHtml(text));
                 const parser = ProseMirrorDOMParser.fromSchema(view.state.schema);
                 const tempDiv = document.createElement("div");
                 tempDiv.innerHTML = convertedHtml;

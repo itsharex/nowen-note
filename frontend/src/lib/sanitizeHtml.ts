@@ -65,8 +65,8 @@ const ALLOWED_ATTR = [
 
 // ── 协议白名单 ──────────────────────────────────────────────────────────────
 
-/** 允许的 URI 协议 */
-const ALLOWED_URI_REGEXP = /^(?:(?:https?|mailto|note):|\/api\/attachments\/|data:image\/)/i;
+/** 允许的 URI 协议（排除 data:image/svg+xml，SVG 可含脚本） */
+const ALLOWED_URI_REGEXP = /^(?:(?:https?|mailto|note):|\/api\/attachments\/|data:image\/(?:png|jpeg|jpg|gif|webp|bmp|avif)(?:;|$))/i;
 
 // ── DOMPurify 配置 ──────────────────────────────────────────────────────────
 
