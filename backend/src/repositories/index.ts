@@ -11,6 +11,7 @@ export { customFontsRepository } from "./customFontsRepository";
 export { apiTokensRepository } from "./apiTokensRepository";
 export { calendarExportTargetsRepository } from "./calendarExportTargetsRepository";
 export { noteLinksRepository } from "./noteLinksRepository";
+export { tagsRepository } from "./tagsRepository";
 
 // 类型导出
 export type {
@@ -28,4 +29,5 @@ export type {
   UpdateCalendarExportTargetStatusInput,
   BacklinkItem,
   NoteLinkEntry,
+  TagWithCount,
 } from "./types";

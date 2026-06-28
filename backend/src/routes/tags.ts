@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { getDb } from "../db/schema";
 import { v4 as uuid } from "uuid";
 import { getUserWorkspaceRole, hasRole } from "../middleware/acl";
+import { tagsRepository } from "../repositories";
 
 /**
  * Tags 路由 —— 支持工作区隔离
@@ -63,53 +64,17 @@ function canWriteTag(
  *   传 includeEmpty=true 可返回所有标签（用于标签管理页）。
  */
 app.get("/", (c) => {
-  const db = getDb();
   const userId = c.req.header("X-User-Id") || "demo";
   const ws = normalizeWorkspaceId(c.req.query("workspaceId"));
   const includeEmpty = c.req.query("includeEmpty") === "true";
 
-  let rows: any[];
+  // 工作区视角：成员校验
   if (ws) {
-    // 工作区视角：成员校验
     const role = getUserWorkspaceRole(ws, userId);
     if (!role) return c.json({ error: "无权访问该工作区" }, 403);
-
-    const havingClause = includeEmpty ? "" : "HAVING COUNT(nt.noteId) > 0";
-    rows = db
-      .prepare(
-        `
-        SELECT t.*, COUNT(nt.noteId) AS noteCount
-        FROM tags t
-        LEFT JOIN note_tags nt ON nt.tagId = t.id
-        LEFT JOIN notes n ON n.id = nt.noteId AND n.workspaceId = ? AND n.isTrashed = 0
-        WHERE t.workspaceId = ?
-        GROUP BY t.id
-        ${havingClause}
-        ORDER BY t.name ASC
-      `,
-      )
-      .all(ws, ws);
-  } else {
-    // 个人空间：仅看自己的、且 workspaceId IS NULL 的标签
-    const havingClause = includeEmpty ? "" : "HAVING COUNT(nt.noteId) > 0";
-    rows = db
-      .prepare(
-        `
-        SELECT t.*, COUNT(nt.noteId) AS noteCount
-        FROM tags t
-        LEFT JOIN note_tags nt ON nt.tagId = t.id
-        LEFT JOIN notes n ON n.id = nt.noteId
-                          AND (n.workspaceId IS NULL)
-                          AND n.userId = ?
-                          AND n.isTrashed = 0
-        WHERE t.userId = ? AND t.workspaceId IS NULL
-        GROUP BY t.id
-        ${havingClause}
-        ORDER BY t.name ASC
-      `,
-      )
-      .all(userId, userId);
   }
+
+  const rows = tagsRepository.listByUser(userId, ws, includeEmpty);
   return c.json(rows);
 });
 
