@@ -26,6 +26,7 @@ const {
   isTrustedMainWindowSender,
   isTrustedSetupWindowSender,
   assertMainWindowSender,
+  setTrustedMainWindowId,
 } = require("./security");
 
 // 日志 & 崩溃上报需尽早初始化（crashReporter.start 建议在 ready 之前）
@@ -713,6 +714,9 @@ function createWindow() {
     },
   });
 
+  // SEC-ELECTRON-01-B-RV1: 注册主窗口 webContents.id 用于 IPC sender 校验
+  setTrustedMainWindowId(mainWindow.webContents.id);
+
   // 根据当前模式决定 API 目标：
   //   full → 本机后端 http://127.0.0.1:{backendPort}
   //   lite → 用户在 setup 窗里选择并写入 settings.json 的 remoteUrl
@@ -803,7 +807,12 @@ function createWindow() {
     if (isAllowedExternalUrl(url)) {
       shell.openExternal(url);
     } else {
-      console.warn("[main] blocked external URL with unsafe protocol:", url);
+      // SEC-ELECTRON-01-B-RV1: 日志脱敏，不输出完整 URL
+      try {
+        console.warn("[main] blocked external URL protocol:", new URL(url).protocol);
+      } catch {
+        console.warn("[main] blocked external URL with invalid format");
+      }
     }
     return { action: "deny" };
   });

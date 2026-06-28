@@ -394,14 +394,24 @@ function openSetupWindow(opts = {}) {
       ipcMain.removeAllListeners("setup:cancel");
     };
 
+    // SEC-ELECTRON-01-B-RV1: setup:* IPC 只允许 setupWindow 调用
+    const { isTrustedSetupWindowSender } = require("./security");
+
     ipcMain.removeHandler("setup:probe");
-    ipcMain.handle("setup:probe", (_e, url) => probeUrl(String(url || "")));
+    ipcMain.handle("setup:probe", (e, url) => {
+      if (!isTrustedSetupWindowSender(e)) return { ok: false, error: "UNTRUSTED_SENDER" };
+      return probeUrl(String(url || ""));
+    });
 
     ipcMain.removeHandler("setup:get-initial");
-    ipcMain.handle("setup:get-initial", () => ({ url: opts.initialUrl || "" }));
+    ipcMain.handle("setup:get-initial", (e) => {
+      if (!isTrustedSetupWindowSender(e)) return { ok: false, error: "UNTRUSTED_SENDER" };
+      return { url: opts.initialUrl || "" };
+    });
 
     ipcMain.removeAllListeners("setup:submit");
-    ipcMain.on("setup:submit", (_e, url) => {
+    ipcMain.on("setup:submit", (e, url) => {
+      if (!isTrustedSetupWindowSender(e)) return;
       if (resolved) return;
       resolved = true;
       cleanup();
@@ -411,7 +421,8 @@ function openSetupWindow(opts = {}) {
     });
 
     ipcMain.removeAllListeners("setup:cancel");
-    ipcMain.on("setup:cancel", () => {
+    ipcMain.on("setup:cancel", (e) => {
+      if (!isTrustedSetupWindowSender(e)) return;
       if (resolved) return;
       resolved = true;
       cleanup();

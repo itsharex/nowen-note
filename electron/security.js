@@ -6,6 +6,9 @@
  * 独立模块，避免 main.js ↔ credentials.js 循环依赖。
  */
 
+// 主窗口 webContents.id，由 main.js 在创建窗口后设置
+let trustedMainWindowId = null;
+
 /**
  * 验证外部 URL 协议是否允许通过 shell.openExternal 打开。
  * 只允许 http/https/mailto，禁止 file/javascript/data/vbscript 等危险协议。
@@ -51,12 +54,26 @@ function isTrustedSetupWindowSender(event) {
 }
 
 /**
+ * 设置可信主窗口的 webContents.id（由 main.js 创建窗口后调用）。
+ */
+function setTrustedMainWindowId(id) {
+  trustedMainWindowId = id;
+}
+
+/**
  * 统一 IPC 来源校验：只允许主窗口调用。
+ * 检查 URL 来源 + webContents.id 双重绑定。
  * 返回 null 表示校验通过，返回错误对象表示拒绝。
  */
 function assertMainWindowSender(event) {
+  // SEC-ELECTRON-01-B-RV1: URL 来源校验
   if (!isTrustedMainWindowSender(event)) {
-    console.warn("[security] blocked IPC from untrusted sender:", event.senderFrame?.url || "unknown");
+    console.warn("[security] blocked IPC from untrusted sender");
+    return { ok: false, error: "UNTRUSTED_SENDER" };
+  }
+  // SEC-ELECTRON-01-B-RV1: webContents.id 绑定校验
+  if (trustedMainWindowId !== null && event.sender.id !== trustedMainWindowId) {
+    console.warn("[security] blocked IPC from wrong webContents");
     return { ok: false, error: "UNTRUSTED_SENDER" };
   }
   return null;
@@ -105,4 +122,5 @@ module.exports = {
   isTrustedMainWindowSender,
   isTrustedSetupWindowSender,
   assertMainWindowSender,
+  setTrustedMainWindowId,
 };
