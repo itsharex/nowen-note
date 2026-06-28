@@ -34,6 +34,7 @@ import { requireAdmin } from "../middleware/acl.js";
 import { getDb } from "../db/schema.js";
 import { verifySudoFromRequest } from "../lib/auth-security.js";
 import { sendMail, EMAIL_ATTACHMENT_LIMIT, readSmtpConfig } from "../services/email.js";
+import { logAudit } from "../services/audit.js";
 
 const backupsRouter = new Hono();
 
@@ -147,6 +148,7 @@ backupsRouter.post("/dir", async (c) => {
 // 创建备份本身不是破坏性的，但会消耗磁盘 + 暴露全库快照路径，
 // 仍要求 sudo —— 与 /data-file/export 的"管理员可下载"语义保持一致严格度。
 backupsRouter.post("/", async (c) => {
+  const userId = c.req.header("X-User-Id") || "";
   const denied = requireBackupSudo(c);
   if (denied) return denied;
 
@@ -158,6 +160,12 @@ backupsRouter.post("/", async (c) => {
       type: body.type || "db-only",
       description: body.description,
     });
+
+    // SEC-AUDIT-01
+    logAudit(userId, "system", "backup_create", {
+      filename: info.filename, type: body.type || "db-only",
+    }, { targetType: "backup", targetId: info.filename });
+
     return c.json(info, 201);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -258,17 +266,33 @@ backupsRouter.post("/:filename/restore", async (c) => {
   if (!result.success) {
     return c.json({ error: result.error }, 400);
   }
+
+  // SEC-AUDIT-01
+  if (!dryRun) {
+    const userId = c.req.header("X-User-Id") || "";
+    logAudit(userId, "system", "backup_restore", {
+      filename, success: result.success,
+    }, { targetType: "backup", targetId: filename, level: "warn" });
+  }
+
   return c.json(result);
 });
 
 // ===== DELETE /api/backups/:filename =====
 backupsRouter.delete("/:filename", (c) => {
+  const userId = c.req.header("X-User-Id") || "";
   const denied = requireBackupSudo(c);
   if (denied) return denied;
 
   const filename = c.req.param("filename");
   const manager = getBackupManager();
   const result = manager.deleteBackup(filename);
+
+  // SEC-AUDIT-01
+  logAudit(userId, "system", "backup_delete", {
+    filename, success: result,
+  }, { targetType: "backup", targetId: filename, level: "warn" });
+
   return c.json({ success: result });
 });
 

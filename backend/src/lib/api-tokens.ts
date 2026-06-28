@@ -175,9 +175,14 @@ export function resolveApiToken(
   return { tokenId: row.id, userId: row.userId, scopes };
 }
 
-/** 判断某个 token 是否满足请求所需 scope */
+// SEC-PAT-01: 空 scopes 默认拒绝，LEGACY_EMPTY_SCOPE_FULL_ACCESS=true 可恢复旧行为
+const legacyEmptyScopeFullAccess = process.env.LEGACY_EMPTY_SCOPE_FULL_ACCESS === "true";
+
 export function hasScope(token: ResolvedApiToken, required: ApiTokenScope): boolean {
-  // 空 scopes 视为"等同于登录态"的 full access（由路由自行决定是否强制非空）
-  if (token.scopes.length === 0) return true;
+  if (token.scopes.length === 0) return legacyEmptyScopeFullAccess;
   return token.scopes.includes(required);
+}
+
+export function hasAnyScope(token: ResolvedApiToken, required: ApiTokenScope[]): boolean {
+  return required.some((s) => hasScope(token, s));
 }

@@ -230,7 +230,29 @@ const BLOCKED_MIMES = new Set([
   "application/x-bat",               // .bat
   "application/x-sh",                // .sh
   "application/hta",                 // .hta
+  "application/x-executable",        // 通用可执行文件
+  "application/x-elf",               // Linux 可执行文件
 ]);
+
+// SEC-UPLOAD-01: MIME 风险分级
+const HIGH_RISK_MIMES = new Set([
+  "text/html", "text/xml", "application/xhtml+xml",
+  "image/svg+xml", "application/xml",
+  "application/javascript", "text/javascript", "application/x-javascript",
+]);
+
+export function isHighRiskMime(mime: string): boolean {
+  return HIGH_RISK_MIMES.has((mime || "").toLowerCase().split(";")[0].trim());
+}
+
+function getMaxAttachmentSize(): number {
+  const envVal = process.env.MAX_ATTACHMENT_SIZE_MB;
+  if (envVal) {
+    const parsed = parseInt(envVal, 10);
+    if (!isNaN(parsed) && parsed > 0 && parsed <= 10240) return parsed * 1024 * 1024;
+  }
+  return 100 * 1024 * 1024;
+}
 
 // 从文件名兜底推断扩展名（file.name 为空或无点时用 MIME 映射，再兜底 "bin"）。
 function pickExt(filename: string | undefined, mime: string): string {
@@ -276,9 +298,8 @@ function toResponseBody(buf: Buffer): Uint8Array<ArrayBuffer> {
   return out as Uint8Array<ArrayBuffer>;
 }
 
-// 单个附件最大 1GB。反向代理侧还会再设 body limit。
-// 之前是 50MB（按"图片"设计），放开到任意格式后上调一档，方便传 PDF / 安装包零件 / 压缩包。
-const MAX_ATTACHMENT_SIZE = 1024 * 1024 * 1024;
+// SEC-UPLOAD-01: 可配置的附件大小限制，默认 100MB，环境变量 MAX_ATTACHMENT_SIZE_MB 可覆盖。
+const MAX_ATTACHMENT_SIZE = getMaxAttachmentSize();
 
 export interface ExistingAttachmentForDedup {
   id?: string;
@@ -369,16 +390,10 @@ export function createDeduplicatedAttachmentRow(args: {
 /**
  * 不需要 JWT 的下载 handler。index.ts 直接把它挂在 JWT 中间件**之前**。
  *
- * 授权模型详见文件顶部注释：
- *   - 通过 id 不可枚举（uuid）保护；
- *   - 不调用 resolveNotePermission（因为拿不到 userId）；
- *   - 未来升级为签名 URL 时，在这里校验签名即可。
- *
- * v12 新增：缩略图分支
- *   支持 `?w=240|480|960` 查询参数，命中白名单且原图为 raster 时返回 webp 缩略图。
- *   - 不命中白名单 / 非 raster / sharp 不可用 → 透明降级为原图（不报错）。
- *   - 缩略图与原图共用同一份 immutable Cache-Control，浏览器二次访问无网络。
- *   - handler 改为 async：sharp 是异步管道。
+ * 授权模型（SEC-ATTACHMENT-01 升级）：
+ *   1. 带签名 URL（?exp=&sig=&scope=）→ 校验签名，通过即授权
+ *   2. 带 X-User-Id（fetch / API 调用）→ 走 note read 权限链
+ *   3. 无签名无 userId → 走"UUID 不可枚举"隐式授权（可通过环境变量关闭）
  */
 export async function handleDownloadAttachment(c: Context): Promise<Response> {
   const id = c.req.param("id");
@@ -388,21 +403,32 @@ export async function handleDownloadAttachment(c: Context): Promise<Response> {
     .get(id) as { id: string; noteId: string; mimeType: string; path: string; filename: string } | undefined;
   if (!row) return c.json({ error: "附件不存在" }, 404);
 
-  // 权限校验：
-  //   - 带 X-User-Id 的请求（fetch / API 调用）→ 走 note read 权限链；
-  //   - 不带 X-User-Id 的请求（<img src> 浏览器原生请求）→ 走"UUID 不可枚举"
-  //     隐式授权：附件 id 是 uuid，除了读过 note.content 拿到 URL 的人之外没人能
-  //     枚举。与 Gitea / GitLab 私有仓库附件的处理方式一致。
-  //     详见文件顶部"授权模型"注释。
+  // SEC-ATTACHMENT-01: 签名 URL 校验
+  const exp = c.req.query("exp");
+  const sig = c.req.query("sig");
+  const scope = c.req.query("scope");
   const userId = c.req.header("X-User-Id") || "";
-  if (row.noteId && userId) {
+
+  if (exp && sig && scope) {
+    const { verifyAttachmentSignature } = await import("../lib/attachment-signed-url");
+    const result = verifyAttachmentSignature(id, exp, sig, scope);
+    if (!result.valid) {
+      return c.json({ error: "签名无效或已过期", code: "INVALID_SIGNATURE", reason: result.reason }, 403);
+    }
+  } else if (row.noteId && userId) {
     const { permission } = resolveNotePermission(row.noteId, userId);
     if (!hasPermission(permission, "read")) {
       return c.json({ error: "无权访问该附件" }, 403);
     }
+  } else {
+    const { isLegacyPublicUrlEnabled } = await import("../lib/attachment-signed-url");
+    if (!isLegacyPublicUrlEnabled()) {
+      return c.json({
+        error: "需要签名 URL 或登录凭证",
+        code: "SIGNATURE_REQUIRED",
+      }, 401);
+    }
   }
-  // else: 无 X-User-Id（<img> 标签原生请求）→ 附件 id 不可枚举即为隐式授权，
-  // 无需额外校验。详见文件顶部注释。
 
   const absPath = path.join(ATTACHMENTS_DIR, row.path);
   const localExists = fs.existsSync(absPath);
@@ -455,17 +481,16 @@ export async function handleDownloadAttachment(c: Context): Promise<Response> {
 
   const headers: Record<string, string> = {
     "Content-Type": row.mimeType || "application/octet-stream",
-    // uuid 文件名不可变，可以长缓存
     "Cache-Control": "public, max-age=31536000, immutable",
   };
-  // 非图片（或显式 ?download=1）：带 Content-Disposition，浏览器点击会按原名下载。
-  // 图片默认 inline，由 <img> 直接渲染。
-  // 例外：?inline=1 用于前端预览组件（<video>/<audio>/svg 等），跳过 Content-Disposition，
-  //       让浏览器直接渲染。?download=1 优先级更高（用户明示要下载）。
-  if ((!isImageMime(row.mimeType) || forceDownload) && !(inlinePreview && !forceDownload)) {
+
+  // SEC-UPLOAD-01: 高风险 MIME 强制下载
+  const isHighRisk = isHighRiskMime(row.mimeType);
+
+  if (isHighRisk || (!isImageMime(row.mimeType) || forceDownload) && !(inlinePreview && !forceDownload)) {
     headers["Content-Disposition"] = encodeContentDispositionFilename(row.filename || "");
+    if (isHighRisk) headers["X-Content-Type-Options"] = "nosniff";
   }
-  // 同上：Buffer → Uint8Array<ArrayBuffer> 视图，绕开 TS 5.7+ ArrayBufferLike 不兼容
   return c.body(toResponseBody(buffer), 200, headers);
 }
 

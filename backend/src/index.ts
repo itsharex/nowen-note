@@ -66,21 +66,37 @@ import { startCalendarExportScheduler, stopCalendarExportScheduler } from "./ser
 const app = new Hono();
 
 app.use("*", logger());
+
+// SEC-CORS-01: 生产环境 CORS 白名单化
+function resolveCorsOrigins(): string[] {
+  const raw = process.env.CORS_ORIGINS;
+  if (!raw) return [];
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
+const isProd = process.env.NODE_ENV === "production";
+const corsOrigins = resolveCorsOrigins();
+
 app.use("*", cors({
-  origin: (origin) => origin || "*",
+  origin: (origin) => {
+    if (!isProd) return origin || "*";
+    if (!origin) return "*";
+    if (corsOrigins.length > 0) return corsOrigins.includes(origin) ? origin : "";
+    return "";
+  },
   allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  // 注意：自定义 header 必须在这里逐一列出，浏览器/WebView 跨域时才会让 OPTIONS 预检放行。
-  //   - X-Sudo-Token：管理员高危操作（备份配置、删除、恢复、邮件发送等）必带；
-  //     之前漏掉会让手机 App / Capacitor webview 跨域调用时直接 "TypeError: Failed to fetch"
-  //     —— 因为预检失败连后端都到不了。
-  //   - X-Connection-Id：P0-3 自回声排除（前端把当前 WebSocket connectionId 透传给 PUT
-  //     /notes/:id，后端据此从广播中跳过发起者连接）。这是个**自定义 header**，会触发
-  //     CORS 预检；如果没列入白名单，OPTIONS 直接 403/被浏览器拦下，所有"WS 连上之后"
-  //     的 fetch 都会报 TypeError: Failed to fetch（典型现象：APK 列表能加载但点笔记
-  //     立刻 Failed to fetch、点同一个笔记没反应）。
   allowHeaders: ["Content-Type", "X-User-Id", "Authorization", "X-Sudo-Token", "X-Connection-Id", "X-Requested-With", "X-Request-Id"],
   credentials: true,
 }));
+
+if (isProd) {
+  if (corsOrigins.length > 0) {
+    console.log(`[CORS] 生产模式白名单: ${corsOrigins.join(", ")}`);
+  } else {
+    console.log("[CORS] 生产模式：仅允许同源请求（未配置 CORS_ORIGINS）");
+  }
+} else {
+  console.log("[CORS] 开发模式：允许所有来源");
+}
 
 // HTTP 响应压缩（gzip/deflate）。
 //   - 针对 /api/* 的 JSON 响应启用；大多数"图片以 base64 内联在 notes.content"的

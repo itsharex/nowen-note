@@ -9,6 +9,7 @@ import { resolveNotePermission, hasPermission } from "../middleware/acl";
 import { broadcastNoteUpdated, broadcastToUser } from "../services/realtime";
 import { yDestroyDoc } from "../services/yjs";
 import { syncReferences as syncAttachmentReferences } from "../lib/attachmentRefs";
+import { logAudit } from "../services/audit";
 
 // H3: 使用密码学安全的随机源生成分享 token。
 //     原实现用 Math.random()，理论上可被预测；改用 crypto.randomBytes。
@@ -111,8 +112,12 @@ sharesRouter.post("/", async (c) => {
     VALUES (?, ?, ?, ?, 'link', ?, ?, ?, ?)
   `).run(id, noteId, userId, shareToken, perm, passwordHash, expiresAt || null, maxViews || null);
 
+  // SEC-AUDIT-01: 记录分享创建（不记录密码）
+  logAudit(userId, "share", "create", {
+    shareId: id, noteId, permission: perm, hasPassword: !!passwordHash,
+  }, { targetType: "share", targetId: id });
+
   const share = db.prepare("SELECT * FROM shares WHERE id = ?").get(id) as any;
-  // 不返回密码 hash
   delete share.password;
   share.hasPassword = !!passwordHash;
 
@@ -222,10 +227,16 @@ sharesRouter.delete("/:id", (c) => {
   const userId = c.req.header("X-User-Id") || "";
   const id = c.req.param("id");
 
-  const share = db.prepare("SELECT id FROM shares WHERE id = ? AND ownerId = ?").get(id, userId) as any;
+  const share = db.prepare("SELECT id, noteId FROM shares WHERE id = ? AND ownerId = ?").get(id, userId) as any;
   if (!share) return c.json({ error: "分享不存在" }, 404);
 
   db.prepare("DELETE FROM shares WHERE id = ?").run(id);
+
+  // SEC-AUDIT-01: 记录分享撤销
+  logAudit(userId, "share", "revoke", {
+    shareId: id, noteId: share.noteId,
+  }, { targetType: "share", targetId: id });
+
   return c.json({ success: true });
 });
 

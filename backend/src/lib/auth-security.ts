@@ -48,7 +48,14 @@ function resolveJwtSecret(): string {
 }
 
 export const JWT_SECRET: string = resolveJwtSecret();
-export const JWT_EXPIRES_IN = "30d";
+
+// SEC-AUTH-01: JWT 有效期可配置，默认 14d
+function resolveJwtExpiresIn() {
+  const fromEnv = process.env.JWT_EXPIRES_IN;
+  if (fromEnv && /^\d+[dhms]$/.test(fromEnv)) return fromEnv;
+  return "14d" as const;
+}
+export const JWT_EXPIRES_IN = resolveJwtExpiresIn();
 
 // ========== 多种 Token 的 typ 标签 ==========
 //
@@ -95,7 +102,7 @@ export function signLoginToken(payload: {
       ...(payload.jti ? { jti: payload.jti } : {}),
     },
     JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN },
+    { expiresIn: JWT_EXPIRES_IN as any },
   );
 }
 

@@ -20,6 +20,7 @@ import {
   pruneTokenUsage,
 } from "../lib/api-tokens";
 import { apiTokensRepository } from "../repositories";
+import { logAudit } from "../services/audit";
 
 const app = new Hono();
 
@@ -109,6 +110,11 @@ app.post("/", async (c) => {
     expiresAt,
   });
 
+  // SEC-AUDIT-01: 记录 token 创建（不记录明文 token）
+  logAudit(userId, "system", "api_token_created", {
+    tokenId: id, name, scopes: normalizedScopes, expiresAt,
+  }, { targetType: "api_token", targetId: id });
+
   return c.json(
     {
       id,
@@ -116,10 +122,8 @@ app.post("/", async (c) => {
       scopes: normalizedScopes,
       expiresAt,
       createdAt: new Date().toISOString(),
-      /** 明文 token：**仅此一次** 返回，之后任何 GET 都只能看到前缀预览 */
       token: raw,
-      warning:
-        "该 token 只会显示这一次，请妥善保存。可在需要时随时吊销。",
+      warning: "该 token 只会显示这一次，请妥善保存。可在需要时随时吊销。",
     },
     201,
   );
@@ -197,6 +201,12 @@ app.delete("/:id", (c) => {
   if (row.revokedAt) return c.json({ success: true, alreadyRevoked: true });
 
   apiTokensRepository.revokeById(id);
+
+  // SEC-AUDIT-01: 记录 token 吊销
+  logAudit(userId, "system", "api_token_revoked", {
+    tokenId: id,
+  }, { targetType: "api_token", targetId: id });
+
   return c.json({ success: true });
 });
 

@@ -1,11 +1,86 @@
 import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
 import crypto from "crypto";
+import dns from "dns";
+import { promisify } from "util";
 import { getDb } from "../db/schema";
 import { createDeduplicatedAttachmentRow, ensureAttachmentsDir, MIME_TO_EXT } from "./attachments";
 import { deleteAttachmentObject, writeAttachmentObject } from "../services/attachment-storage";
 
 const app = new Hono();
+
+// SEC-IMPORT-01: SSRF/DoS 防护
+const DNS_TIMEOUT_MS = 3000;
+const SAFE_FETCH_TIMEOUT_MS = 10_000;
+const MAX_HTML_SIZE = 5 * 1024 * 1024;
+const MAX_IMAGE_SIZE = 20 * 1024 * 1024;
+const MAX_IMAGES_PER_ARTICLE = 50;
+const resolve4 = promisify(dns.resolve4);
+const resolve6 = promisify(dns.resolve6);
+
+function isPrivateOrReservedIp(ip: string): boolean {
+  if (/^127\./.test(ip)) return true;
+  if (/^10\./.test(ip)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;
+  if (/^192\.168\./.test(ip)) return true;
+  if (/^169\.254\./.test(ip)) return true;
+  if (/^0\./.test(ip)) return true;
+  if (ip === "::1") return true;
+  if (/^[fF][cCdD]/.test(ip)) return true;
+  if (/^[fF][eE][89abAB]/.test(ip)) return true;
+  return false;
+}
+
+async function checkDnsSafety(hostname: string): Promise<{ safe: boolean; error?: string }> {
+  try {
+    const ips: string[] = [];
+    try { ips.push(...(await Promise.race([resolve4(hostname), new Promise<never>((_, r) => setTimeout(() => r(new Error("timeout")), DNS_TIMEOUT_MS))]))); } catch {}
+    try { ips.push(...(await Promise.race([resolve6(hostname), new Promise<never>((_, r) => setTimeout(() => r(new Error("timeout")), DNS_TIMEOUT_MS))]))); } catch {}
+    if (ips.length === 0) return { safe: false, error: "DNS 解析失败" };
+    for (const ip of ips) {
+      if (isPrivateOrReservedIp(ip)) return { safe: false, error: `域名指向私有 IP: ${ip}` };
+    }
+    return { safe: true };
+  } catch (err: any) {
+    return { safe: false, error: `DNS 检查失败: ${err?.message || err}` };
+  }
+}
+
+async function safeFetch(url: string, options: { fetchTimeout?: number; maxBytes?: number; headers?: Record<string, string> } = {}): Promise<Response> {
+  const timeout = options.fetchTimeout || SAFE_FETCH_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  try {
+    const res = await fetch(url, { headers: options.headers || {}, signal: controller.signal, redirect: "follow" });
+    const contentLength = res.headers.get("content-length");
+    if (contentLength && parseInt(contentLength, 10) > (options.maxBytes || MAX_HTML_SIZE)) {
+      throw new Error(`响应体过大: ${contentLength} bytes`);
+    }
+    return res;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function safeReadBody(res: Response, maxSize: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let totalSize = 0;
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("无法读取响应体");
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = Buffer.from(value);
+      totalSize += chunk.length;
+      if (totalSize > maxSize) throw new Error(`响应体过大: 超过 ${maxSize} 字节限制`);
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks);
+}
 
 interface UrlImportRequest {
   url: string;
@@ -134,17 +209,18 @@ async function downloadImageToAttachment(
   noteId: string,
   workspaceId: string | null,
 ): Promise<string> {
-  const res = await fetch(imageUrl, {
+  // SEC-IMPORT-01: 使用安全 fetch（带超时和大小限制）
+  const res = await safeFetch(imageUrl, {
+    fetchTimeout: SAFE_FETCH_TIMEOUT_MS,
+    maxBytes: MAX_IMAGE_SIZE,
     headers: {
       Referer: "https://mp.weixin.qq.com/",
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
       Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
     },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const arr = await res.arrayBuffer();
-  const buf = Buffer.from(arr);
+  const buf = await safeReadBody(res, MAX_IMAGE_SIZE);
   if (buf.length === 0) throw new Error("空图片");
 
   const { mime, ext } = detectMimeFromBuffer(buf, res.headers.get("content-type") || undefined);
@@ -228,11 +304,12 @@ async function rewriteImages(
       (dataOrig && dataOrig[1]) ||
       (src && src[1]);
     if (!url) continue;
-    // // 协议相对路径补全为 https，否则 fetch 会报错
     if (url.startsWith("//")) url = "https:" + url;
-    if (!/^https?:\/\//i.test(url)) continue; // 跳过 data: 等
+    if (!/^https?:\/\//i.test(url)) continue;
+    // SEC-IMPORT-01: 限制图片数量
+    if (urlMap.size >= MAX_IMAGES_PER_ARTICLE) break;
     tasks.push({ tag, url });
-    urlMap.set(url, ""); // 占位
+    urlMap.set(url, "");
   }
 
   let downloaded = 0;
@@ -297,22 +374,36 @@ app.post("/", async (c) => {
     return c.json({ error: "目前仅支持微信公众号文章链接（mp.weixin.qq.com/s/...）" }, 400);
   }
 
+  // SEC-IMPORT-01: SSRF 防护 - DNS 解析检查
+  try {
+    const parsed = new URL(url);
+    const dnsCheck = await checkDnsSafety(parsed.hostname);
+    if (!dnsCheck.safe) {
+      return c.json({ error: `安全检查失败: ${dnsCheck.error}` }, 403);
+    }
+  } catch (err: any) {
+    return c.json({ error: `URL 解析失败: ${err?.message || err}` }, 400);
+  }
+
   const userId = c.req.header("X-User-Id")!;
   const workspaceId = c.req.query("workspaceId") || null;
 
   let html: string;
   try {
-    const resp = await fetch(url, {
+    // SEC-IMPORT-01: 使用安全 fetch（带超时和大小限制）
+    const resp = await safeFetch(url, {
+      fetchTimeout: SAFE_FETCH_TIMEOUT_MS,
+      maxBytes: MAX_HTML_SIZE,
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
         "Accept-Language": "zh-CN,zh;q=0.9",
       },
     });
     if (!resp.ok) {
       return c.json({ error: `获取文章失败: HTTP ${resp.status}` }, 502);
     }
-    html = await resp.text();
+    const buf = await safeReadBody(resp, MAX_HTML_SIZE);
+    html = buf.toString("utf-8");
   } catch (err: any) {
     return c.json({ error: `网络错误: ${err?.message || err}` }, 502);
   }
