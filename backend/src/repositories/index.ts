@@ -13,6 +13,7 @@ export { calendarExportTargetsRepository } from "./calendarExportTargetsReposito
 export { noteLinksRepository } from "./noteLinksRepository";
 export { tagsRepository } from "./tagsRepository";
 export { noteTagsRepository } from "./noteTagsRepository";
+export { aiCustomPromptsRepository } from "./aiCustomPromptsRepository";
 
 // 类型导出
 export type {
@@ -34,3 +35,4 @@ export type {
   TagWithCount,
   UpdateTagInput,
 } from "./types";
+export type { AiCustomPromptRecord } from "./aiCustomPromptsRepository";

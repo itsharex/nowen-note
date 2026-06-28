@@ -13,6 +13,7 @@ import {
 } from "../services/vec-store";
 import { getUserWorkspaceRole } from "../middleware/acl";
 import { callAIChat, callAIChatStream, extractTextFromChatCompletion, sanitizeError } from "../services/ai-client";
+import { aiCustomPromptsRepository } from "../repositories";
 
 const ai = new Hono();
 
@@ -2055,7 +2056,7 @@ interface AiCustomPromptRow {
   updatedAt: string;
 }
 
-function toPromptDto(r: AiCustomPromptRow) {
+function toPromptDto(r: { id: string; name: string; prompt: string; usageCount: number; lastUsedAt: string | null; createdAt: string; updatedAt: string }) {
   return {
     id: r.id,
     name: r.name,
@@ -2082,21 +2083,13 @@ function normalizePromptInput(body: { name?: unknown; prompt?: unknown }):
 
 // GET /api/ai/prompts — 列出当前用户所有自定义指令
 ai.get("/prompts", (c) => {
-  const db = getDb();
   const userId = c.req.header("X-User-Id") || "demo";
-  const rows = db.prepare(`
-    SELECT id, userId, name, prompt, usageCount, lastUsedAt, createdAt, updatedAt
-      FROM ai_custom_prompts
-     WHERE userId = ?
-     ORDER BY usageCount DESC, updatedAt DESC, createdAt DESC
-     LIMIT 200
-  `).all(userId) as AiCustomPromptRow[];
+  const rows = aiCustomPromptsRepository.listByUser(userId);
   return c.json({ items: rows.map(toPromptDto) });
 });
 
 // POST /api/ai/prompts — 新建
 ai.post("/prompts", async (c) => {
-  const db = getDb();
   const userId = c.req.header("X-User-Id") || "demo";
   const body = await c.req.json().catch(() => ({})) as { name?: unknown; prompt?: unknown };
   const norm = normalizePromptInput(body);
@@ -2104,10 +2097,7 @@ ai.post("/prompts", async (c) => {
 
   const id = `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   try {
-    db.prepare(`
-      INSERT INTO ai_custom_prompts (id, userId, name, prompt, usageCount, createdAt, updatedAt)
-      VALUES (?, ?, ?, ?, 0, datetime('now'), datetime('now'))
-    `).run(id, userId, norm.name, norm.prompt);
+    aiCustomPromptsRepository.create({ id, userId, name: norm.name, prompt: norm.prompt });
   } catch (e: any) {
     // UNIQUE(userId,name) 冲突 → 400 给前端明确信号
     if (String(e?.message || "").includes("UNIQUE")) {
@@ -2115,15 +2105,13 @@ ai.post("/prompts", async (c) => {
     }
     throw e;
   }
-  const row = db.prepare(
-    "SELECT id, userId, name, prompt, usageCount, lastUsedAt, createdAt, updatedAt FROM ai_custom_prompts WHERE id = ?",
-  ).get(id) as AiCustomPromptRow;
+  const row = aiCustomPromptsRepository.getByIdAndUser(id, userId);
+  if (!row) return c.json({ error: "指令不存在" }, 404);
   return c.json(toPromptDto(row));
 });
 
 // PUT /api/ai/prompts/:id — 更新（可改名、可改内容）
 ai.put("/prompts/:id", async (c) => {
-  const db = getDb();
   const userId = c.req.header("X-User-Id") || "demo";
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => ({})) as { name?: unknown; prompt?: unknown };
@@ -2131,38 +2119,28 @@ ai.put("/prompts/:id", async (c) => {
   if (!norm.ok) return c.json({ error: norm.error }, 400);
 
   // 先确认归属——防止跨用户篡改
-  const own = db.prepare(
-    "SELECT id FROM ai_custom_prompts WHERE id = ? AND userId = ?",
-  ).get(id, userId) as { id: string } | undefined;
+  const own = aiCustomPromptsRepository.getByIdAndUser(id, userId);
   if (!own) return c.json({ error: "指令不存在" }, 404);
 
   try {
-    db.prepare(`
-      UPDATE ai_custom_prompts
-         SET name = ?, prompt = ?, updatedAt = datetime('now')
-       WHERE id = ? AND userId = ?
-    `).run(norm.name, norm.prompt, id, userId);
+    aiCustomPromptsRepository.updateByIdAndUser(id, userId, { name: norm.name, prompt: norm.prompt });
   } catch (e: any) {
     if (String(e?.message || "").includes("UNIQUE")) {
       return c.json({ error: "已存在同名指令，请换一个名称" }, 400);
     }
     throw e;
   }
-  const row = db.prepare(
-    "SELECT id, userId, name, prompt, usageCount, lastUsedAt, createdAt, updatedAt FROM ai_custom_prompts WHERE id = ?",
-  ).get(id) as AiCustomPromptRow;
+  const row = aiCustomPromptsRepository.getByIdAndUser(id, userId);
+  if (!row) return c.json({ error: "指令不存在" }, 404);
   return c.json(toPromptDto(row));
 });
 
 // DELETE /api/ai/prompts/:id
 ai.delete("/prompts/:id", (c) => {
-  const db = getDb();
   const userId = c.req.header("X-User-Id") || "demo";
   const id = c.req.param("id");
-  const info = db.prepare(
-    "DELETE FROM ai_custom_prompts WHERE id = ? AND userId = ?",
-  ).run(id, userId);
-  if (info.changes === 0) return c.json({ error: "指令不存在" }, 404);
+  const deleted = aiCustomPromptsRepository.deleteByIdAndUser(id, userId);
+  if (!deleted) return c.json({ error: "指令不存在" }, 404);
   return c.json({ ok: true });
 });
 
@@ -2170,16 +2148,10 @@ ai.delete("/prompts/:id", (c) => {
 // 仅更新 usageCount/lastUsedAt，不动 updatedAt，避免"使用一次"扰动排序语义
 // 里的"最近编辑"维度。
 ai.post("/prompts/:id/touch", (c) => {
-  const db = getDb();
   const userId = c.req.header("X-User-Id") || "demo";
   const id = c.req.param("id");
-  const info = db.prepare(`
-    UPDATE ai_custom_prompts
-       SET usageCount = usageCount + 1,
-           lastUsedAt = datetime('now')
-     WHERE id = ? AND userId = ?
-  `).run(id, userId);
-  if (info.changes === 0) return c.json({ error: "指令不存在" }, 404);
+  const touched = aiCustomPromptsRepository.touchUsage(id, userId);
+  if (!touched) return c.json({ error: "指令不存在" }, 404);
   return c.json({ ok: true });
 });
 
