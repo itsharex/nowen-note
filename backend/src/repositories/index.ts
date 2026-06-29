@@ -14,6 +14,7 @@ export { noteLinksRepository } from "./noteLinksRepository";
 export { tagsRepository } from "./tagsRepository";
 export { noteTagsRepository } from "./noteTagsRepository";
 export { aiCustomPromptsRepository } from "./aiCustomPromptsRepository";
+export { noteVersionsRepository } from "./noteVersionsRepository";
 
 // 类型导出
 export type {
@@ -36,3 +37,4 @@ export type {
   UpdateTagInput,
 } from "./types";
 export type { AiCustomPromptRecord } from "./aiCustomPromptsRepository";
+export type { NoteVersionListItem, NoteVersionRecord } from "./noteVersionsRepository";

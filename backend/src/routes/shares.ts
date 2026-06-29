@@ -10,6 +10,7 @@ import { broadcastNoteUpdated, broadcastToUser } from "../services/realtime";
 import { yDestroyDoc } from "../services/yjs";
 import { syncReferences as syncAttachmentReferences } from "../lib/attachmentRefs";
 import { logAudit } from "../services/audit";
+import { noteVersionsRepository } from "../repositories";
 
 // H3: 使用密码学安全的随机源生成分享 token。
 //     原实现用 Math.random()，理论上可被预测；改用 crypto.randomBytes。
@@ -557,17 +558,8 @@ sharesRouter.get("/note/:noteId/versions", (c) => {
   const note = db.prepare("SELECT id FROM notes WHERE id = ? AND userId = ?").get(noteId, userId) as any;
   if (!note) return c.json({ error: "笔记不存在或无权操作" }, 404);
 
-  const versions = db.prepare(`
-    SELECT nv.id, nv.noteId, nv.userId, nv.title, nv.version, nv.changeType, nv.changeSummary, nv.createdAt,
-           u.username
-    FROM note_versions nv
-    LEFT JOIN users u ON nv.userId = u.id
-    WHERE nv.noteId = ?
-    ORDER BY nv.version DESC
-    LIMIT ? OFFSET ?
-  `).all(noteId, limit, offset) as any[];
-
-  const total = (db.prepare("SELECT COUNT(*) as count FROM note_versions WHERE noteId = ?").get(noteId) as any).count;
+  const versions = noteVersionsRepository.listByNoteId(noteId, limit, offset);
+  const total = noteVersionsRepository.countByNoteId(noteId);
 
   return c.json({ versions, total });
 });
@@ -582,7 +574,7 @@ sharesRouter.get("/note/:noteId/versions/:versionId", (c) => {
   const note = db.prepare("SELECT id FROM notes WHERE id = ? AND userId = ?").get(noteId, userId) as any;
   if (!note) return c.json({ error: "笔记不存在或无权操作" }, 404);
 
-  const version = db.prepare("SELECT * FROM note_versions WHERE id = ? AND noteId = ?").get(versionId, noteId) as any;
+  const version = noteVersionsRepository.getByIdAndNoteId(versionId, noteId);
   if (!version) return c.json({ error: "版本不存在" }, 404);
 
   return c.json(version);
@@ -604,7 +596,7 @@ sharesRouter.post("/note/:noteId/versions/:versionId/restore", (c) => {
   if (!note) return c.json({ error: "笔记不存在或无权操作" }, 404);
   if (note.isLocked) return c.json({ error: "笔记已锁定" }, 403);
 
-  const version = db.prepare("SELECT * FROM note_versions WHERE id = ? AND noteId = ?").get(versionId, noteId) as any;
+  const version = noteVersionsRepository.getByIdAndNoteId(versionId, noteId);
   if (!version) return c.json({ error: "版本不存在" }, 404);
 
   const updated = db.transaction(() => {

@@ -15,7 +15,7 @@ import { yFlush, yDestroyDoc, yReplaceContentAsUpdate } from "../services/yjs";
 import { deleteAttachmentFilesByNoteIds, extractInlineBase64Images } from "./attachments";
 import { syncReferences as syncAttachmentReferences } from "../lib/attachmentRefs";
 import { syncNoteLinks, getBacklinks } from "../lib/noteLinks";
-import { noteLinksRepository, noteTagsRepository } from "../repositories";
+import { noteLinksRepository, noteTagsRepository, noteVersionsRepository } from "../repositories";
 import { reclaimSpace } from "../lib/reclaimSpace";
 import { buildFtsSearchTerm } from "../lib/searchQuery";
 
@@ -627,12 +627,7 @@ app.put("/:id", async (c) => {
       const hasContentChange = (body.content !== undefined && body.content !== currentNote.content)
         || (body.title !== undefined && body.title !== currentNote.title);
       if (hasContentChange) {
-        const lastEdit = db.prepare(`
-          SELECT createdAt FROM note_versions
-          WHERE noteId = ? AND changeType = 'edit'
-          ORDER BY version DESC
-          LIMIT 1
-        `).get(id) as { createdAt: string } | undefined;
+        const lastEdit = noteVersionsRepository.getLastEditByNoteId(id);
 
         let shouldInsert = true;
         if (lastEdit) {
