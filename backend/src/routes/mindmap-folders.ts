@@ -70,7 +70,7 @@ app.post("/", requireWorkspaceFeature("mindmaps"), async (c) => {
   const name = body.name || "未命名文件夹";
   mindmapFoldersRepository.create({ id, userId, workspaceId: scope.workspaceId, parentId, name });
 
-  const row = db.prepare("SELECT * FROM mindmap_folders WHERE id = ?").get(id);
+  const row = mindmapFoldersRepository.getById(id);
   return c.json(row, 201);
 });
 
