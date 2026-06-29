@@ -184,6 +184,11 @@ function scanFolder(folderPath, fileTypes, includeSubfolders) {
         }
       } else if (entry.isFile()) {
         if (shouldIgnoreFile(entry.name)) continue;
+        // SEC-ELECTRON-01-D4: 跳过 symlink 文件，防止穿透读取任意目标
+        try {
+          const lstat = fs.lstatSync(fullPath);
+          if (lstat.isSymbolicLink()) continue;
+        } catch { /* ignore */ }
         const ext = path.extname(entry.name).toLowerCase();
         if (!typeSet.has(ext)) continue;
 
