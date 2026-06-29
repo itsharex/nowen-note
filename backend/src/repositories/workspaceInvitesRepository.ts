@@ -103,4 +103,17 @@ export const workspaceInvitesRepository = {
     const db = getDb();
     db.prepare("UPDATE workspace_invites SET useCount = useCount + 1 WHERE id = ?").run(inviteId);
   },
+
+  /**
+   * 转移邀请创建者（用户迁移时使用）。
+   *
+   * @param fromUserId 源用户 ID
+   * @param toUserId 目标用户 ID
+   * @returns 更新的行数
+   */
+  transferOwnership(fromUserId: string, toUserId: string): number {
+    const db = getDb();
+    const result = db.prepare("UPDATE workspace_invites SET createdBy = ? WHERE createdBy = ?").run(toUserId, fromUserId);
+    return result.changes;
+  },
 };

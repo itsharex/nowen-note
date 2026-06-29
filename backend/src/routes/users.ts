@@ -18,7 +18,7 @@ import { getDb } from "../db/schema";
 import { isSystemAdmin, requireAdmin } from "../middleware/acl";
 import { invalidateUserAuthCache, verifySudoFromRequest, extractClientIp } from "../lib/auth-security";
 import { disconnectUser } from "../services/realtime";
-import { noteAclRepository } from "../repositories";
+import { noteAclRepository, workspaceInvitesRepository } from "../repositories";
 import { logAudit } from "../services/audit";
 
 const users = new Hono();
@@ -626,11 +626,7 @@ function transferAndDeleteUser(
       toId,
       fromId,
     );
-    moved.workspaceInvites = run(
-      "UPDATE workspace_invites SET createdBy = ? WHERE createdBy = ?",
-      toId,
-      fromId,
-    );
+    moved.workspaceInvites = workspaceInvitesRepository.transferOwnership(fromId, toId);
     // note_yupdates.userId 没有 FK 但仍是 ownership 标记
     moved.noteYUpdates = run(
       "UPDATE note_yupdates SET userId = ? WHERE userId = ?",
