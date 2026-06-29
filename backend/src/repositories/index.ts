@@ -32,6 +32,7 @@ export { taskAttachmentsRepository } from "./taskAttachmentsRepository";
 export { attachmentReferencesRepository } from "./attachmentReferencesRepository";
 export { noteYsnapshotsRepository } from "./noteYsnapshotsRepository";
 export { attachmentChunksRepository } from "./attachmentChunksRepository";
+export { noteYupdatesRepository } from "./noteYupdatesRepository";
 
 // 类型导出
 export type {

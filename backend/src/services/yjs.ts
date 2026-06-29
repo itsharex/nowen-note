@@ -30,7 +30,7 @@
 
 import * as Y from "yjs";
 import { getDb } from "../db/schema";
-import { noteYsnapshotsRepository } from "../repositories";
+import { noteYsnapshotsRepository, noteYupdatesRepository } from "../repositories";
 
 // ---------------------------------------------------------------------------
 // 配置
@@ -99,9 +99,7 @@ function loadDocFromDb(noteId: string): Y.Doc {
     }
   }
 
-  const updates = db
-    .prepare("SELECT id, update_blob FROM note_yupdates WHERE noteId = ? AND id > ? ORDER BY id ASC")
-    .all(noteId, lastAppliedId) as Array<{ id: number; update_blob: Buffer }>;
+  const updates = noteYupdatesRepository.listAfterId(noteId, lastAppliedId);
 
   for (const row of updates) {
     try {
@@ -167,11 +165,7 @@ function inferMarkdownSeed(content: string | null | undefined, contentText: stri
 
 /** 追加持久化一条 update */
 function persistUpdate(noteId: string, update: Uint8Array, userId: string | null): number {
-  const db = getDb();
-  const info = db
-    .prepare("INSERT INTO note_yupdates (noteId, userId, update_blob, clock) VALUES (?, ?, ?, ?)")
-    .run(noteId, userId, Buffer.from(update), Date.now());
-  return Number(info.lastInsertRowid);
+  return noteYupdatesRepository.create(noteId, userId || "", Buffer.from(update));
 }
 
 /** 把当前 Y.Doc 合并成一次 snapshot。
@@ -187,9 +181,7 @@ function writeSnapshot(noteId: string, doc: Y.Doc) {
   const state = Y.encodeStateAsUpdate(doc);
   // 取当前最大 updateId 作为水位线（在事务内做，避免并发 insert 造成 off-by-one）
   const tx = db.transaction(() => {
-    const maxRow = db
-      .prepare("SELECT MAX(id) as maxId FROM note_yupdates WHERE noteId = ?")
-      .get(noteId) as { maxId: number | null } | undefined;
+    const maxRow = noteYupdatesRepository.getMaxId(noteId);
     const mergedTo = maxRow?.maxId || 0;
     noteYsnapshotsRepository.upsert(noteId, Buffer.from(state), mergedTo);
   });
@@ -202,15 +194,11 @@ function writeSnapshot(noteId: string, doc: Y.Doc) {
  */
 const GC_SAFETY_MARGIN = 50;
 function gcMergedUpdates(noteId: string) {
-  const db = getDb();
   const snap = noteYsnapshotsRepository.getUpdatesMergedTo(noteId);
   if (!snap) return;
   const safeDeleteBelow = snap.updatesMergedTo - GC_SAFETY_MARGIN;
   if (safeDeleteBelow <= 0) return;
-  db.prepare("DELETE FROM note_yupdates WHERE noteId = ? AND id <= ?").run(
-    noteId,
-    safeDeleteBelow,
-  );
+  noteYupdatesRepository.deleteUpTo(noteId, safeDeleteBelow);
 }
 
 // ---------------------------------------------------------------------------
