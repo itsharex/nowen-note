@@ -123,7 +123,7 @@ taskTemplates.post('/:id/apply', async (c) => {
   const db = getDb();
   const userId = c.req.header('X-User-Id')!;
   const id = c.req.param('id');
-  const row = db.prepare('SELECT * FROM task_templates WHERE id = ?').get(id) as any;
+  const row = taskTemplatesRepository.getById(id);
   if (!row) return c.json({ error: 'Not found' }, 404);
 
   if (row.workspaceId) {
