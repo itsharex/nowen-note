@@ -37,6 +37,7 @@ export { workspaceMembersRepository } from "./workspaceMembersRepository";
 export { notebookMembersRepository } from "./notebookMembersRepository";
 export { shareCommentsRepository } from "./shareCommentsRepository";
 export { diaryAttachmentsRepository } from "./diaryAttachmentsRepository";
+export { embeddingQueueRepository } from "./embeddingQueueRepository";
 
 // 类型导出
 export type {

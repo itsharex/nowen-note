@@ -33,7 +33,7 @@ import {
   clearAllVectors,
 } from "./vec-store";
 import { extractAttachmentText, chunkAttachmentText } from "./attachment-indexer";
-import { attachmentChunksRepository } from "../repositories";
+import { attachmentChunksRepository, embeddingQueueRepository } from "../repositories";
 
 // ====== 调参 ======
 const POLL_INTERVAL_MS = 5_000;          // 轮询间隔（无任务时）
@@ -194,16 +194,14 @@ async function processOne(
 
   if (!note || note.isTrashed) {
     // 笔记已不存在或被丢进回收站 → 直接清队列项
-    db.prepare("DELETE FROM embedding_queue WHERE noteId = ?").run(task.noteId);
+    embeddingQueueRepository.deleteByNoteId(task.noteId);
     return;
   }
 
   const chunks = chunkText(note.title || "", note.contentText || "");
   if (chunks.length === 0 || chunks.every((c) => c.text.length < MIN_CONTENT_LENGTH)) {
     // 内容过短：标 done 不算 embedding，避免反复重试
-    db.prepare(
-      "UPDATE embedding_queue SET status = 'done', updatedAt = datetime('now'), lastError = 'skipped: content too short' WHERE noteId = ?",
-    ).run(task.noteId);
+    embeddingQueueRepository.markSkipped(task.noteId);
     return;
   }
 
@@ -249,9 +247,7 @@ async function processOne(
       // better-sqlite3 同步 API：lastInsertRowid 直接可用
       newRowIds.push(Number(info.lastInsertRowid));
     }
-    db.prepare(
-      "UPDATE embedding_queue SET status = 'done', lastError = NULL, updatedAt = datetime('now') WHERE noteId = ?",
-    ).run(task.noteId);
+    embeddingQueueRepository.markDone(task.noteId);
   });
   tx();
 
@@ -442,27 +438,12 @@ async function tick(): Promise<void> {
     }
 
     // 拉一批 pending（排除已超过最大重试的）
-    const tasks = db
-      .prepare(
-        `SELECT noteId, userId, retries
-         FROM embedding_queue
-         WHERE status = 'pending' AND retries < ?
-         ORDER BY enqueuedAt ASC
-         LIMIT ?`,
-      )
-      .all(MAX_RETRIES, BATCH_SIZE) as {
-      noteId: string;
-      userId: string;
-      retries: number;
-    }[];
+    const tasks = embeddingQueueRepository.listPending(MAX_RETRIES, BATCH_SIZE);
 
     if (tasks.length === 0) return;
 
     // 标 processing（防止重复领取——单进程不严格需要，但 future-proof）
-    const markProcessing = db.prepare(
-      "UPDATE embedding_queue SET status = 'processing', updatedAt = datetime('now') WHERE noteId = ?",
-    );
-    for (const t of tasks) markProcessing.run(t.noteId);
+    for (const t of tasks) embeddingQueueRepository.markProcessing(t.noteId);
 
     for (const task of tasks) {
       try {
@@ -471,11 +452,7 @@ async function tick(): Promise<void> {
         const msg = (e?.message || String(e)).slice(0, 500);
         const newRetries = task.retries + 1;
         const newStatus = newRetries >= MAX_RETRIES ? "failed" : "pending";
-        db.prepare(
-          `UPDATE embedding_queue
-           SET status = ?, retries = ?, lastError = ?, updatedAt = datetime('now')
-           WHERE noteId = ?`,
-        ).run(newStatus, newRetries, msg, task.noteId);
+        embeddingQueueRepository.updateStatus(task.noteId, newStatus, newRetries, msg);
         // 出错后稍微歇一下再继续下一条，避免对 provider 接口连击
         await sleep(500);
       }
@@ -638,17 +615,7 @@ export function rebuildAllEmbeddings(opts: {
 
     // 入队：用 notes 表的 scope 选择需要重建的笔记
     const notesWhere = ["isTrashed = 0", ...conds].join(" AND ");
-    db.prepare(
-      `INSERT INTO embedding_queue (noteId, userId, workspaceId, status, retries, enqueuedAt, updatedAt)
-       SELECT id, userId, workspaceId, 'pending', 0, datetime('now'), datetime('now')
-       FROM notes WHERE ${notesWhere}
-       ON CONFLICT(noteId) DO UPDATE SET
-         workspaceId = excluded.workspaceId,
-         status = 'pending',
-         retries = 0,
-         lastError = NULL,
-         updatedAt = datetime('now')`,
-    ).run(...params);
+    embeddingQueueRepository.enqueueByWhere(notesWhere, params);
   });
   tx();
 
@@ -664,9 +631,7 @@ export function rebuildAllEmbeddings(opts: {
 
   // 返回 scope 内当前 pending 数（不是全局，避免 UI 上"清了别的 scope 但显示 0"）
   const countWhere = ["status = 'pending'", ...conds].join(" AND ");
-  const enqueued = (db
-    .prepare(`SELECT COUNT(*) as c FROM embedding_queue WHERE ${countWhere}`)
-    .get(...params) as { c: number }).c;
+  const enqueued = embeddingQueueRepository.countByWhere(countWhere, params);
 
   // ---- 附件索引：同 scope 下的附件也一起重建 ----
   // 与笔记索引同步：切换 embedding 模型或点"重建索引"时，附件向量也需要
@@ -810,9 +775,7 @@ export function getEmbeddingStats(opts?: {
     )
     .get(...params) as { c: number }).c;
 
-  const queueRows = db
-    .prepare(`SELECT status, COUNT(*) as c FROM embedding_queue${whereOnly} GROUP BY status`)
-    .all(...params) as { status: string; c: number }[];
+  const queueRows = embeddingQueueRepository.countByStatus(whereOnly ? whereOnly.replace("WHERE ", "") : "", params);
   const counts: Record<string, number> = {};
   for (const r of queueRows) counts[r.status] = r.c;
 
