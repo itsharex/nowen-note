@@ -47,6 +47,7 @@ import { v4 as uuid } from "uuid";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { taskAttachmentsRepository } from "../repositories";
 import { resolveNotePermission, hasPermission } from "../middleware/acl";
 import { enqueueAttachment } from "../services/embedding-worker";
 import { verifySudoFromRequest } from "../lib/auth-security";

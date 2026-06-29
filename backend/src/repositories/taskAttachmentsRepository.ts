@@ -106,4 +106,25 @@ export const taskAttachmentsRepository = {
     const db = getDb();
     db.prepare("DELETE FROM task_attachments WHERE id = ?").run(attachmentId);
   },
+
+  /**
+   * 获取所有附件的路径和大小（用于备份/导出）。
+   *
+   * @returns 附件列表
+   */
+  listAllForBackup(): Array<{ path: string; size: number }> {
+    const db = getDb();
+    return db.prepare("SELECT path, size FROM task_attachments").all() as Array<{ path: string; size: number }>;
+  },
+
+  /**
+   * 获取所有附件的路径（用于清理）。
+   *
+   * @returns 附件路径列表
+   */
+  listAllPaths(): string[] {
+    const db = getDb();
+    const rows = db.prepare("SELECT path FROM task_attachments").all() as { path: string }[];
+    return rows.map((r) => r.path);
+  },
 };
