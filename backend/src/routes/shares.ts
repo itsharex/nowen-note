@@ -946,7 +946,7 @@ sharedRouter.post("/:token/comments", async (c) => {
     id,
     noteId: share.noteId,
     userId,
-    guestName: storedGuestName,
+    guestName: storedGuestName ?? undefined,
     guestIpHash: ipHash,
     parentId: parentId || null,
     content: trimmedContent,
