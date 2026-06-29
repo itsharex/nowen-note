@@ -143,6 +143,77 @@ function shouldIgnoreFile(name) {
   return false;
 }
 
+// ---------- 路径边界安全校验 ----------
+
+/**
+ * 检查 candidatePath 的真实路径是否在 rootPath 真实路径内。
+ *
+ * 用于读取前二次确认，防止 TOCTOU 攻击：
+ * - scanFolder 时文件是普通文件，进入 index
+ * - 之后文件被替换为 symlink，指向同步根目录外
+ * - getPendingUploads / getUploadFile 读取前再次校验
+ *
+ * @param {string} rootPath 同步根目录路径
+ * @param {string} candidatePath 候选文件路径
+ * @returns {{ ok: boolean, reason?: string, rootRealPath?: string, fileRealPath?: string }}
+ */
+function checkPathBoundary(rootPath, candidatePath) {
+  // 1. 获取 root 的真实路径（解析 symlink）
+  let rootRealPath;
+  try {
+    rootRealPath = fs.realpathSync(rootPath);
+  } catch (e) {
+    return { ok: false, reason: `Cannot resolve root path: ${e.message}` };
+  }
+
+  // 2. lstatSync 检查候选文件是否为 symlink
+  let lstat;
+  try {
+    lstat = fs.lstatSync(candidatePath);
+  } catch (e) {
+    return { ok: false, reason: `Cannot stat file: ${e.message}` };
+  }
+
+  if (lstat.isSymbolicLink()) {
+    return { ok: false, reason: "File is a symlink" };
+  }
+
+  // 3. 检查是否为普通文件（拒绝 socket / fifo / device 等）
+  if (!lstat.isFile()) {
+    return { ok: false, reason: `Not a regular file (mode: ${lstat.mode.toString(8)})` };
+  }
+
+  // 4. 获取候选文件的真实路径
+  let fileRealPath;
+  try {
+    fileRealPath = fs.realpathSync(candidatePath);
+  } catch (e) {
+    return { ok: false, reason: `Cannot resolve file path: ${e.message}` };
+  }
+
+  // 5. 规范化路径（Windows 大小写 + 分隔符）
+  const normalizedRoot = path.normalize(rootRealPath);
+  const normalizedFile = path.normalize(fileRealPath);
+
+  // 6. 使用 path.relative 判断边界
+  const rel = path.relative(normalizedRoot, normalizedFile);
+
+  // relative 为空字符串表示相同路径
+  // relative 以 .. 开头表示在 root 外
+  // relative 为绝对路径表示在不同驱动器（Windows）
+  if (rel === "") {
+    return { ok: true, rootRealPath: normalizedRoot, fileRealPath: normalizedFile };
+  }
+  if (path.isAbsolute(rel)) {
+    return { ok: false, reason: `File is on a different drive: ${fileRealPath}` };
+  }
+  if (rel.startsWith("..")) {
+    return { ok: false, reason: `File is outside root: ${fileRealPath}` };
+  }
+
+  return { ok: true, rootRealPath: normalizedRoot, fileRealPath: normalizedFile };
+}
+
 // ---------- 扫描 ----------
 
 function normalizeFileTypes(fileTypes) {
@@ -491,6 +562,25 @@ function getPendingUploads(folderId) {
       continue;
     }
 
+    // 读取前二次确认：lstatSync + realpathSync 边界检查
+    // 防止 TOCTOU：scanFolder 时是普通文件，之后被替换为 symlink
+    const boundaryCheck = checkPathBoundary(config.folderPath, fullPath);
+    if (!boundaryCheck.ok) {
+      pending.push({
+        relativePath: item.relativePath,
+        filename: path.basename(item.relativePath),
+        sha256: item.sha256,
+        sourcePathHash: computeSourcePathHash(folderId, item.relativePath),
+        size: item.size,
+        mtimeMs: item.mtimeMs,
+        ext,
+        contentText: null,
+        existingNoteId: item.noteId || null,
+        skipReason: boundaryCheck.reason,
+      });
+      continue;
+    }
+
     // 附件文件（pdf/docx）：不读取内容，通过 getUploadFile 单独读取
     if (isBinary) {
       pending.push({
@@ -631,6 +721,13 @@ function getUploadFile(folderId, relativePath) {
   const resolvedBase = path.resolve(config.folderPath);
   if (!resolvedPath.startsWith(resolvedBase + path.sep) && resolvedPath !== resolvedBase) {
     return { ok: false, code: "PATH_TRAVERSAL", message: "Path traversal detected" };
+  }
+
+  // 读取前二次确认：lstatSync + realpathSync 边界检查
+  // 防止 TOCTOU：scanFolder 时是普通文件，之后被替换为 symlink
+  const boundaryCheck = checkPathBoundary(config.folderPath, fullPath);
+  if (!boundaryCheck.ok) {
+    return { ok: false, code: "SYMLINK_DETECTED", message: boundaryCheck.reason };
   }
 
   // 检查文件存在和大小
