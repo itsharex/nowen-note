@@ -18,7 +18,7 @@ import { getDb } from "../db/schema";
 import { isSystemAdmin, requireAdmin } from "../middleware/acl";
 import { invalidateUserAuthCache, verifySudoFromRequest, extractClientIp } from "../lib/auth-security";
 import { disconnectUser } from "../services/realtime";
-import { noteAclRepository, workspaceInvitesRepository, noteYupdatesRepository } from "../repositories";
+import { noteAclRepository, workspaceInvitesRepository, noteYupdatesRepository, workspaceMembersRepository } from "../repositories";
 import { logAudit } from "../services/audit";
 
 const users = new Hono();
@@ -507,7 +507,7 @@ users.get("/:id/data-summary", requireAdmin, (c) => {
     diaries: count("SELECT COUNT(*) as c FROM diaries WHERE userId = ?", targetId),
     shares: count("SELECT COUNT(*) as c FROM shares WHERE ownerId = ?", targetId),
     ownedWorkspaces: count("SELECT COUNT(*) as c FROM workspaces WHERE ownerId = ?", targetId),
-    workspaceMemberships: count("SELECT COUNT(*) as c FROM workspace_members WHERE userId = ?", targetId),
+    workspaceMemberships: workspaceMembersRepository.countByUser(targetId),
     noteVersions: count("SELECT COUNT(*) as c FROM note_versions WHERE userId = ?", targetId),
     shareComments: count("SELECT COUNT(*) as c FROM share_comments WHERE userId = ?", targetId),
     attachments: count("SELECT COUNT(*) as c FROM attachments WHERE userId = ?", targetId),
@@ -577,21 +577,12 @@ function transferAndDeleteUser(
     moved.tagsMergedNoteLinks = tagsMergedNoteLinks;
 
     // --- 2) workspace_members：PK(workspaceId, userId) 冲突时保留接收方的那一行 ---
-    const memberConflicts = db
-      .prepare(
-        `SELECT workspaceId FROM workspace_members
-         WHERE userId = ? AND workspaceId IN (SELECT workspaceId FROM workspace_members WHERE userId = ?)`,
-      )
-      .all(fromId, toId) as { workspaceId: string }[];
-    for (const { workspaceId } of memberConflicts) {
+    const memberConflicts = workspaceMembersRepository.listCommonWorkspaces(fromId, toId);
+    for (const workspaceId of memberConflicts) {
       // 接收方已是成员：直接删掉被删用户那一行（保留接收方更高/已确认的 role）
-      run("DELETE FROM workspace_members WHERE workspaceId = ? AND userId = ?", workspaceId, fromId);
+      workspaceMembersRepository.delete(workspaceId, fromId);
     }
-    moved.workspaceMemberships = run(
-      "UPDATE workspace_members SET userId = ? WHERE userId = ?",
-      toId,
-      fromId,
-    );
+    moved.workspaceMemberships = workspaceMembersRepository.transferOwnership(fromId, toId);
 
     // --- 3) note_acl：PK(noteId, userId) 同上 ---
     const aclConflicts = noteAclRepository.listCommonNotes(fromId, toId);

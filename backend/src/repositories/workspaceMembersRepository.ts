@@ -74,4 +74,59 @@ export const workspaceMembersRepository = {
     const db = getDb();
     db.prepare("DELETE FROM workspace_members WHERE workspaceId = ? AND userId = ?").run(workspaceId, userId);
   },
+
+  /**
+   * 统计用户的工作区成员数量。
+   *
+   * @param userId 用户 ID
+   * @returns 成员数量
+   */
+  countByUser(userId: string): number {
+    const db = getDb();
+    const row = db.prepare("SELECT COUNT(*) as c FROM workspace_members WHERE userId = ?").get(userId) as { c: number };
+    return row.c;
+  },
+
+  /**
+   * 获取用户的工作区 ID 列表。
+   *
+   * @param userId 用户 ID
+   * @returns 工作区 ID 列表
+   */
+  listWorkspaceIdsByUser(userId: string): string[] {
+    const db = getDb();
+    const rows = db.prepare("SELECT workspaceId FROM workspace_members WHERE userId = ?").all(userId) as { workspaceId: string }[];
+    return rows.map((r) => r.workspaceId);
+  },
+
+  /**
+   * 转移用户（用户迁移时使用）。
+   *
+   * @param fromUserId 源用户 ID
+   * @param toUserId 目标用户 ID
+   * @returns 更新的行数
+   */
+  transferOwnership(fromUserId: string, toUserId: string): number {
+    const db = getDb();
+    const result = db.prepare("UPDATE workspace_members SET userId = ? WHERE userId = ?").run(toUserId, fromUserId);
+    return result.changes;
+  },
+
+  /**
+   * 获取两个用户共同的工作区 ID 列表。
+   *
+   * @param userId1 用户 1 ID
+   * @param userId2 用户 2 ID
+   * @returns 工作区 ID 列表
+   */
+  listCommonWorkspaces(userId1: string, userId2: string): string[] {
+    const db = getDb();
+    const rows = db
+      .prepare(
+        `SELECT workspaceId FROM workspace_members
+         WHERE userId = ? AND workspaceId IN (SELECT workspaceId FROM workspace_members WHERE userId = ?)`
+      )
+      .all(userId1, userId2) as { workspaceId: string }[];
+    return rows.map((r) => r.workspaceId);
+  },
 };
