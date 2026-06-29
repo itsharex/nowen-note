@@ -35,6 +35,7 @@ import {
   type EnabledFeaturesConfig,
   type WorkspaceFeature,
 } from "../middleware/acl";
+import { workspaceInvitesRepository } from "../repositories";
 
 const app = new Hono();
 
@@ -336,29 +337,30 @@ app.post("/:id/invites", requireWorkspaceRole("admin"), async (c) => {
   const inviteId = uuid();
   const code = generateInviteCode();
 
-  db.prepare(
-    `INSERT INTO workspace_invites (id, workspaceId, code, role, maxUses, expiresAt, createdBy)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(inviteId, id, code, inviteRole, maxUses ?? 10, expiresAt || null, userId);
+  workspaceInvitesRepository.create({
+    id: inviteId,
+    workspaceId: id,
+    code,
+    role: inviteRole,
+    maxUses: maxUses ?? 10,
+    expiresAt: expiresAt || null,
+    createdBy: userId,
+  });
 
-  const invite = db.prepare("SELECT * FROM workspace_invites WHERE id = ?").get(inviteId);
+  const invite = workspaceInvitesRepository.getById(inviteId);
   return c.json(invite, 201);
 });
 
 app.get("/:id/invites", requireWorkspaceRole("admin"), (c) => {
-  const db = getDb();
   const id = c.req.param("id");
-  const invites = db
-    .prepare("SELECT * FROM workspace_invites WHERE workspaceId = ? ORDER BY createdAt DESC")
-    .all(id);
+  const invites = workspaceInvitesRepository.listByWorkspace(id);
   return c.json(invites);
 });
 
 app.delete("/:id/invites/:inviteId", requireWorkspaceRole("admin"), (c) => {
-  const db = getDb();
   const id = c.req.param("id");
   const inviteId = c.req.param("inviteId");
-  db.prepare("DELETE FROM workspace_invites WHERE id = ? AND workspaceId = ?").run(inviteId, id);
+  workspaceInvitesRepository.delete(inviteId, id);
   return c.json({ success: true });
 });
 
@@ -371,18 +373,7 @@ app.post("/join", async (c) => {
 
   if (!code || !code.trim()) return c.json({ error: "邀请码不能为空" }, 400);
 
-  const invite = db
-    .prepare("SELECT * FROM workspace_invites WHERE code = ?")
-    .get(code.trim()) as
-    | {
-        id: string;
-        workspaceId: string;
-        role: WorkspaceRole;
-        maxUses: number;
-        useCount: number;
-        expiresAt: string | null;
-      }
-    | undefined;
+  const invite = workspaceInvitesRepository.getByCode(code.trim());
 
   if (!invite) return c.json({ error: "邀请码无效" }, 404);
 
@@ -409,7 +400,7 @@ app.post("/join", async (c) => {
     db.prepare(
       `INSERT INTO workspace_members (workspaceId, userId, role) VALUES (?, ?, ?)`,
     ).run(invite.workspaceId, userId, invite.role);
-    db.prepare("UPDATE workspace_invites SET useCount = useCount + 1 WHERE id = ?").run(invite.id);
+    workspaceInvitesRepository.incrementUseCount(invite.id);
   });
   tx();
 
