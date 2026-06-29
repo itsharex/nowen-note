@@ -52,6 +52,7 @@ import releasesRouter from "./routes/releases";
 import { seedDatabase } from "./db/seed";
 import { initApiTokensTable, looksLikeApiToken, resolveApiToken } from "./lib/api-tokens";
 import { getDb, closeDb } from "./db/schema";
+import { userSessionsRepository } from "./repositories";
 import { generateOpenAPISpec } from "./services/openapi";
 import { getBackupManager } from "./services/backup";
 import { attachRealtimeServer, getRealtimeStats, shutdownRealtime } from "./services/realtime";
@@ -359,9 +360,7 @@ function touchSessionLastSeen(sessionId: string) {
   if (now - last < SESSION_TOUCH_INTERVAL_MS) return;
   sessionLastTouched.set(sessionId, now);
   try {
-    getDb()
-      .prepare("UPDATE user_sessions SET lastSeenAt = datetime('now') WHERE id = ?")
-      .run(sessionId);
+    userSessionsRepository.updateLastSeen(sessionId);
   } catch {
     /* 更新失败不阻塞请求 */
   }
@@ -442,10 +441,7 @@ app.use("/api/*", async (c, next) => {
   //   - 旧 token 没有 jti（升级前签发的）→ 按兼容路径放行，但不更新 lastSeenAt；
   //   - lastSeenAt 每 60 秒内同用户同 session 只更新一次，避免高频写 DB。
   if (payload.jti) {
-    const db = getDb();
-    const sess = db
-      .prepare("SELECT id, revokedAt FROM user_sessions WHERE id = ? AND userId = ?")
-      .get(payload.jti, payload.userId) as { id: string; revokedAt: string | null } | undefined;
+    const sess = userSessionsRepository.getByIdAndUser(payload.jti, payload.userId);
     if (!sess) {
       // 签发时有 jti，但 DB 里找不到对应 session（可能被 factory-reset 清库） → 视为吊销
       return c.json({ error: "会话已失效，请重新登录", code: "TOKEN_REVOKED" }, 401);

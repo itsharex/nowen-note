@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import { getDb } from "../db/schema";
+import { userSessionsRepository } from "../repositories";
 import { v4 as uuid } from "uuid";
 import bcrypt from "bcryptjs";
 import {
@@ -62,48 +63,31 @@ function createSession(params: {
 
   // 若有 deviceId，尝试复用已有活跃 session
   if (params.deviceId) {
-    const existing = db.prepare(
-      `SELECT id FROM user_sessions
-       WHERE userId = ? AND deviceLabel = ? AND revokedAt IS NULL
-         AND (expiresAt IS NULL OR datetime(expiresAt) > datetime('now'))
-       ORDER BY lastSeenAt DESC LIMIT 1`,
-    ).get(params.userId, `device:${params.deviceId}`) as { id: string } | undefined;
+    const existing = userSessionsRepository.findByDevice(params.userId, `device:${params.deviceId}`);
 
     if (existing) {
       // 复用：更新 lastSeenAt、IP、expiresAt
-      db.prepare(
-        `UPDATE user_sessions
-         SET lastSeenAt = datetime('now'), ip = ?, expiresAt = ?
-         WHERE id = ?`,
-      ).run(params.ip || "", expiresAt, existing.id);
+      userSessionsRepository.updateLastSeen(existing.id, params.ip || "", expiresAt);
       return existing.id;
     }
   }
 
   // 新建 session
   const id = uuid();
-  db.prepare(
-    `INSERT INTO user_sessions (id, userId, ip, userAgent, deviceLabel, expiresAt)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(
+  userSessionsRepository.create({
     id,
-    params.userId,
-    params.ip || "",
-    params.userAgent || "",
-    params.deviceId ? `device:${params.deviceId}` : null,
+    userId: params.userId,
+    ip: params.ip || "",
+    userAgent: params.userAgent || "",
+    deviceLabel: params.deviceId ? `device:${params.deviceId}` : undefined,
     expiresAt,
-  );
+  });
   return id;
 }
 
 /** 标记 session 为已吊销。适用于"单端下线"，不提升 tokenVersion，其它端不受影响。 */
 function revokeSession(sessionId: string, reason: string) {
-  const db = getDb();
-  db.prepare(
-    `UPDATE user_sessions
-     SET revokedAt = datetime('now'), revokedReason = ?
-     WHERE id = ? AND revokedAt IS NULL`,
-  ).run(reason, sessionId);
+  userSessionsRepository.revoke(sessionId, reason);
 }
 
 // ========== 工具 ==========
@@ -1096,34 +1080,10 @@ auth.get("/sessions", (c) => {
   const payload = token ? verifyLoginToken(token) : null;
   const currentSessionId = payload?.jti || null;
 
-  const db = getDb();
-
   // 清理过期和已撤销的 session（每次查询时顺带清理，避免无限膨胀）
-  db.prepare(
-    `DELETE FROM user_sessions
-     WHERE userId = ? AND (
-       revokedAt IS NOT NULL
-       OR (expiresAt IS NOT NULL AND datetime(expiresAt) <= datetime('now'))
-     )`,
-  ).run(userId);
+  userSessionsRepository.cleanupExpired(userId);
 
-  const rows = db
-    .prepare(
-      `SELECT id, createdAt, lastSeenAt, expiresAt, ip, userAgent, deviceLabel
-       FROM user_sessions
-       WHERE userId = ? AND revokedAt IS NULL
-         AND (expiresAt IS NULL OR datetime(expiresAt) > datetime('now'))
-       ORDER BY lastSeenAt DESC`,
-    )
-    .all(userId) as Array<{
-      id: string;
-      createdAt: string;
-      lastSeenAt: string;
-      expiresAt: string | null;
-      ip: string;
-      userAgent: string;
-      deviceLabel: string | null;
-    }>;
+  const rows = userSessionsRepository.listActiveByUser(userId);
 
   return c.json({
     sessions: rows.map((r) => ({
@@ -1138,10 +1098,7 @@ auth.delete("/sessions/:id", (c) => {
   const userId = extractUserId(c);
   if (!userId) return c.json({ error: "未授权" }, 401);
   const sessionId = c.req.param("id");
-  const db = getDb();
-  const sess = db
-    .prepare("SELECT id, userId, revokedAt FROM user_sessions WHERE id = ?")
-    .get(sessionId) as { id: string; userId: string; revokedAt: string | null } | undefined;
+  const sess = userSessionsRepository.getById(sessionId);
   if (!sess || sess.userId !== userId) {
     return c.json({ error: "会话不存在" }, 404);
   }
@@ -1167,30 +1124,17 @@ auth.delete("/sessions", (c) => {
   const payload = token ? verifyLoginToken(token) : null;
   const currentSessionId = payload?.jti || null;
 
-  const db = getDb();
-  let info;
+  let revokedCount: number;
   if (keepCurrent && currentSessionId) {
-    info = db
-      .prepare(
-        `UPDATE user_sessions
-         SET revokedAt = datetime('now'), revokedReason = 'user_bulk_revoked'
-         WHERE userId = ? AND revokedAt IS NULL AND id != ?`,
-      )
-      .run(userId, currentSessionId);
+    revokedCount = userSessionsRepository.revokeAllOther(userId, currentSessionId);
   } else {
-    info = db
-      .prepare(
-        `UPDATE user_sessions
-         SET revokedAt = datetime('now'), revokedReason = 'user_bulk_revoked'
-         WHERE userId = ? AND revokedAt IS NULL`,
-      )
-      .run(userId);
+    revokedCount = userSessionsRepository.revokeAll(userId);
   }
-  logAudit(userId, "auth", "session_bulk_revoked", { count: info.changes, keepCurrent }, {
+  logAudit(userId, "auth", "session_bulk_revoked", { count: revokedCount, keepCurrent }, {
     ip: extractClientIp(c),
     userAgent: c.req.header("user-agent") || "",
   });
-  return c.json({ success: true, revoked: info.changes });
+  return c.json({ success: true, revoked: revokedCount });
 });
 
 // ========== 登出（吊销当前会话） ==========

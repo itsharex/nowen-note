@@ -15,7 +15,7 @@ import { yFlush, yDestroyDoc, yReplaceContentAsUpdate } from "../services/yjs";
 import { deleteAttachmentFilesByNoteIds, extractInlineBase64Images } from "./attachments";
 import { syncReferences as syncAttachmentReferences } from "../lib/attachmentRefs";
 import { syncNoteLinks, getBacklinks } from "../lib/noteLinks";
-import { noteLinksRepository, noteTagsRepository, noteVersionsRepository } from "../repositories";
+import { noteLinksRepository, noteTagsRepository, noteVersionsRepository, favoritesRepository } from "../repositories";
 import { reclaimSpace } from "../lib/reclaimSpace";
 import { buildFtsSearchTerm } from "../lib/searchQuery";
 
@@ -701,12 +701,9 @@ app.put("/:id", async (c) => {
       | undefined;
     const favWsId = favRow?.workspaceId ?? null;
     if (body.isFavorite) {
-      db.prepare(`
-        INSERT OR IGNORE INTO favorites (userId, noteId, workspaceId, createdAt)
-        VALUES (?, ?, ?, datetime('now'))
-      `).run(userId, id, favWsId);
+      favoritesRepository.addFavorite(userId, id, favWsId);
     } else {
-      db.prepare("DELETE FROM favorites WHERE userId = ? AND noteId = ?").run(userId, id);
+      favoritesRepository.removeFavorite(userId, id);
     }
   }
   if (body.isLocked !== undefined) { fields.push("isLocked = ?"); params.push(body.isLocked); }

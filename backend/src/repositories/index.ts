@@ -15,6 +15,8 @@ export { tagsRepository } from "./tagsRepository";
 export { noteTagsRepository } from "./noteTagsRepository";
 export { aiCustomPromptsRepository } from "./aiCustomPromptsRepository";
 export { noteVersionsRepository } from "./noteVersionsRepository";
+export { favoritesRepository } from "./favoritesRepository";
+export { userSessionsRepository } from "./userSessionsRepository";
 
 // 类型导出
 export type {
