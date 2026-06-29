@@ -376,7 +376,6 @@ app.post("/join", async (c) => {
   }
 
   const tx = db.transaction(() => {
-    db.prepare(
     workspaceMembersRepository.create(invite.workspaceId, userId, invite.role);
     workspaceInvitesRepository.incrementUseCount(invite.id);
   });
