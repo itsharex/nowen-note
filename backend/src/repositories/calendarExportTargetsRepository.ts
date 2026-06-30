@@ -38,7 +38,7 @@ export const calendarExportTargetsRepository = {
     const db = getDb();
     const rows = db
       .prepare(
-        "SELECT * FROM calendar_export_targets WHERE userId = ? ORDER BY createdAt DESC",
+        'SELECT * FROM calendar_export_targets WHERE "userId" = ? ORDER BY "createdAt" DESC',
       )
       .all(userId) as CalendarExportTargetRecord[];
     return rows.map(toBoolean);
@@ -50,7 +50,7 @@ export const calendarExportTargetsRepository = {
   getByIdAndUser(id: string, userId: string): CalendarExportTargetRecordBoolean | undefined {
     const db = getDb();
     const row = db
-      .prepare("SELECT * FROM calendar_export_targets WHERE id = ? AND userId = ?")
+      .prepare('SELECT * FROM calendar_export_targets WHERE id = ? AND "userId" = ?')
       .get(id, userId) as CalendarExportTargetRecord | undefined;
     return row ? toBoolean(row) : undefined;
   },
@@ -72,7 +72,7 @@ export const calendarExportTargetsRepository = {
   create(input: CreateCalendarExportTargetInput): void {
     const db = getDb();
     db.prepare(
-      `INSERT INTO calendar_export_targets (id, userId, feedId, type, enabled, name, configJson)
+      `INSERT INTO calendar_export_targets (id, "userId", "feedId", type, enabled, name, "configJson")
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       input.id,
@@ -102,13 +102,13 @@ export const calendarExportTargetsRepository = {
       params.push(patch.enabled);
     }
     if (patch.configJson !== undefined) {
-      updates.push("configJson = ?");
+      updates.push('"configJson" = ?');
       params.push(patch.configJson);
     }
 
     if (updates.length === 0) return;
 
-    updates.push("updatedAt = datetime('now')");
+    updates.push('"updatedAt" = datetime(\'now\')');
     params.push(id, userId);
 
     db.prepare(
@@ -123,20 +123,20 @@ export const calendarExportTargetsRepository = {
    */
   updateStatusById(id: string, patch: UpdateCalendarExportTargetStatusInput): void {
     const db = getDb();
-    const updates: string[] = ["lastExportAt = datetime('now')", "updatedAt = datetime('now')"];
+    const updates: string[] = ['"lastExportAt" = datetime(\'now\')', "updatedAt = datetime('now')"];
     const params: any[] = [];
 
     if (patch.lastStatus !== undefined) {
-      updates.push("lastStatus = ?");
+      updates.push('"lastStatus" = ?');
       params.push(patch.lastStatus);
     }
 
     if (patch.lastStatus === "success" && patch.publicUrl) {
-      updates.push("publicUrl = ?");
+      updates.push('"publicUrl" = ?');
       params.push(patch.publicUrl);
-      updates.push("lastError = NULL");
+      updates.push('"lastError" = NULL');
     } else if (patch.lastStatus === "error" && patch.lastError) {
-      updates.push("lastError = ?");
+      updates.push('"lastError" = ?');
       params.push(patch.lastError);
     }
 
@@ -165,7 +165,7 @@ export const calendarExportTargetsRepository = {
   /** 列出用户的所有 export targets（async） */
   async listByUserAsync(userId: string): Promise<CalendarExportTargetRecordBoolean[]> {
     const rows = await getAdapter().queryMany<CalendarExportTargetRecord>(
-      "SELECT * FROM calendar_export_targets WHERE userId = ? ORDER BY createdAt DESC",
+      'SELECT * FROM calendar_export_targets WHERE "userId" = ? ORDER BY "createdAt" DESC',
       [userId],
     );
     return rows.map(toBoolean);
@@ -174,7 +174,7 @@ export const calendarExportTargetsRepository = {
   /** 获取单个 export target（async，含 userId 校验） */
   async getByIdAndUserAsync(id: string, userId: string): Promise<CalendarExportTargetRecordBoolean | undefined> {
     const row = await getAdapter().queryOne<CalendarExportTargetRecord>(
-      "SELECT * FROM calendar_export_targets WHERE id = ? AND userId = ?",
+      'SELECT * FROM calendar_export_targets WHERE id = ? AND "userId" = ?',
       [id, userId],
     );
     return row ? toBoolean(row) : undefined;
@@ -191,7 +191,7 @@ export const calendarExportTargetsRepository = {
   /** 创建 export target（async） */
   async createAsync(input: CreateCalendarExportTargetInput): Promise<void> {
     await getAdapter().execute(
-      `INSERT INTO calendar_export_targets (id, userId, feedId, type, enabled, name, configJson)
+      `INSERT INTO calendar_export_targets (id, "userId", "feedId", type, enabled, name, "configJson")
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [input.id, input.userId, input.feedId, input.type, input.enabled, input.name, input.configJson],
     );
@@ -211,13 +211,13 @@ export const calendarExportTargetsRepository = {
       params.push(patch.enabled);
     }
     if (patch.configJson !== undefined) {
-      updates.push("configJson = ?");
+      updates.push('"configJson" = ?');
       params.push(patch.configJson);
     }
 
     if (updates.length === 0) return;
 
-    updates.push("updatedAt = datetime('now')");
+    updates.push('"updatedAt" = datetime(\'now\')');
     params.push(id, userId);
 
     await getAdapter().execute(
@@ -228,20 +228,20 @@ export const calendarExportTargetsRepository = {
 
   /** 更新 export target 状态（async，按 id，不含 userId 校验） */
   async updateStatusByIdAsync(id: string, patch: UpdateCalendarExportTargetStatusInput): Promise<void> {
-    const updates: string[] = ["lastExportAt = datetime('now')", "updatedAt = datetime('now')"];
+    const updates: string[] = ['"lastExportAt" = datetime(\'now\')', "updatedAt = datetime('now')"];
     const params: unknown[] = [];
 
     if (patch.lastStatus !== undefined) {
-      updates.push("lastStatus = ?");
+      updates.push('"lastStatus" = ?');
       params.push(patch.lastStatus);
     }
 
     if (patch.lastStatus === "success" && patch.publicUrl) {
-      updates.push("publicUrl = ?");
+      updates.push('"publicUrl" = ?');
       params.push(patch.publicUrl);
-      updates.push("lastError = NULL");
+      updates.push('"lastError" = NULL');
     } else if (patch.lastStatus === "error" && patch.lastError) {
-      updates.push("lastError = ?");
+      updates.push('"lastError" = ?');
       params.push(patch.lastError);
     }
 
