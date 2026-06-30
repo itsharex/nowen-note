@@ -207,4 +207,44 @@ export const noteLinksRepository = {
       "DELETE FROM note_links WHERE sourceNoteId = ? OR targetNoteId = ?",
     ).run(noteId, noteId);
   },
+
+  /** 获取目标笔记的所有反向链接（async） */
+  async getBacklinksAsync(
+    userId: string,
+    targetNoteId: string,
+    limit: number = 50,
+  ): Promise<BacklinkItem[]> {
+    try {
+      const rows = await getAdapter().queryMany<BacklinkItem>(
+        `SELECT
+          nl.sourceNoteId,
+          n.title,
+          n.updatedAt,
+          nl.linkText,
+          nl.linkType,
+          nl.targetBlockId,
+          nl.excerpt
+        FROM note_links nl
+        JOIN notes n ON n.id = nl.sourceNoteId
+        WHERE nl.userId = ?
+          AND nl.targetNoteId = ?
+          AND n.isTrashed = 0
+        ORDER BY n.updatedAt DESC
+        LIMIT ?`,
+        [userId, targetNoteId, limit],
+      );
+      return rows;
+    } catch (e) {
+      console.warn("[noteLinksRepository.getBacklinksAsync] failed:", e instanceof Error ? e.message : e);
+      return [];
+    }
+  },
+
+  /** 删除笔记时清理 note_links 引用关系（async） */
+  async deleteByNoteIdAsync(noteId: string): Promise<void> {
+    await getAdapter().execute(
+      "DELETE FROM note_links WHERE sourceNoteId = ? OR targetNoteId = ?",
+      [noteId, noteId],
+    );
+  },
 };

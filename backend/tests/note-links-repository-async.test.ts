@@ -37,6 +37,7 @@ function seedBase() {
 
 function clean() {
   getDb().prepare("DELETE FROM note_links").run();
+  getDb().prepare("UPDATE notes SET isTrashed = 0 WHERE isTrashed = 1").run();
 }
 
 function getLinks(sourceNoteId: string) {
@@ -212,4 +213,142 @@ test("replaceLinksForSourceAsync DELETE + INSERT atomicity: rollback on INSERT f
   // Cleanup trigger
   getDb().exec("DROP TRIGGER IF EXISTS fail_insert_note_links");
   clean();
+});
+
+// ============================================================
+// getBacklinksAsync
+// ============================================================
+
+test("getBacklinksAsync returns backlinks for target note", async () => {
+  clean();
+  seedBase();
+  // NOTE_2 and NOTE_3 link to NOTE_1
+  await noteLinksRepository.replaceLinksForSourceAsync(USER_ID, NOTE_2, [
+    { targetNoteId: NOTE_1, targetBlockId: null, linkType: "note", linkText: "link from 2", excerpt: null },
+  ]);
+  await noteLinksRepository.replaceLinksForSourceAsync(USER_ID, NOTE_3, [
+    { targetNoteId: NOTE_1, targetBlockId: null, linkType: "note", linkText: "link from 3", excerpt: null },
+  ]);
+  const backlinks = await noteLinksRepository.getBacklinksAsync(USER_ID, NOTE_1);
+  assert.equal(backlinks.length, 2);
+  clean();
+});
+
+test("getBacklinksAsync returns correct fields", async () => {
+  clean();
+  seedBase();
+  await noteLinksRepository.replaceLinksForSourceAsync(USER_ID, NOTE_2, [
+    { targetNoteId: NOTE_1, targetBlockId: null, linkType: "note", linkText: "my link", excerpt: null },
+  ]);
+  const backlinks = await noteLinksRepository.getBacklinksAsync(USER_ID, NOTE_1);
+  assert.equal(backlinks.length, 1);
+  const bl = backlinks[0];
+  assert.equal(bl.sourceNoteId, NOTE_2);
+  assert.ok(bl.title);
+  assert.ok(bl.updatedAt);
+  assert.equal(bl.linkText, "my link");
+  assert.equal(bl.linkType, "note");
+  clean();
+});
+
+test("getBacklinksAsync excludes trashed source notes", async () => {
+  clean();
+  seedBase();
+  await noteLinksRepository.replaceLinksForSourceAsync(USER_ID, NOTE_2, [
+    { targetNoteId: NOTE_1, targetBlockId: null, linkType: "note", linkText: "link", excerpt: null },
+  ]);
+  // Trash NOTE_2
+  getDb().prepare("UPDATE notes SET isTrashed = 1 WHERE id = ?").run(NOTE_2);
+  const backlinks = await noteLinksRepository.getBacklinksAsync(USER_ID, NOTE_1);
+  assert.equal(backlinks.length, 0);
+  clean();
+});
+
+test("getBacklinksAsync does not return links for other targetNoteId", async () => {
+  clean();
+  seedBase();
+  await noteLinksRepository.replaceLinksForSourceAsync(USER_ID, NOTE_2, [
+    { targetNoteId: NOTE_1, targetBlockId: null, linkType: "note", linkText: "to 1", excerpt: null },
+    { targetNoteId: NOTE_3, targetBlockId: null, linkType: "note", linkText: "to 3", excerpt: null },
+  ]);
+  const backlinks = await noteLinksRepository.getBacklinksAsync(USER_ID, NOTE_1);
+  assert.equal(backlinks.length, 1);
+  assert.equal(backlinks[0].sourceNoteId, NOTE_2);
+  clean();
+});
+
+test("getBacklinksAsync does not return links for other userId", async () => {
+  clean();
+  seedBase();
+  const otherUser = "user-nl-2";
+  getDb().prepare("INSERT OR IGNORE INTO users (id, username, passwordHash) VALUES (?, ?, ?)").run(otherUser, otherUser, "hash");
+  getDb().prepare("INSERT INTO note_links (id, userId, sourceNoteId, targetNoteId, linkText, linkType) VALUES (?, ?, ?, ?, ?, ?)").run("link-other", otherUser, NOTE_2, NOTE_1, "other", "note");
+
+  const backlinks = await noteLinksRepository.getBacklinksAsync(USER_ID, NOTE_1);
+  assert.equal(backlinks.length, 0);
+  clean();
+});
+
+test("getBacklinksAsync returns empty array for no backlinks", async () => {
+  clean();
+  seedBase();
+  const backlinks = await noteLinksRepository.getBacklinksAsync(USER_ID, NOTE_1);
+  assert.deepEqual(backlinks, []);
+});
+
+// ============================================================
+// deleteByNoteIdAsync
+// ============================================================
+
+test("deleteByNoteIdAsync deletes links where sourceNoteId matches", async () => {
+  clean();
+  seedBase();
+  await noteLinksRepository.replaceLinksForSourceAsync(USER_ID, NOTE_1, [
+    { targetNoteId: NOTE_2, targetBlockId: null, linkType: "note", linkText: "link", excerpt: null },
+  ]);
+  assert.equal(getLinks(NOTE_1).length, 1);
+  await noteLinksRepository.deleteByNoteIdAsync(NOTE_1);
+  assert.equal(getLinks(NOTE_1).length, 0);
+  clean();
+});
+
+test("deleteByNoteIdAsync deletes links where targetNoteId matches", async () => {
+  clean();
+  seedBase();
+  await noteLinksRepository.replaceLinksForSourceAsync(USER_ID, NOTE_1, [
+    { targetNoteId: NOTE_2, targetBlockId: null, linkType: "note", linkText: "link", excerpt: null },
+  ]);
+  // Delete by target
+  await noteLinksRepository.deleteByNoteIdAsync(NOTE_2);
+  assert.equal(getLinks(NOTE_1).length, 0);
+  clean();
+});
+
+test("deleteByNoteIdAsync does not delete unrelated links", async () => {
+  clean();
+  seedBase();
+  await noteLinksRepository.replaceLinksForSourceAsync(USER_ID, NOTE_1, [
+    { targetNoteId: NOTE_2, targetBlockId: null, linkType: "note", linkText: "link 1->2", excerpt: null },
+  ]);
+  await noteLinksRepository.replaceLinksForSourceAsync(USER_ID, NOTE_3, [
+    { targetNoteId: NOTE_4, targetBlockId: null, linkType: "note", linkText: "link 3->4", excerpt: null },
+  ]);
+  // Delete NOTE_1 links
+  await noteLinksRepository.deleteByNoteIdAsync(NOTE_1);
+  assert.equal(getLinks(NOTE_1).length, 0);
+  assert.equal(getLinks(NOTE_3).length, 1, "unrelated links should not be deleted");
+  clean();
+});
+
+test("deleteByNoteIdAsync no-op for non-existent noteId", async () => {
+  clean();
+  // should not throw
+  await noteLinksRepository.deleteByNoteIdAsync("non-existent");
+});
+
+test("deleteByNoteIdAsync returns void", async () => {
+  clean();
+  seedBase();
+  const result = await noteLinksRepository.deleteByNoteIdAsync(NOTE_1);
+  assert.equal(result, undefined);
 });
