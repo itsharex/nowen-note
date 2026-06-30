@@ -41,7 +41,7 @@ export const favoritesRepository = {
   isFavorited(userId: string, noteId: string): boolean {
     const db = getDb();
     const row = db
-      .prepare("SELECT 1 FROM favorites WHERE userId = ? AND noteId = ?")
+      .prepare('SELECT 1 FROM favorites WHERE "userId" = ? AND "noteId" = ?')
       .get(userId, noteId);
     return !!row;
   },
@@ -56,7 +56,7 @@ export const favoritesRepository = {
   addFavorite(userId: string, noteId: string, workspaceId: string | null): void {
     const db = getDb();
     db.prepare(
-      "INSERT OR IGNORE INTO favorites (userId, noteId, workspaceId, createdAt) VALUES (?, ?, ?, datetime('now'))"
+      'INSERT OR IGNORE INTO favorites ("userId", "noteId", "workspaceId", "createdAt") VALUES (?, ?, ?, datetime(\'now\'))'
     ).run(userId, noteId, workspaceId);
   },
 
@@ -68,7 +68,7 @@ export const favoritesRepository = {
    */
   removeFavorite(userId: string, noteId: string): void {
     const db = getDb();
-    db.prepare("DELETE FROM favorites WHERE userId = ? AND noteId = ?").run(userId, noteId);
+    db.prepare('DELETE FROM favorites WHERE "userId" = ? AND "noteId" = ?').run(userId, noteId);
   },
 
   /**
@@ -100,12 +100,12 @@ export const favoritesRepository = {
     const db = getDb();
     if (workspaceId !== undefined) {
       const rows = db
-        .prepare("SELECT noteId FROM favorites WHERE userId = ? AND workspaceId = ? ORDER BY createdAt DESC")
+        .prepare('SELECT "noteId" FROM favorites WHERE "userId" = ? AND "workspaceId" = ? ORDER BY "createdAt" DESC')
         .all(userId, workspaceId) as { noteId: string }[];
       return rows.map((r) => r.noteId);
     } else {
       const rows = db
-        .prepare("SELECT noteId FROM favorites WHERE userId = ? ORDER BY createdAt DESC")
+        .prepare('SELECT "noteId" FROM favorites WHERE "userId" = ? ORDER BY "createdAt" DESC')
         .all(userId) as { noteId: string }[];
       return rows.map((r) => r.noteId);
     }
@@ -119,7 +119,7 @@ export const favoritesRepository = {
    */
   deleteByNoteId(noteId: string): number {
     const db = getDb();
-    const result = db.prepare("DELETE FROM favorites WHERE noteId = ?").run(noteId);
+    const result = db.prepare('DELETE FROM favorites WHERE "noteId" = ?').run(noteId);
     return result.changes;
   },
 
@@ -131,7 +131,7 @@ export const favoritesRepository = {
    */
   deleteByUserId(userId: string): number {
     const db = getDb();
-    const result = db.prepare("DELETE FROM favorites WHERE userId = ?").run(userId);
+    const result = db.prepare('DELETE FROM favorites WHERE "userId" = ?').run(userId);
     return result.changes;
   },
 
@@ -142,7 +142,7 @@ export const favoritesRepository = {
   /** 检查用户是否收藏了某笔记（async） */
   async isFavoritedAsync(userId: string, noteId: string): Promise<boolean> {
     const row = await getAdapter().queryOne<{ id: string }>(
-      "SELECT 1 FROM favorites WHERE userId = ? AND noteId = ?",
+      'SELECT 1 FROM favorites WHERE "userId" = ? AND "noteId" = ?',
       [userId, noteId],
     );
     return !!row;
@@ -151,7 +151,7 @@ export const favoritesRepository = {
   /** 添加收藏（async） */
   async addFavoriteAsync(userId: string, noteId: string, workspaceId: string | null): Promise<void> {
     await getAdapter().execute(
-      "INSERT OR IGNORE INTO favorites (userId, noteId, workspaceId, createdAt) VALUES (?, ?, ?, datetime('now'))",
+      'INSERT OR IGNORE INTO favorites ("userId", "noteId", "workspaceId", "createdAt") VALUES (?, ?, ?, datetime(\'now\'))',
       [userId, noteId, workspaceId],
     );
   },
@@ -159,7 +159,7 @@ export const favoritesRepository = {
   /** 取消收藏（async） */
   async removeFavoriteAsync(userId: string, noteId: string): Promise<void> {
     await getAdapter().execute(
-      "DELETE FROM favorites WHERE userId = ? AND noteId = ?",
+      'DELETE FROM favorites WHERE "userId" = ? AND "noteId" = ?',
       [userId, noteId],
     );
   },
@@ -180,13 +180,13 @@ export const favoritesRepository = {
   async listFavoriteNoteIdsAsync(userId: string, workspaceId?: string | null): Promise<string[]> {
     if (workspaceId !== undefined) {
       const rows = await getAdapter().queryMany<{ noteId: string }>(
-        "SELECT noteId FROM favorites WHERE userId = ? AND workspaceId = ? ORDER BY createdAt DESC",
+        'SELECT "noteId" FROM favorites WHERE "userId" = ? AND "workspaceId" = ? ORDER BY "createdAt" DESC',
         [userId, workspaceId],
       );
       return rows.map((r) => r.noteId);
     } else {
       const rows = await getAdapter().queryMany<{ noteId: string }>(
-        "SELECT noteId FROM favorites WHERE userId = ? ORDER BY createdAt DESC",
+        'SELECT "noteId" FROM favorites WHERE "userId" = ? ORDER BY "createdAt" DESC',
         [userId],
       );
       return rows.map((r) => r.noteId);
@@ -196,7 +196,7 @@ export const favoritesRepository = {
   /** 删除笔记的所有收藏记录（async） */
   async deleteByNoteIdAsync(noteId: string): Promise<number> {
     const result = await getAdapter().execute(
-      "DELETE FROM favorites WHERE noteId = ?",
+      'DELETE FROM favorites WHERE "noteId" = ?',
       [noteId],
     );
     return result.changes;
@@ -205,7 +205,7 @@ export const favoritesRepository = {
   /** 删除用户的所有收藏记录（async） */
   async deleteByUserIdAsync(userId: string): Promise<number> {
     const result = await getAdapter().execute(
-      "DELETE FROM favorites WHERE userId = ?",
+      'DELETE FROM favorites WHERE "userId" = ?',
       [userId],
     );
     return result.changes;
