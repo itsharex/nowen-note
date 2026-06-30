@@ -82,9 +82,9 @@ export function createSystemSettingsRepository(
     set(key: string, value: string): void {
       const db = getDb();
       db.prepare(
-        `INSERT INTO system_settings (key, value, updatedAt)
+        `INSERT INTO system_settings (key, value, "updatedAt")
          VALUES (?, ?, ${nowExpr})
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = ${nowExpr}`,
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, "updatedAt" = ${nowExpr}`,
       ).run(key, value);
     },
 
@@ -92,9 +92,9 @@ export function createSystemSettingsRepository(
       if (entries.length === 0) return;
       const db = getDb();
       const upsert = db.prepare(
-        `INSERT INTO system_settings (key, value, updatedAt)
+        `INSERT INTO system_settings (key, value, "updatedAt")
          VALUES (?, ?, ${nowExpr})
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = ${nowExpr}`,
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, "updatedAt" = ${nowExpr}`,
       );
       const tx = db.transaction(() => {
         for (const { key, value } of entries) {
@@ -129,7 +129,7 @@ export function createSystemSettingsRepository(
 
     async getAsync(key: string): Promise<SystemSetting | undefined> {
       return adapter.queryOne<SystemSetting>(
-        "SELECT key, value, updatedAt FROM system_settings WHERE key = ?",
+        'SELECT key, value, "updatedAt" FROM system_settings WHERE key = ?',
         [key],
       );
     },
@@ -138,20 +138,20 @@ export function createSystemSettingsRepository(
       if (keys.length === 0) return [];
       const placeholders = keys.map(() => "?").join(",");
       return adapter.queryMany<SystemSetting>(
-        `SELECT key, value, updatedAt FROM system_settings WHERE key IN (${placeholders})`,
+        `SELECT key, value, "updatedAt" FROM system_settings WHERE key IN (${placeholders})`,
         keys,
       );
     },
 
     async getAllAsync(): Promise<SystemSetting[]> {
       return adapter.queryMany<SystemSetting>(
-        "SELECT key, value, updatedAt FROM system_settings",
+        'SELECT key, value, "updatedAt" FROM system_settings',
       );
     },
 
     async getByPrefixAsync(prefix: string): Promise<SystemSetting[]> {
       return adapter.queryMany<SystemSetting>(
-        "SELECT key, value, updatedAt FROM system_settings WHERE key LIKE ?",
+        'SELECT key, value, "updatedAt" FROM system_settings WHERE key LIKE ?',
         [`${prefix}%`],
       );
     },
@@ -161,16 +161,16 @@ export function createSystemSettingsRepository(
       const conditions = prefixes.map(() => "key LIKE ?").join(" OR ");
       const params = prefixes.map((p) => `${p}%`);
       return adapter.queryMany<SystemSetting>(
-        `SELECT key, value, updatedAt FROM system_settings WHERE ${conditions}`,
+        `SELECT key, value, "updatedAt" FROM system_settings WHERE ${conditions}`,
         params,
       );
     },
 
     async setAsync(key: string, value: string): Promise<void> {
       await adapter.execute(
-        `INSERT INTO system_settings (key, value, updatedAt)
+        `INSERT INTO system_settings (key, value, "updatedAt")
          VALUES (?, ?, ${nowExpr})
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = ${nowExpr}`,
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, "updatedAt" = ${nowExpr}`,
         [key, value],
       );
     },
@@ -201,9 +201,9 @@ export function createSystemSettingsRepository(
     async setManyAsync(entries: Array<{ key: string; value: string }>): Promise<void> {
       if (entries.length === 0) return;
       await adapter.executeBatch(
-        `INSERT INTO system_settings (key, value, updatedAt)
+        `INSERT INTO system_settings (key, value, "updatedAt")
          VALUES (?, ?, ${nowExpr})
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = ${nowExpr}`,
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, "updatedAt" = ${nowExpr}`,
         entries.map((e) => [e.key, e.value]),
       );
     },
