@@ -50,7 +50,7 @@ export const workspaceInvitesRepository = {
   listByWorkspace(workspaceId: string): WorkspaceInviteRecord[] {
     const db = getDb();
     return db
-      .prepare("SELECT * FROM workspace_invites WHERE workspaceId = ? ORDER BY createdAt DESC")
+      .prepare("SELECT * FROM workspace_invites WHERE \"workspaceId\" = ? ORDER BY \"createdAt\" DESC")
       .all(workspaceId) as WorkspaceInviteRecord[];
   },
 
@@ -83,7 +83,7 @@ export const workspaceInvitesRepository = {
   }): void {
     const db = getDb();
     db.prepare(
-      `INSERT INTO workspace_invites (id, workspaceId, code, role, maxUses, expiresAt, createdBy)
+      `INSERT INTO workspace_invites (id, "workspaceId", code, role, "maxUses", "expiresAt", "createdBy")
        VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(input.id, input.workspaceId, input.code, input.role, input.maxUses, input.expiresAt, input.createdBy);
   },
@@ -96,7 +96,7 @@ export const workspaceInvitesRepository = {
    */
   delete(inviteId: string, workspaceId: string): void {
     const db = getDb();
-    db.prepare("DELETE FROM workspace_invites WHERE id = ? AND workspaceId = ?").run(inviteId, workspaceId);
+    db.prepare("DELETE FROM workspace_invites WHERE id = ? AND \"workspaceId\" = ?").run(inviteId, workspaceId);
   },
 
   /**
@@ -106,7 +106,7 @@ export const workspaceInvitesRepository = {
    */
   incrementUseCount(inviteId: string): void {
     const db = getDb();
-    db.prepare("UPDATE workspace_invites SET useCount = useCount + 1 WHERE id = ?").run(inviteId);
+    db.prepare("UPDATE workspace_invites SET \"useCount\" = \"useCount\" + 1 WHERE id = ?").run(inviteId);
   },
 
   /**
@@ -118,7 +118,7 @@ export const workspaceInvitesRepository = {
    */
   transferOwnership(fromUserId: string, toUserId: string): number {
     const db = getDb();
-    const result = db.prepare("UPDATE workspace_invites SET createdBy = ? WHERE createdBy = ?").run(toUserId, fromUserId);
+    const result = db.prepare("UPDATE workspace_invites SET \"createdBy\" = ? WHERE \"createdBy\" = ?").run(toUserId, fromUserId);
     return result.changes;
   },
 
@@ -131,7 +131,7 @@ export const workspaceInvitesRepository = {
 
   async listByWorkspaceAsync(workspaceId: string): Promise<WorkspaceInviteRecord[]> {
     return getAdapter().queryMany<WorkspaceInviteRecord>(
-      "SELECT * FROM workspace_invites WHERE workspaceId = ? ORDER BY createdAt DESC",
+      "SELECT * FROM workspace_invites WHERE \"workspaceId\" = ? ORDER BY \"createdAt\" DESC",
       [workspaceId],
     );
   },
@@ -153,7 +153,7 @@ export const workspaceInvitesRepository = {
     createdBy: string;
   }): Promise<void> {
     await getAdapter().execute(
-      `INSERT INTO workspace_invites (id, workspaceId, code, role, maxUses, expiresAt, createdBy)
+      `INSERT INTO workspace_invites (id, "workspaceId", code, role, "maxUses", "expiresAt", "createdBy")
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [input.id, input.workspaceId, input.code, input.role, input.maxUses, input.expiresAt, input.createdBy],
     );
@@ -161,21 +161,21 @@ export const workspaceInvitesRepository = {
 
   async deleteAsync(inviteId: string, workspaceId: string): Promise<void> {
     await getAdapter().execute(
-      "DELETE FROM workspace_invites WHERE id = ? AND workspaceId = ?",
+      "DELETE FROM workspace_invites WHERE id = ? AND \"workspaceId\" = ?",
       [inviteId, workspaceId],
     );
   },
 
   async incrementUseCountAsync(inviteId: string): Promise<void> {
     await getAdapter().execute(
-      "UPDATE workspace_invites SET useCount = useCount + 1 WHERE id = ?",
+      "UPDATE workspace_invites SET \"useCount\" = \"useCount\" + 1 WHERE id = ?",
       [inviteId],
     );
   },
 
   async transferOwnershipAsync(fromUserId: string, toUserId: string): Promise<number> {
     const result = await getAdapter().execute(
-      "UPDATE workspace_invites SET createdBy = ? WHERE createdBy = ?",
+      "UPDATE workspace_invites SET \"createdBy\" = ? WHERE \"createdBy\" = ?",
       [toUserId, fromUserId],
     );
     return result.changes;
