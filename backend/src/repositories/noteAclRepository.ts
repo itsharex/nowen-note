@@ -8,6 +8,11 @@
  */
 
 import { getDb } from "../db/schema";
+import { SqliteAdapter } from "../db/adapters";
+
+function getAdapter() {
+  return new SqliteAdapter(getDb());
+}
 
 /** note_acl 记录 */
 export interface NoteAclRecord {
@@ -85,6 +90,44 @@ export const noteAclRepository = {
          WHERE userId = ? AND noteId IN (SELECT noteId FROM note_acl WHERE userId = ?)`
       )
       .all(userId1, userId2) as { noteId: string }[];
+    return rows.map((r) => r.noteId);
+  },
+
+  async getPermissionAsync(noteId: string, userId: string): Promise<{ permission: string } | undefined> {
+    return getAdapter().queryOne<{ permission: string }>(
+      "SELECT permission FROM note_acl WHERE noteId = ? AND userId = ?",
+      [noteId, userId],
+    );
+  },
+
+  async deleteByUserAndWorkspaceAsync(userId: string, workspaceId: string): Promise<void> {
+    await getAdapter().execute(
+      "DELETE FROM note_acl WHERE userId = ? AND noteId IN (SELECT id FROM notes WHERE workspaceId = ?)",
+      [userId, workspaceId],
+    );
+  },
+
+  async deleteByNoteAndUserAsync(noteId: string, userId: string): Promise<void> {
+    await getAdapter().execute(
+      "DELETE FROM note_acl WHERE noteId = ? AND userId = ?",
+      [noteId, userId],
+    );
+  },
+
+  async transferOwnershipAsync(fromUserId: string, toUserId: string): Promise<number> {
+    const result = await getAdapter().execute(
+      "UPDATE note_acl SET userId = ? WHERE userId = ?",
+      [toUserId, fromUserId],
+    );
+    return result.changes;
+  },
+
+  async listCommonNotesAsync(userId1: string, userId2: string): Promise<string[]> {
+    const rows = await getAdapter().queryMany<{ noteId: string }>(
+      `SELECT noteId FROM note_acl
+       WHERE userId = ? AND noteId IN (SELECT noteId FROM note_acl WHERE userId = ?)`,
+      [userId1, userId2],
+    );
     return rows.map((r) => r.noteId);
   },
 };
