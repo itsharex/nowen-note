@@ -55,9 +55,40 @@ PostgreSQL 对未加引号的 camelCase 列名会折叠为小写。schema 定义
 
 ---
 
-## PG-PILOT-02：不建议启动
+## PG-PILOT-02：customFontsRepository 双库试点 ✅ 完全收口
 
-在 PG-PILOT-01-B 真实验证通过前，不扩展第二个 Repository。
+### 已完成内容
+
+1. `createCustomFontsRepository(adapter, nowExpr)` — 可注入 adapter 的工厂函数
+2. 默认 `customFontsRepository` 仍使用 SQLite（`SqliteAdapter(getDb())`）
+3. 9 个 async 方法全部支持 adapter 注入
+4. `createAsync` 使用 `nowExpr` 参数（SQLite: `datetime('now')`, PG: `NOW()`）
+5. `custom-fonts-repository-pg.test.ts` — 11 个 PG 测试用例
+6. SQL 中 camelCase 列名已全部加双引号（`"fileName"`, `"fileSize"`, `"createdAt"`）
+
+### Commit
+
+- `766356e` — test: add postgres pilot for custom fonts repository
+
+### 验证结果
+
+| 测试 | 结果 |
+|------|------|
+| postgres-adapter.test.ts | 11 pass |
+| system-settings-repository-pg.test.ts | 11 pass |
+| custom-fonts-repository-pg.test.ts | 11 pass |
+| custom-fonts-repository-async.test.ts | 11 pass |
+| system-settings-repository-async.test.ts | 7 pass |
+| sqlite-adapter.test.ts | 27 pass |
+| db-dialect.test.ts | 13 pass |
+
+**PG 总计：33 pass / 0 fail | SQLite 总计：58 pass / 0 fail**
+
+### 经验
+
+customFontsRepository 仅需处理两个方言差异：
+1. `datetime('now')` → `NOW()`（通过 `nowExpr` 参数注入）
+2. camelCase 列名加双引号（已在 PG-CAMELCASE-FIX-01-A 完成）
 
 ---
 
