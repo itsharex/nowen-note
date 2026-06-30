@@ -8,6 +8,11 @@
  */
 
 import { getDb } from "../db/schema";
+import { SqliteAdapter } from "../db/adapters";
+
+function getAdapter() {
+  return new SqliteAdapter(getDb());
+}
 
 export const attachmentReferencesRepository = {
   /**
@@ -90,6 +95,54 @@ export const attachmentReferencesRepository = {
     const row = db
       .prepare("SELECT 1 FROM attachment_references WHERE attachmentId = ?")
       .get(attachmentId);
+    return !!row;
+  },
+
+  async listByNoteIdAsync(noteId: string): Promise<string[]> {
+    const rows = await getAdapter().queryMany<{ attachmentId: string }>(
+      "SELECT attachmentId FROM attachment_references WHERE noteId = ?",
+      [noteId],
+    );
+    return rows.map((r) => r.attachmentId);
+  },
+
+  async addReferencesAsync(noteId: string, attachmentIds: string[]): Promise<void> {
+    if (attachmentIds.length === 0) return;
+    for (const id of attachmentIds) {
+      try {
+        await getAdapter().execute(
+          "INSERT OR IGNORE INTO attachment_references (attachmentId, noteId) VALUES (?, ?)",
+          [id, noteId],
+        );
+      } catch {
+        // 跳过非法 ID
+      }
+    }
+  },
+
+  async removeReferencesAsync(noteId: string, attachmentIds: string[]): Promise<number> {
+    if (attachmentIds.length === 0) return 0;
+    const placeholders = attachmentIds.map(() => "?").join(",");
+    const result = await getAdapter().execute(
+      `DELETE FROM attachment_references WHERE noteId = ? AND attachmentId IN (${placeholders})`,
+      [noteId, ...attachmentIds],
+    );
+    return Number(result.changes || 0);
+  },
+
+  async isReferencedByNoteAsync(attachmentId: string, noteId: string): Promise<boolean> {
+    const row = await getAdapter().queryOne<{ _1: number }>(
+      "SELECT 1 FROM attachment_references WHERE attachmentId = ? AND noteId = ?",
+      [attachmentId, noteId],
+    );
+    return !!row;
+  },
+
+  async isReferencedAsync(attachmentId: string): Promise<boolean> {
+    const row = await getAdapter().queryOne<{ _1: number }>(
+      "SELECT 1 FROM attachment_references WHERE attachmentId = ?",
+      [attachmentId],
+    );
     return !!row;
   },
 };

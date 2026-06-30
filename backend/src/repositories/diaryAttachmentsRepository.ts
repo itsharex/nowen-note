@@ -8,6 +8,11 @@
  */
 
 import { getDb } from "../db/schema";
+import { SqliteAdapter } from "../db/adapters";
+
+function getAdapter() {
+  return new SqliteAdapter(getDb());
+}
 
 export const diaryAttachmentsRepository = {
   /**
@@ -127,6 +132,81 @@ export const diaryAttachmentsRepository = {
     const db = getDb();
     const placeholders = attachmentIds.map(() => "?").join(",");
     const result = db.prepare(`DELETE FROM diary_attachments WHERE id IN (${placeholders})`).run(...attachmentIds);
+    return result.changes;
+  },
+
+  async getByIdAsync(attachmentId: string): Promise<{ id: string; mimeType: string; path: string } | undefined> {
+    return getAdapter().queryOne<{ id: string; mimeType: string; path: string }>(
+      "SELECT id, mimeType, path FROM diary_attachments WHERE id = ?",
+      [attachmentId],
+    );
+  },
+
+  async getByIdForDeleteAsync(attachmentId: string): Promise<{ id: string; userId: string; diaryId: string | null; path: string } | undefined> {
+    return getAdapter().queryOne<any>(
+      "SELECT id, userId, diaryId, path FROM diary_attachments WHERE id = ?",
+      [attachmentId],
+    );
+  },
+
+  async listIdsByDiaryIdAsync(diaryId: string): Promise<string[]> {
+    const rows = await getAdapter().queryMany<{ id: string }>(
+      "SELECT id FROM diary_attachments WHERE diaryId = ?",
+      [diaryId],
+    );
+    return rows.map((r) => r.id);
+  },
+
+  async countOrphansAsync(userId: string, workspaceId: string | null): Promise<number> {
+    if (workspaceId) {
+      const row = await getAdapter().queryOne<{ count: number }>(
+        "SELECT COUNT(*) as count FROM diary_attachments WHERE userId = ? AND diaryId IS NULL AND workspaceId = ?",
+        [userId, workspaceId],
+      );
+      return row?.count ?? 0;
+    } else {
+      const row = await getAdapter().queryOne<{ count: number }>(
+        "SELECT COUNT(*) as count FROM diary_attachments WHERE userId = ? AND diaryId IS NULL AND workspaceId IS NULL",
+        [userId],
+      );
+      return row?.count ?? 0;
+    }
+  },
+
+  async createAsync(input: {
+    id: string;
+    userId: string;
+    workspaceId: string | null;
+    mimeType: string;
+    size: number;
+    path: string;
+  }): Promise<void> {
+    await getAdapter().execute(
+      `INSERT INTO diary_attachments (id, diaryId, userId, workspaceId, mimeType, size, path)
+       VALUES (?, NULL, ?, ?, ?, ?, ?)`,
+      [input.id, input.userId, input.workspaceId, input.mimeType, input.size, input.path],
+    );
+  },
+
+  async deleteAsync(attachmentId: string): Promise<void> {
+    await getAdapter().execute("DELETE FROM diary_attachments WHERE id = ?", [attachmentId]);
+  },
+
+  async listExpiredOrphansAsync(cutoffIso: string): Promise<string[]> {
+    const rows = await getAdapter().queryMany<{ id: string }>(
+      "SELECT id FROM diary_attachments WHERE diaryId IS NULL AND createdAt < ?",
+      [cutoffIso],
+    );
+    return rows.map((r) => r.id);
+  },
+
+  async deleteByIdsAsync(attachmentIds: string[]): Promise<number> {
+    if (attachmentIds.length === 0) return 0;
+    const placeholders = attachmentIds.map(() => "?").join(",");
+    const result = await getAdapter().execute(
+      `DELETE FROM diary_attachments WHERE id IN (${placeholders})`,
+      attachmentIds,
+    );
     return result.changes;
   },
 };

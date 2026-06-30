@@ -8,6 +8,11 @@
  */
 
 import { getDb } from "../db/schema";
+import { SqliteAdapter } from "../db/adapters";
+
+function getAdapter() {
+  return new SqliteAdapter(getDb());
+}
 
 export const shareCommentsRepository = {
   /**
@@ -200,5 +205,121 @@ export const shareCommentsRepository = {
          WHERE sc.id = ?`,
       )
       .get(id) as any | undefined;
+  },
+
+  async getByIdAsync(commentId: string): Promise<{ id: string; userId: string | null } | undefined> {
+    return getAdapter().queryOne<{ id: string; userId: string | null }>(
+      "SELECT id, userId FROM share_comments WHERE id = ?",
+      [commentId],
+    );
+  },
+
+  async getResolvedAsync(commentId: string): Promise<{ isResolved: number } | undefined> {
+    return getAdapter().queryOne<{ isResolved: number }>(
+      "SELECT isResolved FROM share_comments WHERE id = ?",
+      [commentId],
+    );
+  },
+
+  async updateResolvedAsync(commentId: string, isResolved: number): Promise<void> {
+    await getAdapter().execute(
+      "UPDATE share_comments SET isResolved = ?, updatedAt = datetime('now') WHERE id = ?",
+      [isResolved, commentId],
+    );
+  },
+
+  async deleteAsync(commentId: string): Promise<void> {
+    await getAdapter().execute("DELETE FROM share_comments WHERE id = ?", [commentId]);
+  },
+
+  async countByUserAsync(userId: string): Promise<number> {
+    const row = await getAdapter().queryOne<{ c: number }>(
+      "SELECT COUNT(*) as c FROM share_comments WHERE userId = ?",
+      [userId],
+    );
+    return row?.c ?? 0;
+  },
+
+  async transferOwnershipAsync(fromUserId: string, toUserId: string): Promise<number> {
+    const result = await getAdapter().execute(
+      "UPDATE share_comments SET userId = ? WHERE userId = ?",
+      [toUserId, fromUserId],
+    );
+    return result.changes;
+  },
+
+  async createAsync(input: {
+    id: string;
+    noteId: string;
+    userId: string | null;
+    guestName?: string;
+    guestIpHash?: string;
+    parentId?: string | null;
+    content: string;
+    anchorData?: string | null;
+  }): Promise<void> {
+    if (input.userId) {
+      await getAdapter().execute(
+        `INSERT INTO share_comments (id, noteId, userId, parentId, content, anchorData)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [input.id, input.noteId, input.userId, input.parentId || null, input.content, input.anchorData || null],
+      );
+    } else {
+      await getAdapter().execute(
+        `INSERT INTO share_comments (id, noteId, userId, guestName, guestIpHash, parentId, content, anchorData)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [input.id, input.noteId, null, input.guestName || null, input.guestIpHash || null, input.parentId || null, input.content, input.anchorData || null],
+      );
+    }
+  },
+
+  async listByNoteIdWithUserAsync(noteId: string): Promise<any[]> {
+    return getAdapter().queryMany<any>(
+      `SELECT sc.*, u.username, u.avatarUrl
+       FROM share_comments sc
+       LEFT JOIN users u ON sc.userId = u.id
+       WHERE sc.noteId = ?
+       ORDER BY sc.createdAt ASC`,
+      [noteId],
+    );
+  },
+
+  async getByIdWithUserAsync(id: string): Promise<any | undefined> {
+    return getAdapter().queryOne<any>(
+      `SELECT sc.*, u.username, u.avatarUrl
+       FROM share_comments sc
+       LEFT JOIN users u ON sc.userId = u.id
+       WHERE sc.id = ?`,
+      [id],
+    );
+  },
+
+  async listByNoteIdWithUserForPublicAsync(noteId: string): Promise<any[]> {
+    return getAdapter().queryMany<any>(
+      `SELECT sc.id, sc.noteId, sc.userId, sc.guestName, sc.parentId, sc.content, sc.anchorData,
+              sc.isResolved, sc.createdAt, sc.updatedAt,
+              u.username, u.avatarUrl,
+              COALESCE(NULLIF(sc.guestName, ''), u.username, '匿名') AS displayName,
+              CASE WHEN sc.userId IS NULL THEN 1 ELSE 0 END AS isGuest
+       FROM share_comments sc
+       LEFT JOIN users u ON sc.userId = u.id
+       WHERE sc.noteId = ?
+       ORDER BY sc.createdAt ASC`,
+      [noteId],
+    );
+  },
+
+  async getByIdWithUserForPublicAsync(id: string): Promise<any | undefined> {
+    return getAdapter().queryOne<any>(
+      `SELECT sc.id, sc.noteId, sc.userId, sc.guestName, sc.parentId, sc.content, sc.anchorData,
+              sc.isResolved, sc.createdAt, sc.updatedAt,
+              u.username, u.avatarUrl,
+              COALESCE(NULLIF(sc.guestName, ''), u.username, '匿名') AS displayName,
+              CASE WHEN sc.userId IS NULL THEN 1 ELSE 0 END AS isGuest
+       FROM share_comments sc
+       LEFT JOIN users u ON sc.userId = u.id
+       WHERE sc.id = ?`,
+      [id],
+    );
   },
 };
