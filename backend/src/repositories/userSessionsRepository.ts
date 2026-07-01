@@ -117,7 +117,7 @@ export const userSessionsRepository = {
       ).run(ip || "", expiresAt, sessionId);
     } else {
       db.prepare(
-        "UPDATE user_sessions SET "lastSeenAt" = datetime('now') WHERE id = ?"
+        `UPDATE user_sessions SET "lastSeenAt" = datetime('now') WHERE id = ?`
       ).run(sessionId);
     }
   },
@@ -132,7 +132,7 @@ export const userSessionsRepository = {
   getByIdAndUser(sessionId: string, userId: string): { id: string; revokedAt: string | null } | undefined {
     const db = getDb();
     return db
-      .prepare("SELECT id, "revokedAt" FROM user_sessions WHERE id = ? AND "userId" = ?")
+      .prepare(`SELECT id, "revokedAt" FROM user_sessions WHERE id = ? AND "userId" = ?`)
       .get(sessionId, userId) as { id: string; revokedAt: string | null } | undefined;
   },
 
@@ -145,7 +145,7 @@ export const userSessionsRepository = {
   getById(sessionId: string): { id: string; userId: string; revokedAt: string | null } | undefined {
     const db = getDb();
     return db
-      .prepare("SELECT id, "userId", "revokedAt" FROM user_sessions WHERE id = ?")
+      .prepare(`SELECT id, "userId", "revokedAt" FROM user_sessions WHERE id = ?`)
       .get(sessionId) as { id: string; userId: string; revokedAt: string | null } | undefined;
   },
 
@@ -281,7 +281,7 @@ export const userSessionsRepository = {
       );
     } else {
       await getAdapter().execute(
-        "UPDATE user_sessions SET "lastSeenAt" = datetime('now') WHERE id = ?",
+        `UPDATE user_sessions SET "lastSeenAt" = datetime('now') WHERE id = ?`,
         [sessionId],
       );
     }
@@ -289,14 +289,14 @@ export const userSessionsRepository = {
 
   async getByIdAndUserAsync(sessionId: string, userId: string): Promise<{ id: string; revokedAt: string | null } | undefined> {
     return getAdapter().queryOne<{ id: string; revokedAt: string | null }>(
-      "SELECT id, "revokedAt" FROM user_sessions WHERE id = ? AND "userId" = ?",
+      `SELECT id, "revokedAt" FROM user_sessions WHERE id = ? AND "userId" = ?`,
       [sessionId, userId],
     );
   },
 
   async getByIdAsync(sessionId: string): Promise<{ id: string; userId: string; revokedAt: string | null } | undefined> {
     return getAdapter().queryOne<{ id: string; userId: string; revokedAt: string | null }>(
-      "SELECT id, "userId", "revokedAt" FROM user_sessions WHERE id = ?",
+      `SELECT id, "userId", "revokedAt" FROM user_sessions WHERE id = ?`,
       [sessionId],
     );
   },
