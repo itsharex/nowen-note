@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeSanitize from "rehype-sanitize";
 import { Flag, Trash2, X, Bell, BellOff, CheckCircle2, Circle, Plus, Clock, Repeat, Link2, CalendarDays, Loader2 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { zhCN, enUS } from "date-fns/locale";
@@ -53,6 +56,77 @@ const PRESET_OFFSETS = [
   { minutes: 1440, key: "before1day" },
 ] as const;
 
+const descriptionMarkdownComponents: Components = {
+  h1: ({ children }) => <h1 className="mt-3 mb-2 text-lg font-semibold text-tx-primary">{children}</h1>,
+  h2: ({ children }) => <h2 className="mt-3 mb-2 text-base font-semibold text-tx-primary">{children}</h2>,
+  h3: ({ children }) => <h3 className="mt-3 mb-1.5 text-sm font-semibold text-tx-primary">{children}</h3>,
+  p: ({ children }) => <p className="my-2 leading-6">{children}</p>,
+  ul: ({ children }) => <ul className="my-2 list-disc space-y-1 pl-5">{children}</ul>,
+  ol: ({ children }) => <ol className="my-2 list-decimal space-y-1 pl-5">{children}</ol>,
+  li: ({ children }) => <li className="pl-1">{children}</li>,
+  blockquote: ({ children }) => (
+    <blockquote className="my-2 border-l-2 border-app-border pl-3 text-tx-secondary">
+      {children}
+    </blockquote>
+  ),
+  code: ({ children, className }) => (
+    <code className={cn("rounded bg-app-elevated px-1 py-0.5 text-xs text-tx-primary", className)}>
+      {children}
+    </code>
+  ),
+  pre: ({ children }) => (
+    <pre className="my-2 overflow-x-auto rounded-md bg-app-elevated p-3 text-xs leading-5 text-tx-primary">
+      {children}
+    </pre>
+  ),
+  a: ({ href, children }) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="text-accent-primary underline underline-offset-2"
+    >
+      {children}
+    </a>
+  ),
+  table: ({ children }) => (
+    <div className="my-2 overflow-x-auto">
+      <table className="min-w-full border-collapse text-xs">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => (
+    <th className="border border-app-border bg-app-elevated px-2 py-1 text-left font-semibold text-tx-primary">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => (
+    <td className="border border-app-border px-2 py-1 align-top">
+      {children}
+    </td>
+  ),
+  input: (props) => (
+    <input {...props} className="mr-1.5 align-middle accent-accent-primary" disabled />
+  ),
+};
+
+function TaskDescriptionMarkdownPreview({ description, placeholder }: { description: string; placeholder: string }) {
+  if (!description.trim()) {
+    return <span className="text-tx-tertiary">{placeholder}</span>;
+  }
+
+  return (
+    <div className="min-w-0 max-w-full overflow-hidden break-words text-sm leading-6 text-tx-primary">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeSanitize]}
+        components={descriptionMarkdownComponents}
+      >
+        {description}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
 /* ===== Task Detail Panel ===== */
 export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
   task: Task;
@@ -75,6 +149,7 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
   const dateLocale = isZh ? zhCN : enUS;
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description ?? "");
+  const [descriptionMode, setDescriptionMode] = useState<"edit" | "preview">("edit");
   const [priority, setPriority] = useState<TaskPriority>(task.priority);
   const [dueDate, setDueDate] = useState(task.dueDate || "");
   const [dueAt, setDueAt] = useState(getDueTimeValue(task.dueAt));
@@ -164,6 +239,11 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
   const handleDescriptionSave = () => {
     if (description === (task.description ?? "")) return;
     onUpdate(task.id, { description });
+  };
+
+  const handleDescriptionModeChange = (mode: "edit" | "preview") => {
+    if (mode === "preview") handleDescriptionSave();
+    setDescriptionMode(mode);
   };
 
   const handleTitlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -335,15 +415,46 @@ export const TaskDetailPanel = React.forwardRef<HTMLDivElement, {
 
         {/* Description */}
         <div>
-          <label className="text-xs text-tx-tertiary uppercase tracking-wider mb-1.5 block">{t("tasks.fields.description")}</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            onBlur={handleDescriptionSave}
-            placeholder={t("tasks.fields.descriptionPlaceholder")}
-            rows={4}
-            className="w-full px-3 py-2 rounded-md bg-app-bg border border-app-border text-sm text-tx-primary placeholder:text-tx-tertiary focus:outline-none focus:border-accent-primary transition-colors resize-y"
-          />
+          <div className="mb-1.5 flex min-w-0 items-center justify-between gap-2">
+            <div className="min-w-0">
+              <label className="block text-xs text-tx-tertiary uppercase tracking-wider">{t("tasks.fields.description")}</label>
+              <span className="text-[10px] text-tx-tertiary">{t("tasks.descriptionMarkdownHint")}</span>
+            </div>
+            <div className="flex shrink-0 overflow-hidden rounded-md border border-app-border bg-app-bg">
+              {(["edit", "preview"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => handleDescriptionModeChange(mode)}
+                  className={cn(
+                    "px-2.5 py-1 text-[11px] font-medium transition-colors",
+                    descriptionMode === mode
+                      ? "bg-accent-primary text-white"
+                      : "text-tx-tertiary hover:bg-app-hover hover:text-tx-secondary"
+                  )}
+                >
+                  {t(`tasks.descriptionMode.${mode}`)}
+                </button>
+              ))}
+            </div>
+          </div>
+          {descriptionMode === "edit" ? (
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              onBlur={handleDescriptionSave}
+              placeholder={t("tasks.fields.descriptionPlaceholder")}
+              rows={4}
+              className="w-full px-3 py-2 rounded-md bg-app-bg border border-app-border text-sm text-tx-primary placeholder:text-tx-tertiary focus:outline-none focus:border-accent-primary transition-colors resize-y"
+            />
+          ) : (
+            <div className="min-h-[104px] w-full overflow-hidden rounded-md border border-app-border bg-app-bg px-3 py-2">
+              <TaskDescriptionMarkdownPreview
+                description={description}
+                placeholder={t("tasks.fields.descriptionPlaceholder")}
+              />
+            </div>
+          )}
         </div>
 
         {/* Priority */}

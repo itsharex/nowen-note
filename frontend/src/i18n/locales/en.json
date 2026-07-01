@@ -1096,6 +1096,15 @@
     "overdueLabel": "{{count}} days overdue",
     "taskDetail": "Task Details",
     "taskTitle": "Title",
+    "fields": {
+      "description": "Description",
+      "descriptionPlaceholder": "Add details, steps, notes, or acceptance criteria..."
+    },
+    "descriptionMode": {
+      "edit": "Edit",
+      "preview": "Preview"
+    },
+    "descriptionMarkdownHint": "Markdown supported",
     "priority": "Priority",
     "dueDate": "Due Date",
     "dueAt": "Due Time",

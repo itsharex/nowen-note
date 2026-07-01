@@ -1118,6 +1118,11 @@
       "description": "详情",
       "descriptionPlaceholder": "添加任务详情、步骤、备注或验收标准..."
     },
+    "descriptionMode": {
+      "edit": "编辑",
+      "preview": "预览"
+    },
+    "descriptionMarkdownHint": "支持 Markdown",
     "priority": "优先级",
     "dueDate": "截止日期",
     "dueAt": "截止时间",
