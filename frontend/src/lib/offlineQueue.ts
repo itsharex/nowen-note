@@ -10,7 +10,7 @@
  *   - GET 请求不拦截——离线时读取依赖 store 缓存；
  *   - 同一笔记的多次 updateNote 会合并（保留最后一次 payload）；
  *   - 单条超过 7 天自动过期丢弃；
- *   - flush 时遇 409 自动用 currentVersion 重试一次（复用 putWithReconcile 语义）；
+ *   - flush 时遇 409 VERSION_CONFLICT 停止自动重试，保留本地 payload 等待用户处理；
  *   - 非 409 失败保留在队列里，下次再试。
  *
  * 存储 key: "nowen-offline-queue:v2:<server-scope>:<userId>"
@@ -23,6 +23,8 @@
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type OfflineMutationType = "createNote" | "updateNote" | "deleteNote";
+
+export const OFFLINE_QUEUE_CONFLICT_EVENT = "offlineQueue:conflict";
 
 export interface OfflineQueueItem {
   /** 唯一标识，用于去重/合并 */
@@ -41,6 +43,13 @@ export interface OfflineQueueItem {
   enqueuedAt: number;
   /** 重试次数 */
   retryCount: number;
+  /** 版本冲突项不再自动重试，避免旧内容覆盖新内容 */
+  conflict?: boolean;
+  errorCode?: "VERSION_CONFLICT" | string;
+  serverVersion?: number;
+  localPayload?: Record<string, unknown> | null;
+  failedAt?: number;
+  message?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -192,10 +201,11 @@ export function enqueue(item: Omit<OfflineQueueItem, "id" | "enqueuedAt" | "retr
     retryCount: 0,
   };
 
-  // 合并策略：同一 noteId 的 updateNote 只保留最后一次
+  // 合并策略：同一 noteId 的 updateNote 只保留最后一次。
+  // 但 conflict 项保存的是用户可能还没处理的本地内容，不能被后续入队覆盖。
   if (newItem.type === "updateNote") {
     const existIdx = queue.findIndex(
-      (q) => q.type === "updateNote" && q.noteId === newItem.noteId,
+      (q) => q.type === "updateNote" && q.noteId === newItem.noteId && !q.conflict,
     );
     if (existIdx !== -1) {
       // 保留最早的入队时间（用于过期判定），但用最新的 body
@@ -228,6 +238,36 @@ export function updateItem(itemId: string, patch: Partial<OfflineQueueItem>): vo
   if (idx === -1) return;
   queue[idx] = { ...queue[idx], ...patch };
   persistQueue(queue);
+}
+
+function markVersionConflict(item: OfflineQueueItem, currentVersion?: number): void {
+  const localPayload = item.body ? { ...item.body } : null;
+  const message = "Version conflict detected. Auto overwrite was stopped. Please refresh or resolve from version history.";
+  updateItem(item.id, {
+    conflict: true,
+    errorCode: "VERSION_CONFLICT",
+    serverVersion: currentVersion,
+    localPayload,
+    failedAt: Date.now(),
+    message,
+  });
+  console.warn("[offlineQueue] VERSION_CONFLICT stopped auto overwrite:", {
+    noteId: item.noteId,
+    localVersion: item.body?.version,
+    serverVersion: currentVersion,
+    localPayload,
+  });
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(OFFLINE_QUEUE_CONFLICT_EVENT, {
+      detail: {
+        noteId: item.noteId,
+        localVersion: item.body?.version,
+        serverVersion: currentVersion,
+        localPayload,
+        message,
+      },
+    }));
+  }
 }
 
 /** 获取队列长度 */
@@ -317,6 +357,10 @@ export async function flushQueue(
     }
 
     for (const item of queue) {
+      if (item.conflict || item.errorCode === "VERSION_CONFLICT") {
+        continue;
+      }
+
       // 检查是否过期
       if (Date.now() - item.enqueuedAt >= MAX_AGE_MS) {
         dequeue(item.id);
@@ -342,26 +386,10 @@ export async function flushQueue(
           }
           dequeue(item.id);
           result.success++;
-        } else if (res.status === 409) {
-          // 版本冲突：尝试用服务端返回的 currentVersion 重发
-          const currentVersion = res.data?.currentVersion;
-          if (typeof currentVersion === "number" && item.body) {
-            const retryBody = { ...item.body, version: currentVersion };
-            const retryRes = await fetchFn(item.url, item.method, retryBody);
-            if (retryRes.ok) {
-              dequeue(item.id);
-              result.success++;
-            } else {
-              // reconcile 也失败了——尝试 GET 最新版本号再来一次
-              updateItem(item.id, { retryCount: item.retryCount + 1, body: retryBody });
-              result.failed++;
-              // 不 break：继续处理后续（可能是不同笔记）
-            }
-          } else {
-            // 没有 currentVersion 可用，标记重试
-            updateItem(item.id, { retryCount: item.retryCount + 1 });
-            result.failed++;
-          }
+        } else if (res.status === 409 || res.data?.code === "VERSION_CONFLICT") {
+          const currentVersion = typeof res.data?.currentVersion === "number" ? res.data.currentVersion : undefined;
+          markVersionConflict(item, currentVersion);
+          result.failed++;
         } else if (res.status === 404 && item.type === "deleteNote") {
           // 已被删除，视为成功
           dequeue(item.id);

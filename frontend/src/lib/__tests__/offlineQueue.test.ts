@@ -13,7 +13,7 @@ describe("offlineQueue conflict handling", () => {
     clearQueue();
   });
 
-  it("replays an offline note update once with currentVersion from a 409 response", async () => {
+  it("marks a VERSION_CONFLICT update as conflict without replaying currentVersion", async () => {
     enqueue({
       type: "updateNote",
       noteId: "note-1",
@@ -29,19 +29,26 @@ describe("offlineQueue conflict handling", () => {
 
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce({ ok: false, status: 409, data: { currentVersion: 5 } })
-      .mockResolvedValueOnce({ ok: true, status: 200, data: { id: "note-1", version: 6 } });
+      .mockResolvedValueOnce({ ok: false, status: 409, data: { code: "VERSION_CONFLICT", currentVersion: 5 } });
 
     const result = await flushQueue(fetchFn);
+    const queue = getQueue();
 
-    expect(result).toEqual({ success: 1, failed: 0, remaining: 0 });
-    expect(getQueueLength()).toBe(0);
-    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ success: 0, failed: 1, remaining: 1 });
+    expect(getQueueLength()).toBe(1);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
     expect(fetchFn).toHaveBeenNthCalledWith(1, "/notes/note-1", "PUT", expect.objectContaining({ version: 1 }));
-    expect(fetchFn).toHaveBeenNthCalledWith(2, "/notes/note-1", "PUT", expect.objectContaining({ version: 5 }));
+    expect(queue[0]).toEqual(expect.objectContaining({
+      conflict: true,
+      errorCode: "VERSION_CONFLICT",
+      serverVersion: 5,
+      retryCount: 0,
+    }));
+    expect(queue[0].body).toEqual(expect.objectContaining({ version: 1, title: "offline title" }));
+    expect(queue[0].localPayload).toEqual(expect.objectContaining({ version: 1, title: "offline title" }));
   });
 
-  it("keeps the queued update when conflict replay still fails", async () => {
+  it("does not automatically process an existing conflict item", async () => {
     enqueue({
       type: "updateNote",
       noteId: "note-2",
@@ -55,18 +62,17 @@ describe("offlineQueue conflict handling", () => {
       },
     });
 
-    const fetchFn = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: false, status: 409, data: { currentVersion: 8 } })
-      .mockResolvedValueOnce({ ok: false, status: 409, data: { currentVersion: 9 } });
+    await flushQueue(vi.fn().mockResolvedValueOnce({ ok: false, status: 409, data: { code: "VERSION_CONFLICT", currentVersion: 8 } }));
+    const fetchFn = vi.fn();
 
     const result = await flushQueue(fetchFn);
     const queue = getQueue();
 
-    expect(result).toEqual({ success: 0, failed: 1, remaining: 1 });
+    expect(result).toEqual({ success: 0, failed: 0, remaining: 1 });
+    expect(fetchFn).not.toHaveBeenCalled();
     expect(queue).toHaveLength(1);
-    expect(queue[0].retryCount).toBe(1);
-    expect(queue[0].body).toEqual(expect.objectContaining({ version: 8 }));
+    expect(queue[0].retryCount).toBe(0);
+    expect(queue[0].body).toEqual(expect.objectContaining({ version: 2 }));
   });
 
   it("keeps the queued update when a 409 response has no currentVersion", async () => {
@@ -90,7 +96,58 @@ describe("offlineQueue conflict handling", () => {
 
     expect(result).toEqual({ success: 0, failed: 1, remaining: 1 });
     expect(fetchFn).toHaveBeenCalledTimes(1);
-    expect(queue[0].retryCount).toBe(1);
+    expect(queue[0].retryCount).toBe(0);
+    expect(queue[0]).toEqual(expect.objectContaining({
+      conflict: true,
+      errorCode: "VERSION_CONFLICT",
+    }));
     expect(queue[0].body).toEqual(expect.objectContaining({ version: 3 }));
+  });
+
+  it("keeps normal server errors retryable", async () => {
+    enqueue({
+      type: "updateNote",
+      noteId: "note-4",
+      url: "/notes/note-4",
+      method: "PUT",
+      body: {
+        title: "offline title",
+        content: "{}",
+        contentText: "offline title",
+        version: 4,
+      },
+    });
+
+    const fetchFn = vi.fn().mockResolvedValueOnce({ ok: false, status: 500, data: {} });
+
+    const result = await flushQueue(fetchFn);
+    const queue = getQueue();
+
+    expect(result).toEqual({ success: 0, failed: 1, remaining: 1 });
+    expect(queue[0]).not.toHaveProperty("conflict", true);
+    expect(queue[0].retryCount).toBe(1);
+    expect(queue[0].body).toEqual(expect.objectContaining({ version: 4 }));
+  });
+
+  it("removes successful queued updates", async () => {
+    enqueue({
+      type: "updateNote",
+      noteId: "note-5",
+      url: "/notes/note-5",
+      method: "PUT",
+      body: {
+        title: "offline title",
+        content: "{}",
+        contentText: "offline title",
+        version: 5,
+      },
+    });
+
+    const fetchFn = vi.fn().mockResolvedValueOnce({ ok: true, status: 200, data: { id: "note-5", version: 6 } });
+
+    const result = await flushQueue(fetchFn);
+
+    expect(result).toEqual({ success: 1, failed: 0, remaining: 0 });
+    expect(getQueueLength()).toBe(0);
   });
 });
