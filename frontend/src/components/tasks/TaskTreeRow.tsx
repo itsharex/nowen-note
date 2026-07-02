@@ -120,7 +120,7 @@ export const TaskTreeRow = React.forwardRef<HTMLDivElement, {
           )}
           {(task.dueDate || showCreator) && (
             <div className="md:hidden flex items-center flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-              <DateBadge dateStr={task.dueDate} dueAt={task.dueAt} />
+              <DateBadge dateStr={task.dueDate} dueAt={task.dueAt} isCompleted={isCompleted} />
               {showCreator && (
                 <span
                   className="flex items-center gap-1 text-[10px] text-tx-tertiary min-w-0"
@@ -171,7 +171,7 @@ export const TaskTreeRow = React.forwardRef<HTMLDivElement, {
             </div>
           )}
           <span className="hidden md:inline-flex">
-            <DateBadge dateStr={task.dueDate} dueAt={task.dueAt} />
+            <DateBadge dateStr={task.dueDate} dueAt={task.dueAt} isCompleted={isCompleted} />
           </span>
           {hasEnabledReminder(task) && <span title={t("tasks.reminder.title")}><Bell size={12} className="text-accent-primary/70" /></span>}
           {isRepeatingTask(task) && <span title={t(`tasks.repeat.${task.repeatRule}`)}><Repeat size={12} className="text-accent-primary/60" /></span>}

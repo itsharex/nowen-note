@@ -35,7 +35,15 @@ export function isTaskDateOverdue(dueDate: string, dueAt?: string | null): boole
 }
 
 /* ===== 日期胶囊 ===== */
-export function DateBadge({ dateStr, dueAt }: { dateStr: string | null; dueAt?: string | null }) {
+export function DateBadge({
+  dateStr,
+  dueAt,
+  isCompleted = false,
+}: {
+  dateStr: string | null;
+  dueAt?: string | null;
+  isCompleted?: boolean;
+}) {
   const { t, i18n } = useTranslation();
   const dateLocale = i18n.language === "zh-CN" ? zhCN : enUS;
   if (!dateStr) return null;
@@ -44,7 +52,11 @@ export function DateBadge({ dateStr, dueAt }: { dateStr: string | null; dueAt?: 
 
   let label: string;
   let cls: string;
-  if (isToday(d)) {
+  if (isCompleted) {
+    // 已完成任务只展示日期本身，不再标红"已逾期"
+    label = formatted;
+    cls = "bg-app-hover text-tx-tertiary";
+  } else if (isToday(d)) {
     label = t('tasks.today');
     cls = "bg-indigo-500/10 text-indigo-500";
   } else if (isTomorrow(d)) {

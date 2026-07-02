@@ -168,7 +168,7 @@ export function TaskBoardView({
                     {/* Meta row */}
                     <div className="flex items-center gap-2 flex-wrap">
                       {(task.dueDate || task.dueAt) && (
-                        <DateBadge dateStr={task.dueDate || (task.dueAt ? task.dueAt.split("T")[0] : null)} dueAt={task.dueAt} />
+                        <DateBadge dateStr={task.dueDate || (task.dueAt ? task.dueAt.split("T")[0] : null)} dueAt={task.dueAt} isCompleted={task.isCompleted === 1} />
                       )}
                       {task.parentId && (
                         <span className="text-[10px] text-tx-tertiary px-1 py-0.5 rounded bg-app-hover">{t("tasks.subtaskShort")}</span>
