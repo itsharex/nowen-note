@@ -27,7 +27,8 @@ import path from "path";
 import crypto from "crypto";
 import os from "os";
 import JSZip from "jszip";
-import { getDb, getDbSchemaVersion } from "../db/schema.js";
+import Database from "better-sqlite3";
+import { closeDb, getDb, getDbSchemaVersion } from "../db/schema.js";
 import { noteVersionsRepository } from "../repositories";
 
 // ===== 常量 =====
@@ -363,6 +364,158 @@ function getFreeSpace(dir: string): number | null {
     return Number(s.bavail * s.bsize);
   } catch {
     return null;
+  }
+}
+
+function formatError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function cleanupWalShm(dbPath: string): void {
+  for (const sfx of ["-wal", "-shm"]) {
+    const p = dbPath + sfx;
+    if (fs.existsSync(p)) {
+      try {
+        fs.unlinkSync(p);
+      } catch {
+        /* 清理失败不掩盖主错误 */
+      }
+    }
+  }
+}
+
+function checkSqliteIntegrity(dbPath: string, label: string): void {
+  let db: Database.Database | null = null;
+  try {
+    db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    const row = db.prepare("PRAGMA integrity_check").get() as { integrity_check: string };
+    if (row.integrity_check !== "ok") {
+      throw new Error(`${label}完整性检查失败: ${row.integrity_check}`);
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("完整性检查失败")) {
+      throw err;
+    }
+    throw new Error(`${label}完整性检查失败: ${formatError(err)}`);
+  } finally {
+    try {
+      db?.close();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function verifyCurrentDbUsable(curDbPath: string): void {
+  const cur = getDb();
+  const integrity = (cur.prepare("PRAGMA integrity_check").get() as { integrity_check: string }).integrity_check;
+  if (integrity !== "ok") {
+    throw new Error(`恢复后完整性检查失败: ${integrity}`);
+  }
+  // getDb() 会打开 WAL；验证完成后关闭并清理，避免失败路径残留旧 sidecar。
+  closeDb();
+  cleanupWalShm(curDbPath);
+}
+
+function rollbackDb(curDbPath: string, safetyBak: string, reason: unknown): never {
+  try {
+    closeDb();
+    if (!fs.existsSync(safetyBak)) {
+      throw new Error(`恢复前安全备份不存在: ${safetyBak}`);
+    }
+    fs.copyFileSync(safetyBak, curDbPath);
+    cleanupWalShm(curDbPath);
+    verifyCurrentDbUsable(curDbPath);
+  } catch (rollbackErr) {
+    throw new Error(
+      `恢复失败，且自动回滚失败，请立即停止服务并手动使用 *.before-restore.*.bak 恢复数据库。` +
+      `原始错误: ${formatError(reason)}；回滚错误: ${formatError(rollbackErr)}`,
+    );
+  }
+
+  throw new Error(`恢复失败，已自动回滚到恢复前数据库: ${formatError(reason)}`);
+}
+
+function replaceDbFile(tmpDb: string, curDbPath: string): void {
+  try {
+    fs.renameSync(tmpDb, curDbPath);
+  } catch (renameErr) {
+    const code = (renameErr as NodeJS.ErrnoException)?.code;
+    if (code === "EXDEV" || code === "EPERM") {
+      fs.copyFileSync(tmpDb, curDbPath);
+      try { fs.unlinkSync(tmpDb); } catch { /* ignore tmp 清理失败 */ }
+    } else {
+      throw renameErr;
+    }
+  }
+  cleanupWalShm(curDbPath);
+}
+
+interface DirectoryReplacement {
+  destDir: string;
+  backupDirPath: string | null;
+}
+
+function restoreDirectoryReplacement(replacement: DirectoryReplacement): void {
+  if (fs.existsSync(replacement.destDir)) {
+    fs.rmSync(replacement.destDir, { recursive: true, force: true });
+  }
+  if (replacement.backupDirPath && fs.existsSync(replacement.backupDirPath)) {
+    fs.renameSync(replacement.backupDirPath, replacement.destDir);
+  }
+}
+
+function moveDirectoryFromStaging(stagedDir: string, destDir: string, restoreId: string): DirectoryReplacement {
+  const backupDirPath = `${destDir}.before-restore.${restoreId}`;
+  let movedOld = false;
+  let movedNew = false;
+
+  try {
+    if (fs.existsSync(destDir)) {
+      fs.renameSync(destDir, backupDirPath);
+      movedOld = true;
+    }
+    fs.renameSync(stagedDir, destDir);
+    movedNew = true;
+    return { destDir, backupDirPath: movedOld ? backupDirPath : null };
+  } catch (err) {
+    try {
+      if (movedNew && fs.existsSync(destDir)) {
+        fs.rmSync(destDir, { recursive: true, force: true });
+      }
+      if (movedOld && fs.existsSync(backupDirPath) && !fs.existsSync(destDir)) {
+        fs.renameSync(backupDirPath, destDir);
+      }
+    } catch {
+      /* 文件目录回滚失败时保留原始错误，DB 层会继续回滚 */
+    }
+    throw err;
+  }
+}
+
+function replaceDirectoriesFromStaging(
+  entries: { stagedDir: string; destDir: string }[],
+  restoreId: string,
+): void {
+  const replacements: DirectoryReplacement[] = [];
+  try {
+    for (const entry of entries) {
+      replacements.push(moveDirectoryFromStaging(entry.stagedDir, entry.destDir, restoreId));
+    }
+    for (const replacement of replacements) {
+      if (replacement.backupDirPath && fs.existsSync(replacement.backupDirPath)) {
+        fs.rmSync(replacement.backupDirPath, { recursive: true, force: true });
+      }
+    }
+  } catch (err) {
+    for (const replacement of replacements.reverse()) {
+      try {
+        restoreDirectoryReplacement(replacement);
+      } catch {
+        /* 保留原始目录替换错误，由 DB 回滚路径继续兜底 */
+      }
+    }
+    throw new Error(`文件目录恢复失败: ${formatError(err)}`);
   }
 }
 
@@ -1232,73 +1385,53 @@ export class BackupManager {
     //     若 backupDir 与 dataDir 同卷则走 rename；不同卷（常见于用户把备份
     //     挂到独立卷的最佳实践）则 rename 会失败——因此下面的替换逻辑也改成
     //     rename 失败时自动降级 copy+unlink，保持跨卷也能工作。
-    const { getDbPath, closeDb } = await import("../db/schema.js");
+    const { getDbPath } = await import("../db/schema.js");
+    const restoreId = `${Date.now()}-${crypto.randomBytes(4).toString("hex")}`;
     const tmpDb = path.join(
       this.backupDir,
-      `.nowen-restore-${Date.now()}-${crypto.randomBytes(4).toString("hex")}.db`,
+      `.nowen-restore-${restoreId}.db`,
     );
     fs.writeFileSync(tmpDb, await dbFile.async("nodebuffer"));
+    checkSqliteIntegrity(tmpDb, "备份文件");
+
+    const stagingRoot = path.join(this.dataDir, `.nowen-restore-staging-${restoreId}`);
+    const stagedAttDir = path.join(stagingRoot, "attachments");
+    const stagedFontsDir = path.join(stagingRoot, "fonts");
+    const stagedPluginsDir = path.join(stagingRoot, "plugins");
+
+    // 先解压到 staging，避免失败时直接清空正式附件/字体/插件目录。
+    const attCount = await extractDirFromZip(zip, "attachments", stagedAttDir);
+    const fntCount = await extractDirFromZip(zip, "fonts", stagedFontsDir);
+    const plgCount = await extractDirFromZip(zip, "plugins", stagedPluginsDir);
 
     const curDbPath = getDbPath();
     const safetyBak = curDbPath + `.before-restore.${Date.now()}.bak`;
+    closeDb();
+    // 先 checkpoint WAL，再复制 safetyBak，避免回滚文件漏掉最近事务。
+    await new Promise((r) => setTimeout(r, 100));
     try {
       fs.copyFileSync(curDbPath, safetyBak);
     } catch {
       /* 当前库不存在或不可读，跳过 */
     }
-
-    closeDb();
-    // 等几十 ms 让 OS 释放 .db 句柄（Windows 上必要）
-    await new Promise((r) => setTimeout(r, 100));
     try {
-      // rename 是原子的，但要求同卷。跨卷（backupDir 挂在独立卷是推荐做法）
-      // 会抛 EXDEV，此时降级为 copy + unlink；copy 失败才 throw。
-      try {
-        fs.renameSync(tmpDb, curDbPath);
-      } catch (renameErr) {
-        const code = (renameErr as NodeJS.ErrnoException)?.code;
-        if (code === "EXDEV" || code === "EPERM") {
-          // EXDEV：跨卷；EPERM：Windows 下目标被占用时偶发（closeDb 后罕见，兜底一下）
-          fs.copyFileSync(tmpDb, curDbPath);
-          try { fs.unlinkSync(tmpDb); } catch { /* ignore tmp 清理失败 */ }
-        } else {
-          throw renameErr;
-        }
-      }
-      // 清理 wal/shm，否则替换后 SQLite 会拿旧 wal 拼新 db 导致坏页
-      for (const sfx of ["-wal", "-shm"]) {
-        const p = curDbPath + sfx;
-        if (fs.existsSync(p)) {
-          try {
-            fs.unlinkSync(p);
-          } catch {
-            /* ignore */
-          }
-        }
-      }
+      replaceDbFile(tmpDb, curDbPath);
+      verifyCurrentDbUsable(curDbPath);
+
+      // DB 已验证可用后，再安全替换文件目录；任一步失败都回滚 DB。
+      replaceDirectoriesFromStaging([
+        { stagedDir: stagedAttDir, destDir: path.join(this.dataDir, "attachments") },
+        { stagedDir: stagedFontsDir, destDir: path.join(this.dataDir, "fonts") },
+        { stagedDir: stagedPluginsDir, destDir: path.join(this.dataDir, "plugins") },
+      ], restoreId);
     } catch (e) {
-      // 失败 → 回滚
-      if (fs.existsSync(safetyBak)) {
-        try {
-          fs.copyFileSync(safetyBak, curDbPath);
-        } catch {
-          /* ignore */
-        }
-      }
-      // tmpDb 可能还在 backupDir 里，顺手清理避免残留
+      rollbackDb(curDbPath, safetyBak, e);
+    } finally {
       try { if (fs.existsSync(tmpDb)) fs.unlinkSync(tmpDb); } catch { /* ignore */ }
-      throw new Error(`数据库文件替换失败: ${e instanceof Error ? e.message : String(e)}`);
+      try { if (fs.existsSync(stagingRoot)) fs.rmSync(stagingRoot, { recursive: true, force: true }); } catch { /* ignore */ }
     }
 
-    // 2) 附件、字体、插件
-    const attDir = path.join(this.dataDir, "attachments");
-    const fontsDir = path.join(this.dataDir, "fonts");
-    const pluginsDir = path.join(this.dataDir, "plugins");
-    const attCount = await extractDirFromZip(zip, "attachments", attDir);
-    const fntCount = await extractDirFromZip(zip, "fonts", fontsDir);
-    const plgCount = await extractDirFromZip(zip, "plugins", pluginsDir);
-
-    // 3) 密钥（可选）
+    // DB + 文件目录全部成功后再写密钥；失败只告警，不让恢复整体回滚。
     const secretEntry = zip.file(".jwt_secret");
     if (secretEntry) {
       const secretPath = path.join(this.dataDir, ".jwt_secret");
@@ -1309,16 +1442,9 @@ export class BackupManager {
         } catch {
           /* Windows 无 chmod 概念 */
         }
-      } catch {
-        /* ignore */
+      } catch (e) {
+        console.warn("[Backup] .jwt_secret 恢复失败，已保留当前密钥:", e instanceof Error ? e.message : e);
       }
-    }
-
-    // 4) 重新打开 DB，做完整性校验
-    const cur = getDb();
-    const integrity = (cur.prepare("PRAGMA integrity_check").get() as { integrity_check: string }).integrity_check;
-    if (integrity !== "ok") {
-      throw new Error(`恢复后完整性检查失败: ${integrity}`);
     }
 
     const stats: Record<string, number> = {
@@ -1417,44 +1543,27 @@ export class BackupManager {
       };
     }
 
-    const { getDbPath, closeDb } = await import("../db/schema.js");
+    checkSqliteIntegrity(filePath, "备份文件");
+
+    const { getDbPath } = await import("../db/schema.js");
     const curDbPath = getDbPath();
     const safetyBak = curDbPath + `.before-restore.${Date.now()}.bak`;
+    closeDb();
+    // 先 checkpoint WAL，再复制 safetyBak，避免回滚文件漏掉最近事务。
+    await new Promise((r) => setTimeout(r, 100));
     try {
       fs.copyFileSync(curDbPath, safetyBak);
     } catch {
       /* ignore */
     }
-    closeDb();
-    await new Promise((r) => setTimeout(r, 100));
     try {
       fs.copyFileSync(filePath, curDbPath);
-      for (const sfx of ["-wal", "-shm"]) {
-        const p = curDbPath + sfx;
-        if (fs.existsSync(p)) {
-          try {
-            fs.unlinkSync(p);
-          } catch {
-            /* ignore */
-          }
-        }
-      }
+      cleanupWalShm(curDbPath);
+      verifyCurrentDbUsable(curDbPath);
     } catch (e) {
-      if (fs.existsSync(safetyBak)) {
-        try {
-          fs.copyFileSync(safetyBak, curDbPath);
-        } catch {
-          /* ignore */
-        }
-      }
-      throw new Error(`数据库文件替换失败: ${e instanceof Error ? e.message : String(e)}`);
+      rollbackDb(curDbPath, safetyBak, e);
     }
 
-    const cur = getDb();
-    const integrity = (cur.prepare("PRAGMA integrity_check").get() as { integrity_check: string }).integrity_check;
-    if (integrity !== "ok") {
-      throw new Error(`恢复后完整性检查失败: ${integrity}`);
-    }
     return { success: true, stats: { db: 1 } };
   }
 
