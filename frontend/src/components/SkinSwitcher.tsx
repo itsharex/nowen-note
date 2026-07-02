@@ -1,8 +1,10 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { Check } from "lucide-react";
+import { Check, Loader2, Save } from "lucide-react";
 import { useSkin, type Skin } from "@/hooks/useSkin";
+import { useSiteSettings } from "@/hooks/useSiteSettings";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 /**
@@ -59,88 +61,169 @@ const SKINS: SkinDescriptor[] = [
   },
 ];
 
+function IcpBeianSetting() {
+  const { siteConfig, updateIcpBeian } = useSiteSettings();
+  const [value, setValue] = React.useState(siteConfig.icpBeian || "");
+  const [isAdmin, setIsAdmin] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [message, setMessage] = React.useState("");
+
+  React.useEffect(() => {
+    setValue(siteConfig.icpBeian || "");
+  }, [siteConfig.icpBeian]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    api.getMe()
+      .then((u) => { if (!cancelled) setIsAdmin((u as any)?.role === "admin"); })
+      .catch(() => { if (!cancelled) setIsAdmin(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setMessage("");
+    try {
+      await updateIcpBeian(value.trim());
+      setMessage("已保存");
+      setTimeout(() => setMessage(""), 2000);
+    } catch {
+      setMessage("保存失败，仅管理员可修改备案号");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changed = value.trim() !== (siteConfig.icpBeian || "");
+
+  return (
+    <div className="pt-3 border-t border-app-border/60 space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-tx-primary">ICP备案号</div>
+          <p className="text-xs text-tx-tertiary mt-0.5 leading-relaxed">
+            填写后会在网页底部展示；留空则不展示。桌面端和移动端原生 App 不显示。
+          </p>
+        </div>
+        {message && (
+          <span className={cn("text-xs shrink-0", message === "已保存" ? "text-emerald-500" : "text-red-500")}>
+            {message}
+          </span>
+        )}
+      </div>
+      {!isAdmin && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">仅系统管理员可修改备案号。</p>
+      )}
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => { setValue(e.target.value); setMessage(""); }}
+          maxLength={80}
+          disabled={!isAdmin || saving}
+          className="flex-1 px-3 py-2 bg-white dark:bg-zinc-900 border border-app-border rounded-lg text-sm text-tx-primary focus:ring-2 focus:ring-accent-primary/40 focus:border-accent-primary outline-none transition-all placeholder:text-tx-tertiary disabled:opacity-60 disabled:cursor-not-allowed"
+          placeholder="例如：粤ICP备XXXXXXXX号-X"
+        />
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={!isAdmin || saving || !changed}
+          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-accent-primary text-white text-xs font-medium hover:bg-accent-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          保存备案号
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function SkinSwitcher() {
   const { t } = useTranslation();
   const { skin, setSkin } = useSkin();
 
   return (
-    <div className="grid grid-cols-2 gap-3">
-      {SKINS.map((item) => {
-        const selected = skin === item.key;
-        return (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => setSkin(item.key)}
-            className={cn(
-              "group relative text-left p-3 rounded-xl border-2 transition-all",
-              "focus:outline-none",
-              selected
-                ? "border-accent-primary bg-accent-primary/5"
-                : "border-app-border hover:border-tx-tertiary bg-app-surface"
-            )}
-          >
-            {/* 预览画布：窗口 + 侧栏 + 内容区 + 强调点 */}
-            <div
-              className="relative h-20 rounded-lg overflow-hidden mb-3 border border-app-border"
-              style={{ background: item.swatch.bg }}
-            >
-              {/* 侧栏 */}
-              <div
-                className="absolute left-0 top-0 bottom-0 w-1/3"
-                style={{ background: item.swatch.sidebar }}
-              />
-              {/* 三个 macOS 风窗口按钮（纯装饰，两个皮肤都画以保持视觉一致） */}
-              <div className="absolute left-2 top-2 flex gap-1">
-                <span className="w-2 h-2 rounded-full" style={{ background: "#FF5F57" }} />
-                <span className="w-2 h-2 rounded-full" style={{ background: "#FEBC2E" }} />
-                <span className="w-2 h-2 rounded-full" style={{ background: "#28C840" }} />
-              </div>
-              {/* 正文区"假文字" */}
-              <div className="absolute left-[38%] right-3 top-3 space-y-1.5">
-                <div
-                  className="h-1.5 w-2/3 rounded-full opacity-80"
-                  style={{ background: item.swatch.text }}
-                />
-                <div
-                  className="h-1.5 w-1/2 rounded-full opacity-40"
-                  style={{ background: item.swatch.text }}
-                />
-                <div
-                  className="h-1.5 w-3/4 rounded-full opacity-30"
-                  style={{ background: item.swatch.text }}
-                />
-              </div>
-              {/* 强调色小按钮 */}
-              <div
-                className="absolute right-3 bottom-3 h-3 w-6 rounded-md"
-                style={{ background: item.swatch.accent }}
-              />
-            </div>
-
-            {/* 标题 + 描述 */}
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-tx-primary truncate">
-                  {t(item.titleKey, { defaultValue: item.titleDefault })}
-                </div>
-                <div className="text-xs text-tx-tertiary mt-0.5 line-clamp-2">
-                  {t(item.descKey, { defaultValue: item.descDefault })}
-                </div>
-              </div>
-              {selected && (
-                <motion.div
-                  layoutId="skin-selected-check"
-                  className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-accent-primary flex items-center justify-center"
-                  transition={{ type: "spring", duration: 0.3, bounce: 0.2 }}
-                >
-                  <Check size={12} className="text-white" strokeWidth={3} />
-                </motion.div>
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 gap-3">
+        {SKINS.map((item) => {
+          const selected = skin === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setSkin(item.key)}
+              className={cn(
+                "group relative text-left p-3 rounded-xl border-2 transition-all",
+                "focus:outline-none",
+                selected
+                  ? "border-accent-primary bg-accent-primary/5"
+                  : "border-app-border hover:border-tx-tertiary bg-app-surface"
               )}
-            </div>
-          </button>
-        );
-      })}
+            >
+              {/* 预览画布：窗口 + 侧栏 + 内容区 + 强调点 */}
+              <div
+                className="relative h-20 rounded-lg overflow-hidden mb-3 border border-app-border"
+                style={{ background: item.swatch.bg }}
+              >
+                {/* 侧栏 */}
+                <div
+                  className="absolute left-0 top-0 bottom-0 w-1/3"
+                  style={{ background: item.swatch.sidebar }}
+                />
+                {/* 三个 macOS 风窗口按钮（纯装饰，两个皮肤都画以保持视觉一致） */}
+                <div className="absolute left-2 top-2 flex gap-1">
+                  <span className="w-2 h-2 rounded-full" style={{ background: "#FF5F57" }} />
+                  <span className="w-2 h-2 rounded-full" style={{ background: "#FEBC2E" }} />
+                  <span className="w-2 h-2 rounded-full" style={{ background: "#28C840" }} />
+                </div>
+                {/* 正文区"假文字" */}
+                <div className="absolute left-[38%] right-3 top-3 space-y-1.5">
+                  <div
+                    className="h-1.5 w-2/3 rounded-full opacity-80"
+                    style={{ background: item.swatch.text }}
+                  />
+                  <div
+                    className="h-1.5 w-1/2 rounded-full opacity-40"
+                    style={{ background: item.swatch.text }}
+                  />
+                  <div
+                    className="h-1.5 w-3/4 rounded-full opacity-30"
+                    style={{ background: item.swatch.text }}
+                  />
+                </div>
+                {/* 强调色小按钮 */}
+                <div
+                  className="absolute right-3 bottom-3 h-3 w-6 rounded-md"
+                  style={{ background: item.swatch.accent }}
+                />
+              </div>
+
+              {/* 标题 + 描述 */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-tx-primary truncate">
+                    {t(item.titleKey, { defaultValue: item.titleDefault })}
+                  </div>
+                  <div className="text-xs text-tx-tertiary mt-0.5 line-clamp-2">
+                    {t(item.descKey, { defaultValue: item.descDefault })}
+                  </div>
+                </div>
+                {selected && (
+                  <motion.div
+                    layoutId="skin-selected-check"
+                    className="shrink-0 mt-0.5 w-5 h-5 rounded-full bg-accent-primary flex items-center justify-center"
+                    transition={{ type: "spring", duration: 0.3, bounce: 0.2 }}
+                  >
+                    <Check size={12} className="text-white" strokeWidth={3} />
+                  </motion.div>
+                )}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <IcpBeianSetting />
     </div>
   );
 }
