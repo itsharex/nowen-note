@@ -108,6 +108,14 @@ function isNativeClientRuntime(): boolean {
   }
 }
 
+function hasAuthToken(): boolean {
+  try {
+    return !!localStorage.getItem("nowen-token");
+  } catch {
+    return false;
+  }
+}
+
 function ensureIcpBeianFooter(): { footer: HTMLElement; link: HTMLAnchorElement } | null {
   if (typeof document === "undefined") return null;
 
@@ -132,11 +140,11 @@ function ensureIcpBeianFooter(): { footer: HTMLElement; link: HTMLAnchorElement 
   link.target = "_blank";
   link.rel = "noopener noreferrer";
 
-  // BEIAN-FOOTER-03：备案号必须在登录前后都可见。
-  // 之前只依赖 index.html 的静态 footer，登录后主应用布局可能以更高层级覆盖它，
-  // 表现为“登录页能看到，登录成功后看不到”。这里由 SiteSettingsProvider 在运行时
-  // 统一托管，并给 footer 写入高层级 inline 样式，避免被 AppLayout / Modal / Toaster
-  // 等全屏层压住。为空或原生客户端时再显式隐藏。
+  // BEIAN-FOOTER-04：备案号只在未登录页展示。
+  // 用户反馈：登录成功后的主工作台不需要常驻底部备案号，且之前主界面展示会压在
+  // 空态区底部。这里仍复用 index.html 的 footer 节点，但显示条件改成：有备案号、
+  // 非原生客户端、且当前没有 nowen-token。登录成功写入 token 后会被下方轮询隐藏；
+  // 登出清 token 后会重新显示在登录页。
   footer.style.position = "fixed";
   footer.style.left = "max(12px, env(safe-area-inset-left))";
   footer.style.right = "max(12px, env(safe-area-inset-right))";
@@ -156,7 +164,7 @@ function applyIcpBeianToDOM(icpBeian: string) {
   const { footer, link } = refs;
 
   const text = String(icpBeian || "").trim();
-  if (!text || isNativeClientRuntime()) {
+  if (!text || isNativeClientRuntime() || hasAuthToken()) {
     footer.classList.remove("is-visible");
     footer.style.display = "none";
     link.textContent = "";
@@ -249,6 +257,13 @@ export function SiteSettingsProvider({ children }: { children: React.ReactNode }
     window.addEventListener(SERVER_URL_CHANGED_EVENT, handleServerUrlChanged);
     return () => window.removeEventListener(SERVER_URL_CHANGED_EVENT, handleServerUrlChanged);
   }, [loadSiteSettings]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      applyIcpBeianToDOM(siteConfig.icpBeian);
+    }, 300);
+    return () => window.clearInterval(timer);
+  }, [siteConfig.icpBeian]);
 
   const updateSiteConfig = useCallback(async (title: string, favicon: string, icpBeian = siteConfig.icpBeian) => {
     const data = await api.updateSiteSettings({
