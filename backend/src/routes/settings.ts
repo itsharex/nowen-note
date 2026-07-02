@@ -8,6 +8,8 @@ const settings = new Hono();
 export interface SiteSettings {
   site_title: string;
   site_favicon: string;
+  /** ICP 备案号；为空时前端不展示备案 footer。 */
+  site_icp_beian: string;
   editor_font_family: string;
   /**
    * @deprecated v6 起弃用——个人空间导出开关已下沉为 users.personalExportEnabled，
@@ -39,6 +41,7 @@ export interface SiteSettings {
 const DEFAULTS: SiteSettings = {
   site_title: "nowen-note",
   site_favicon: "",
+  site_icp_beian: "",
   editor_font_family: "",
   // 仅作为"旧前端拿到的透传兜底值"存在；新前端忽略。
   feature_personal_export_enabled: "true",
@@ -74,21 +77,21 @@ settings.get("/", (c) => {
 // 更新站点设置
 //
 // 字段级权限：
-//   - site_title / site_favicon 是「站点标识」，全站所有用户共享同一份，
-//     允许任何登录用户修改会导致普通成员把整个站点的品牌改掉 —— 因此只允许系统管理员写。
+//   - site_title / site_favicon / site_icp_beian 是「站点标识」，全站所有用户共享同一份，
+//     允许任何登录用户修改会导致普通成员把整个站点的品牌或备案信息改掉 —— 因此只允许系统管理员写。
 //   - editor_font_family 是字体偏好，目前也是站点级（system_settings 单表共享），
 //     按现状保留为所有登录用户均可改；后续若要做"个人字体"，需要迁移到 user_preferences。
 //   - feature_personal_export_enabled / feature_personal_import_enabled 已废弃
 //     （v6 下沉为 users 表 per-user 字段），即使 body 里带了也静默丢弃。
 //
 // 设计权衡：没有把 requireAdmin 挂在整条路由上，因为这样会把字体切换也连带锁死。
-// 改成在 handler 里按 body 字段判断，普通用户只要不带 site_title / site_favicon 就放行。
+// 改成在 handler 里按 body 字段判断，普通用户只要不带 site_title / site_favicon / site_icp_beian 就放行。
 settings.put("/", async (c) => {
   const body = await c.req.json() as Partial<SiteSettings>;
   const userId = c.req.header("X-User-Id") || "";
 
   const wantsSiteIdentity =
-    body.site_title !== undefined || body.site_favicon !== undefined;
+    body.site_title !== undefined || body.site_favicon !== undefined || body.site_icp_beian !== undefined;
   if (wantsSiteIdentity && !isSystemAdmin(userId)) {
     return c.json(
       { error: "仅管理员可修改该设置", code: "FORBIDDEN" },
@@ -115,6 +118,9 @@ settings.put("/", async (c) => {
   }
   if (body.site_favicon !== undefined) {
     entries.push({ key: "site_favicon", value: body.site_favicon });
+  }
+  if (body.site_icp_beian !== undefined) {
+    entries.push({ key: "site_icp_beian", value: String(body.site_icp_beian || "").trim().slice(0, 80) });
   }
   if (body.editor_font_family !== undefined) {
     entries.push({ key: "editor_font_family", value: body.editor_font_family });
