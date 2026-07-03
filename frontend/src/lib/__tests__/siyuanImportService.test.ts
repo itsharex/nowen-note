@@ -7,9 +7,11 @@ import {
   enhanceSiyuanImageMap,
   inspectSiyuanZip,
   isSiyuanMarkdownZip,
+  isSiyuanSyDataZip,
   isSiyuanSyZip,
   normalizeAssetRef,
   readSiyuanMarkdownZip,
+  readSiyuanSyZip,
 } from "@/lib/siyuanImportService";
 
 async function makeZipFile(entries: Record<string, string | Uint8Array>, name = "siyuan-export.zip"): Promise<File> {
@@ -30,6 +32,10 @@ describe("siyuanImportService", () => {
   it("detects Siyuan .sy packages separately", () => {
     expect(isSiyuanSyZip(["data/20240101000000.sy"])).toBe(true);
     expect(isSiyuanSyZip(["Notebook/Doc.md"])).toBe(false);
+    expect(isSiyuanSyDataZip([
+      "data-20260703162641/20210808180117-6v0mkxr/.siyuan/conf.json",
+      "data-20260703162641/20210808180117-6v0mkxr/20200923234011-ieuun1p.sy",
+    ])).toBe(true);
   });
 
   it("detects Siyuan Markdown content markers even without assets", async () => {
@@ -179,5 +185,63 @@ describe("siyuanImportService", () => {
     expect(inspection.hasSyFiles).toBe(true);
     expect(inspection.hasMarkdownFiles).toBe(false);
     expect(inspection.isSiyuanMarkdownZip).toBe(false);
+  });
+
+  it("reads Siyuan native .sy data zip files while preserving document hierarchy", async () => {
+    const boxId = "20210808180117-6v0mkxr";
+    const parentId = "20200923234011-ieuun1p";
+    const childId = "20210808180303-6yi0dv5";
+    const grandId = "20200924101106-19z4kaa";
+    const root = `data-20260703162641/${boxId}`;
+    const doc = (title: string, children: any[] = []) => JSON.stringify({
+      Type: "NodeDocument",
+      ID: title,
+      Properties: { title, updated: "20230419153642" },
+      Children: children,
+    });
+    const file = await makeZipFile({
+      [`${root}/.siyuan/conf.json`]: JSON.stringify({ name: "SiYuan User Guide" }),
+      [`${root}/${parentId}.sy`]: doc("Please Start Here", [
+        { Type: "NodeParagraph", Children: [{ Type: "NodeText", Data: "Root page" }] },
+      ]),
+      [`${root}/${parentId}/${childId}.sy`]: doc("Content Block", [
+        { Type: "NodeHeading", Properties: { level: 2 }, Children: [{ Type: "NodeText", Data: "Blocks" }] },
+      ]),
+      [`${root}/${parentId}/${childId}/${grandId}.sy`]: doc("What is a Content Block", [
+        {
+          Type: "NodeParagraph",
+          Children: [
+            { Type: "NodeText", Data: "A block with " },
+            { Type: "NodeTextMark", TextMarkType: "tag", TextMarkTextContent: "concept" },
+          ],
+        },
+        {
+          Type: "NodeImage",
+          Children: [
+            { Type: "NodeLinkText", Children: [{ Type: "NodeText", Data: "diagram" }] },
+            { Type: "NodeLinkDest", Data: "assets/a.png" },
+          ],
+        },
+        { Type: "NodeAttributeView" },
+      ]),
+      [`${root}/assets/a.png`]: new Uint8Array([1, 2, 3]),
+    }, "workspace-20260703162641.zip");
+
+    const result = await readSiyuanSyZip(file);
+    const grand = result.files.find((item) => item.title === "What is a Content Block");
+
+    expect(result.files).toHaveLength(3);
+    expect(grand?.source).toBe("siyuan-sy");
+    expect(grand?.notebookPath).toEqual(["SiYuan User Guide", "Please Start Here", "Content Block"]);
+    expect(grand?.content).toContain("#concept#");
+    expect(grand?.content).toContain("![diagram](assets/a.png)");
+    expect(grand?.imageMap?.["assets/a.png"]).toMatch(/^data:image\/png;base64,/);
+    expect(grand?.updatedAt).toBe("2023-04-19T15:36:42");
+    expect(result.report.totalSyFiles).toBe(3);
+    expect(result.report.importedDocuments).toBe(3);
+    expect(result.report.totalAssets).toBe(1);
+    expect(result.report.detectedTags).toEqual(["concept"]);
+    expect(result.report.unsupportedNodes.NodeAttributeView).toBe(1);
+    expect(result.report.unresolvedAssets).toEqual([]);
   });
 });

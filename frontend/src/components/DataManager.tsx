@@ -17,7 +17,13 @@ import {
   ImportFileInfo, ImportProgress,
   PDF_NO_TEXT_LAYER_FLAG, PDF_TOO_LARGE_FLAG, MAX_PDF_SIZE,
 } from "@/lib/importService";
-import { inspectSiyuanZip, readSiyuanMarkdownZip, type SiyuanImportReport } from "@/lib/siyuanImportService";
+import {
+  inspectSiyuanZip,
+  readSiyuanMarkdownZip,
+  readSiyuanSyZip,
+  type SiyuanImportReport,
+  type SiyuanSyImportReport,
+} from "@/lib/siyuanImportService";
 import { useApp, useAppActions } from "@/store/AppContext";
 import { api, withSudo, getCurrentWorkspace, setCurrentWorkspace, getBaseUrl } from "@/lib/api";
 import { toast } from "@/lib/toast";
@@ -443,6 +449,39 @@ export default function DataManager() {
     return messages;
   };
 
+  const formatSiyuanSyImportReport = (report: SiyuanSyImportReport): string[] => {
+    const messages = [
+      t("dataManager.siyuanSyDetected"),
+      t("dataManager.siyuanSyReportDocuments", {
+        total: report.totalSyFiles,
+        imported: report.importedDocuments,
+      }),
+      t("dataManager.siyuanSyReportAssets", { count: report.totalAssets }),
+    ];
+    if (report.detectedTags.length > 0) {
+      const tagSeparator = i18n.language?.startsWith("zh") ? "、" : ", ";
+      const shownTags = report.detectedTags.slice(0, 8).join(tagSeparator);
+      const more = Math.max(0, report.detectedTags.length - 8);
+      messages.push(more > 0
+        ? t("dataManager.siyuanReportDetectedTagsMore", { tags: shownTags, more })
+        : t("dataManager.siyuanReportDetectedTags", { tags: shownTags }));
+    }
+    const unsupportedEntries = Object.entries(report.unsupportedNodes)
+      .filter(([, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6);
+    if (unsupportedEntries.length > 0) {
+      messages.push(t("dataManager.siyuanSyReportUnsupportedNodes", {
+        nodes: unsupportedEntries.map(([type, count]) => `${type} x${count}`).join(", "),
+      }));
+    }
+    if (report.unresolvedAssets.length > 0) {
+      messages.push(t("dataManager.siyuanSyReportUnresolvedAssets", { count: report.unresolvedAssets.length }));
+    }
+    messages.push(t("dataManager.siyuanSyExperimentalHint"));
+    return messages;
+  };
+
   const processFiles = async (files: FileList) => {
     setNotesImportError("");
     setNotesImportNotice(null);
@@ -453,17 +492,19 @@ export default function DataManager() {
     try {
       if (zipFile) {
         const siyuanInspection = await inspectSiyuanZip(zipFile);
-        if (siyuanInspection.hasSyFiles && !siyuanInspection.hasMarkdownFiles) {
-          setNotesImportError(t("dataManager.siyuanSyNotSupported"));
-          setImportFiles([]);
-          setHasZip(false);
-          setZipMetaHint(null);
-          if (fileInputRef.current) fileInputRef.current.value = "";
-          return;
-        }
-
         let r: Awaited<ReturnType<typeof readMarkdownFromZipWithMeta>>;
-        if (siyuanInspection.isSiyuanMarkdownZip) {
+        if (siyuanInspection.hasSyFiles && !siyuanInspection.hasMarkdownFiles) {
+          const siyuanResult = await readSiyuanSyZip(zipFile);
+          if (siyuanResult.files.length === 0) {
+            throw new Error(t("dataManager.siyuanSyReadFailed"));
+          }
+          result = siyuanResult.files;
+          r = { files: result, meta: null };
+          setNotesImportNotice({
+            kind: "siyuan",
+            messages: formatSiyuanSyImportReport(siyuanResult.report),
+          });
+        } else if (siyuanInspection.isSiyuanMarkdownZip) {
           const siyuanResult = await readSiyuanMarkdownZip(zipFile);
           result = siyuanResult.files;
           r = { files: result, meta: null };

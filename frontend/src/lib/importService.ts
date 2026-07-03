@@ -100,10 +100,12 @@ export interface ImportFileInfo {
   content: string;
   size: number;
   selected: boolean;
-  source?: string; // 来源标识: "md" | "txt" | "html" | "xiaomi" | "oppo" | "vivo" | "oneplus" | "pdf"
+  source?: string; // 来源标识: "md" | "txt" | "html" | "xiaomi" | "oppo" | "vivo" | "oneplus" | "pdf" | "siyuan" | "siyuan-sy"
   notebookName?: string; // （已废弃，仅为向后兼容）从路径/目录推导出的单层笔记本名
   notebookPath?: string[]; // 笔记本层级路径（从根到子），如 ["我是文章2", "test2", "新笔记本"]
   imageMap?: Record<string, string>; // 相对路径 -> base64 data URI（zip 内的图片资源）
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // 导入选项
@@ -1313,6 +1315,8 @@ export async function importNotes(
         if (dates.createdAt) note.createdAt = dates.createdAt;
         if (dates.updatedAt) note.updatedAt = dates.updatedAt;
       }
+      if (f.createdAt) note.createdAt = f.createdAt;
+      if (f.updatedAt) note.updatedAt = f.updatedAt;
 
       // —— 决定该笔记的 notebookName / notebookPath ——
       // 优先级：perFileNotebook（覆盖式） > zip 路径派生 f.notebookPath > 扁平 f.notebookName > 无
