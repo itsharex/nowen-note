@@ -31,6 +31,7 @@ import {
   PresenceBar,
 } from "@/components/PresenceBar";
 import { EditorErrorBoundary } from "@/components/EditorErrorBoundary";
+import NoteTabsBar from "@/components/NoteTabsBar";
 import { useRealtimeNote } from "@/hooks/useRealtimeNote";
 import { useYDoc } from "@/hooks/useYDoc";
 import { normalizeToMarkdown, detectFormat, markdownToPlainText } from "@/lib/contentFormat";
@@ -957,6 +958,7 @@ export default function EditorPane() {
     if (cur) {
       actions.setActiveNote(null);
       actions.removeNoteFromList(cur.id);
+      actions.removeNoteTab(cur.id);
       // ����վ��refreshNotes ������ӻ�"����վ"��ͼ
       actions.refreshNotes();
     }
@@ -1258,6 +1260,14 @@ export default function EditorPane() {
           contentText: nextContentText,
         });
         actions.updateNoteInList({ id: updated.id, title: updated.title, contentText: updated.contentText, updatedAt: updated.updatedAt });
+        actions.updateNoteTab({
+          id: updated.id,
+          title: updated.title,
+          updatedAt: updated.updatedAt,
+          contentFormat: currentNote.contentFormat,
+          isLocked: currentNote.isLocked,
+          isTrashed: currentNote.isTrashed,
+        });
         actions.setSyncStatus("saved");
         actions.setLastSynced(new Date().toISOString());
         // 2���ָ� idle
@@ -1346,6 +1356,14 @@ export default function EditorPane() {
       } as any);
       actions.setActiveNote(updated);
       actions.updateNoteInList({ id: updated.id, title: updated.title, contentText: updated.contentText, updatedAt: updated.updatedAt });
+      actions.updateNoteTab({
+        id: updated.id,
+        title: updated.title,
+        updatedAt: updated.updatedAt,
+        contentFormat: updated.contentFormat,
+        isLocked: updated.isLocked,
+        isTrashed: updated.isTrashed,
+      });
       actions.setSyncStatus("saved");
       actions.setLastSynced(new Date().toISOString());
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
@@ -1390,6 +1408,7 @@ export default function EditorPane() {
     const updated = await api.updateNote(activeNote.id, { isLocked: activeNote.isLocked ? 0 : 1 } as any);
     actions.setActiveNote(updated);
     actions.updateNoteInList({ id: updated.id, isLocked: updated.isLocked });
+    actions.updateNoteTab({ id: updated.id, isLocked: updated.isLocked, updatedAt: updated.updatedAt });
     // ���հѿ����е� 1�����������Ͳ����ٶ���ά�ֱ��ػỰ�����������Ѿ����ǡ�
     // ���ѿ����е� 0����������ͬʱ������Ự�ĻỰ��������У�����֤ UI һ�ν�����λ��
     if (!updated.isLocked) {
@@ -1430,8 +1449,32 @@ const moveToTrash = useCallback(async () => {
     if (!activeNote || activeNote.isLocked || activeNote.isTrashed || viewLockedIdsRef.current.has(activeNote.id)) return;
     haptic.heavy();
     const noteId = activeNote.id;
+    const currentTabIndex = state.openNoteTabs.findIndex((tab) => tab.id === noteId);
+    const nextTab = userPrefs.enableNoteTabs && currentTabIndex >= 0
+      ? state.openNoteTabs[currentTabIndex + 1] || state.openNoteTabs[currentTabIndex - 1] || null
+      : null;
     actions.setActiveNote(null);
     actions.removeNoteFromList(noteId);
+    actions.removeNoteTab(noteId);
+    if (nextTab) {
+      actions.setNoteLoading(true);
+      api.getNote(nextTab.id)
+        .then((nextNote) => {
+          actions.setActiveNote(nextNote);
+          actions.openNoteTab({
+            id: nextNote.id,
+            title: nextNote.title,
+            notebookId: nextNote.notebookId,
+            workspaceId: nextNote.workspaceId,
+            contentFormat: nextNote.contentFormat,
+            isLocked: nextNote.isLocked,
+            isTrashed: nextNote.isTrashed,
+            updatedAt: nextNote.updatedAt,
+          });
+        })
+        .catch(console.error)
+        .finally(() => actions.setNoteLoading(false));
+    }
     api.updateNote(noteId, { isTrashed: 1 } as any)
       .then(() => {
         actions.refreshNotebooks();
@@ -1440,7 +1483,7 @@ const moveToTrash = useCallback(async () => {
         actions.refreshNotes();
       })
       .catch(console.error);
-  }, [activeNote, actions]);
+  }, [activeNote, actions, state.openNoteTabs, userPrefs.enableNoteTabs]);
 
   // BLOCK-LINKS-JUMP-01: 打开笔记回调（用于笔记引用跳转）
   const handleOpenNote = useCallback(async (noteId: string) => {
@@ -1512,6 +1555,14 @@ const moveToTrash = useCallback(async () => {
       //    ��ѷ��ܿ� title input �� DOM ֵˢ�³��±��⡣
       actions.setActiveNote(updated);
       actions.updateNoteInList({ id: updated.id, title: updated.title, updatedAt: updated.updatedAt });
+      actions.updateNoteTab({
+        id: updated.id,
+        title: updated.title,
+        updatedAt: updated.updatedAt,
+        contentFormat: updated.contentFormat,
+        isLocked: updated.isLocked,
+        isTrashed: updated.isTrashed,
+      });
       toast.success(t("editor.aiTitleApplied") || "已应用 AI 生成的标题");
     } catch (e: any) {
       console.error("AI title error:", e);
@@ -1747,6 +1798,7 @@ const moveToTrash = useCallback(async () => {
       const updated = await api.updateNote(activeNote.id, { notebookId } as any);
       actions.setActiveNote(updated);
       actions.updateNoteInList({ id: updated.id, notebookId: updated.notebookId });
+      actions.updateNoteTab({ id: updated.id, notebookId: updated.notebookId, updatedAt: updated.updatedAt });
       setShowMoveDropdown(false);
       actions.refreshNotebooks();
     } catch (e: any) {
@@ -1976,7 +2028,7 @@ const moveToTrash = useCallback(async () => {
                     <React.Fragment key={nb.id}>
                       {idx > 0 && <ChevronRight size={10} className="text-tx-tertiary/60 shrink-0" />}
                       <span className={cn("flex min-w-0 items-center gap-0.5", isLast ? "text-tx-secondary font-medium" : "shrink-0")}>
-                        <span className="leading-none">{nb.icon || "??"}</span>
+                        <span className="leading-none">{getNotebookIcon(nb.icon)}</span>
                         <span className={cn("truncate", isLast ? "max-w-[120px]" : "max-w-[64px]")}>{nb.name}</span>
                       </span>
                     </React.Fragment>
@@ -1984,7 +2036,7 @@ const moveToTrash = useCallback(async () => {
                 })}
               </span>
             ) : (
-              <span>��</span>
+              <span className="shrink-0 leading-none">{getNotebookIcon()}</span>
             )}
           </button>
           <div className="shrink-0">
@@ -2365,7 +2417,7 @@ const moveToTrash = useCallback(async () => {
                           isLast ? "min-w-0 text-tx-secondary font-medium" : "shrink-0"
                         )}
                       >
-                        <span className="shrink-0 leading-none">{nb.icon || "??"}</span>
+                        <span className="shrink-0 leading-none">{getNotebookIcon(nb.icon)}</span>
                         <span className={cn("truncate", isLast ? "max-w-[180px]" : "max-w-[120px]")}>
                           {nb.name}
                         </span>
@@ -2375,7 +2427,7 @@ const moveToTrash = useCallback(async () => {
                 })}
               </span>
             ) : (
-              <span>��</span>
+              <span className="shrink-0 leading-none">{getNotebookIcon()}</span>
             )}
             <ChevronDown size={12} className="shrink-0 ml-0.5" />
           </button>
@@ -2754,6 +2806,8 @@ const moveToTrash = useCallback(async () => {
         </div>
       </div>
 
+      {userPrefs.enableNoteTabs && <NoteTabsBar />}
+
       {/* Editor (HTML Ԥ�� / MD / Tiptap ��ģʽ����) + Outline */}
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-hidden relative">
@@ -2900,6 +2954,16 @@ const moveToTrash = useCallback(async () => {
               isTrashed: updated.isTrashed,
               notebookId: updated.notebookId,
               workspaceId: updated.workspaceId,
+            });
+            actions.updateNoteTab({
+              id: updated.id,
+              title: updated.title,
+              notebookId: updated.notebookId,
+              workspaceId: updated.workspaceId,
+              contentFormat: updated.contentFormat,
+              isLocked: updated.isLocked,
+              isTrashed: updated.isTrashed,
+              updatedAt: updated.updatedAt,
             });
             actions.setSyncStatus("saved");
             actions.setLastSynced(new Date().toISOString());
@@ -3280,6 +3344,12 @@ function findPathById(notebooks: Notebook[], id: string | null | undefined): Not
   return path;
 }
 
+function getNotebookIcon(icon?: string | null): string {
+  const value = (icon ?? "").trim();
+  if (!value || value === "??" || value.includes("\uFFFD")) return "📒";
+  return value;
+}
+
 /* ===== �༭������"�ƶ��ʼǱ�"������Ŀ��������Ŀ¼�ṹ����һ�£� ===== */
 function MoveTreeItem({
   notebook, depth, currentId, onSelect,
@@ -3327,7 +3397,7 @@ function MoveTreeItem({
         ) : (
           <span className="w-4 h-4 shrink-0" />
         )}
-        <span className="text-base shrink-0">{notebook.icon || "??"}</span>
+        <span className="text-base shrink-0">{getNotebookIcon(notebook.icon)}</span>
         <span className="truncate flex-1 text-left">{notebook.name}</span>
         {isCurrent && (
           <span className="ml-auto text-[10px] text-tx-tertiary shrink-0">{t('common.current')}</span>

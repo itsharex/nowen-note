@@ -771,6 +771,11 @@ function SwitchesPanel() {
       label: t('settings.prefShowNoteListUpdatedTime'),
       hint: t('settings.prefShowNoteListUpdatedTimeHint'),
     },
+    {
+      key: "enableNoteTabs" as const,
+      label: t('settings.enableNoteTabs'),
+      hint: t('settings.enableNoteTabsDesc'),
+    },
   ];
 
   return (

@@ -544,6 +544,8 @@
     "prefShowNotesInNotebookTree": "Show notes in notebook tree",
     "prefShowNoteListUpdatedTime": "Show updated time in note list",
     "prefShowNoteListUpdatedTimeHint": "Show relative dates in the note list. Turn it off for a cleaner list.",
+    "enableNoteTabs": "Enable top note tabs",
+    "enableNoteTabsDesc": "Open multiple notes and switch between them from the editor header. Disable to use the classic single-note mode.",
     "prefShowNotesInNotebookTreeHint": "When enabled, the left notebook tree shows direct notes under expanded notebooks. Search, tags, favorites, and trash still use the list.",
     "readingDensity": "Reading Density",
     "readingDensityDesc": "Adjust vertical spacing of paragraphs and list items. Compact saves screen space (per-device).",
@@ -563,6 +565,13 @@
     "fontUploadFailed": "Upload failed",
     "interDefault": "Inter (Default)",
     "download": "Downloads"
+  },
+  "editorTabs": {
+    "close": "Close tab",
+    "closeOthers": "Close other tabs",
+    "closeAll": "Close all tabs",
+    "noTitle": "Untitled note",
+    "openedTabs": "Open notes"
   },
   "securitySettings": {
     "title": "Account & Security",

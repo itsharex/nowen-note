@@ -1579,6 +1579,7 @@ export default function NoteList() {
       console.log("[NoteList] note:deleted received", { noteId, trashed: msg.trashed, myConnectionId });
       // 立即从列表移除
       actions.removeNoteFromList(noteId);
+      actions.removeNoteTab(noteId);
       if (msg.trashed === true) {
         // 移入回收站：同步更新 IndexedDB 中的 isTrashed 字段，
         // 防止关闭/重启后旧缓存把笔记"复活"到普通列表
@@ -1691,6 +1692,18 @@ export default function NoteList() {
 
     // 如果点击的是当前已激活的笔记，跳过重复加载
     if (state.activeNote?.id === noteId) {
+      if (userPrefs.prefs.enableNoteTabs) {
+        actions.openNoteTab({
+          id: state.activeNote.id,
+          title: state.activeNote.title,
+          notebookId: state.activeNote.notebookId,
+          workspaceId: state.activeNote.workspaceId,
+          contentFormat: state.activeNote.contentFormat,
+          isLocked: state.activeNote.isLocked,
+          isTrashed: state.activeNote.isTrashed,
+          updatedAt: state.activeNote.updatedAt,
+        });
+      }
       actions.setMobileView("editor");
       return;
     }
@@ -1724,6 +1737,18 @@ export default function NoteList() {
       // 如果该请求已被新的点击 abort，则忽略结果
       if (abortCtrl.signal.aborted) return;
       actions.setActiveNote(note);
+      if (userPrefs.prefs.enableNoteTabs) {
+        actions.openNoteTab({
+          id: note.id,
+          title: note.title,
+          notebookId: note.notebookId,
+          workspaceId: note.workspaceId,
+          contentFormat: note.contentFormat,
+          isLocked: note.isLocked,
+          isTrashed: note.isTrashed,
+          updatedAt: note.updatedAt,
+        });
+      }
     } catch (err: any) {
       // 被 abort 的请求不需要处理错误
       if (abortCtrl.signal.aborted || err?.name === "AbortError") return;
@@ -2380,7 +2405,10 @@ export default function NoteList() {
             break;
           }
           if (state.activeNote && movable.includes(state.activeNote.id)) actions.setActiveNote(null);
-          for (const id of movable) actions.removeNoteFromList(id);
+          for (const id of movable) {
+            actions.removeNoteFromList(id);
+            actions.removeNoteTab(id);
+          }
           setSelectedIds(new Set());
           setLastClickedId(null);
           Promise.all(movable.map((id) => api.updateNote(id, { isTrashed: 1 } as any)))
@@ -2399,6 +2427,7 @@ export default function NoteList() {
         }
         if (state.activeNote?.id === targetId) actions.setActiveNote(null);
         actions.removeNoteFromList(targetId);
+        actions.removeNoteTab(targetId);
         api.updateNote(targetId, { isTrashed: 1 } as any)
           .then(() => {
             actions.refreshNotebooks();
@@ -3237,7 +3266,10 @@ export default function NoteList() {
                       return;
                     }
                     if (state.activeNote && ids.includes(state.activeNote.id)) actions.setActiveNote(null);
-                    for (const id of ids) actions.removeNoteFromList(id);
+                    for (const id of ids) {
+                      actions.removeNoteFromList(id);
+                      actions.removeNoteTab(id);
+                    }
                     setSelectedIds(new Set());
                     setLastClickedId(null);
                     haptic.heavy();

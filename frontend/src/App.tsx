@@ -426,6 +426,7 @@ function AppLayout() {
       if (state.activeNote?.id === noteId) {
         console.log("[App] note:deleted for active note, closing editor", { noteId, trashed: msg.trashed });
         actions.setActiveNote(null);
+        actions.removeNoteTab(noteId);
         import("@/lib/toast").then(({ toast }) => {
           if (msg.trashed) {
             toast.info(t('noteList.noteMovedToTrash') || "该笔记已被移入回收站");
@@ -566,6 +567,7 @@ function AppLayout() {
       actions.setViewMode("all");
       actions.setMobileView("list");
       actions.setSearchQuery("");
+      actions.clearNoteTabs();
       actions.refreshNotes();
       actions.refreshNotebooks();
     };

@@ -49,6 +49,8 @@ export interface UserPreferences {
   readingDensity: ReadingDensity;
   /** 笔记列表是否显示更新时间。默认 true。 */
   showNoteListUpdatedTime: boolean;
+  /** 是否启用编辑区顶部多笔记标签页。默认 false。 */
+  enableNoteTabs: boolean;
 }
 
 const DEFAULT_PREFS: UserPreferences = {
@@ -58,6 +60,7 @@ const DEFAULT_PREFS: UserPreferences = {
   showNotesInNotebookTree: false,
   readingDensity: "cozy",
   showNoteListUpdatedTime: true,
+  enableNoteTabs: false,
 };
 
 function readFromStorage(): UserPreferences {
@@ -87,6 +90,9 @@ function readFromStorage(): UserPreferences {
         : (localStorage.getItem("nowen.noteList.showTime") !== null
           ? localStorage.getItem("nowen.noteList.showTime") === "true"
           : DEFAULT_PREFS.showNoteListUpdatedTime),
+      enableNoteTabs: typeof parsed.enableNoteTabs === "boolean"
+        ? parsed.enableNoteTabs
+        : DEFAULT_PREFS.enableNoteTabs,
     };
   } catch {
     return DEFAULT_PREFS;

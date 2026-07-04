@@ -5,6 +5,17 @@ import { api } from "@/lib/api";
 export type SyncStatus = "idle" | "saving" | "saved" | "error" | "offline" | "queued";
 export type MobileView = "list" | "editor";
 
+export interface OpenNoteTab {
+  id: string;
+  title: string;
+  notebookId: string;
+  workspaceId?: string | null;
+  contentFormat?: string;
+  isLocked?: number;
+  isTrashed?: number;
+  updatedAt?: string;
+}
+
 interface AppState {
   notebooks: Notebook[];
   notes: NoteListItem[];
@@ -32,6 +43,8 @@ interface AppState {
   mobileSidebarOpen: boolean;
   /** 全局"笔记列表刷新"令牌：递增时 NoteList 会重新拉取当前视图的列表 */
   notesRefreshToken: number;
+  /** 顶部笔记标签页 V1：只保存元信息，不保存正文/编辑器状态。 */
+  openNoteTabs: OpenNoteTab[];
 }
 
 type Action =
@@ -61,7 +74,13 @@ type Action =
   | { type: "SET_LAST_SYNCED"; payload: string }
   | { type: "SET_MOBILE_VIEW"; payload: MobileView }
   | { type: "SET_MOBILE_SIDEBAR"; payload: boolean }
-  | { type: "TRIGGER_REFRESH_NOTES" };
+  | { type: "TRIGGER_REFRESH_NOTES" }
+  | { type: "OPEN_NOTE_TAB"; payload: OpenNoteTab }
+  | { type: "CLOSE_NOTE_TAB"; payload: string }
+  | { type: "UPDATE_NOTE_TAB"; payload: Partial<OpenNoteTab> & { id: string } }
+  | { type: "REMOVE_NOTE_TAB"; payload: string }
+  | { type: "CLEAR_NOTE_TABS" }
+  | { type: "SET_NOTE_TABS"; payload: OpenNoteTab[] };
 
 const DEFAULT_SIDEBAR_WIDTH = 260;
 const MIN_SIDEBAR_WIDTH = 200;
@@ -70,6 +89,7 @@ const MAX_SIDEBAR_WIDTH = 480;
 const DEFAULT_NOTELIST_WIDTH = 300;
 const MIN_NOTELIST_WIDTH = 220;
 const MAX_NOTELIST_WIDTH = 500;
+const MAX_OPEN_NOTE_TABS = 12;
 
 function getSavedSidebarWidth(): number {
   try {
@@ -123,6 +143,7 @@ const initialState: AppState = {
   mobileView: "list",
   mobileSidebarOpen: false,
   notesRefreshToken: 0,
+  openNoteTabs: [],
 };
 
 export { MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH, DEFAULT_SIDEBAR_WIDTH, MIN_NOTELIST_WIDTH, MAX_NOTELIST_WIDTH, DEFAULT_NOTELIST_WIDTH };
@@ -234,6 +255,36 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, mobileSidebarOpen: action.payload };
     case "TRIGGER_REFRESH_NOTES":
       return { ...state, notesRefreshToken: state.notesRefreshToken + 1 };
+    case "OPEN_NOTE_TAB": {
+      const incoming = action.payload;
+      const existingIndex = state.openNoteTabs.findIndex((tab) => tab.id === incoming.id);
+      let tabs = existingIndex >= 0
+        ? state.openNoteTabs.map((tab) => tab.id === incoming.id ? { ...tab, ...incoming } : tab)
+        : [...state.openNoteTabs, incoming];
+      if (tabs.length > MAX_OPEN_NOTE_TABS) {
+        const activeId = state.activeNote?.id;
+        const removableIndex = tabs.findIndex((tab) => tab.id !== activeId);
+        tabs = tabs.filter((_, index) => index !== (removableIndex >= 0 ? removableIndex : 0));
+      }
+      return { ...state, openNoteTabs: tabs };
+    }
+    case "CLOSE_NOTE_TAB":
+    case "REMOVE_NOTE_TAB":
+      return {
+        ...state,
+        openNoteTabs: state.openNoteTabs.filter((tab) => tab.id !== action.payload),
+      };
+    case "UPDATE_NOTE_TAB":
+      return {
+        ...state,
+        openNoteTabs: state.openNoteTabs.map((tab) =>
+          tab.id === action.payload.id ? { ...tab, ...action.payload } : tab
+        ),
+      };
+    case "CLEAR_NOTE_TABS":
+      return { ...state, openNoteTabs: [] };
+    case "SET_NOTE_TABS":
+      return { ...state, openNoteTabs: action.payload.slice(0, MAX_OPEN_NOTE_TABS) };
     default:
       return state;
   }
@@ -292,6 +343,12 @@ export function useAppActions() {
     setLastSynced: (v: string) => dispatch({ type: "SET_LAST_SYNCED", payload: v }),
     setMobileView: (v: MobileView) => dispatch({ type: "SET_MOBILE_VIEW", payload: v }),
     setMobileSidebar: (v: boolean) => dispatch({ type: "SET_MOBILE_SIDEBAR", payload: v }),
+    openNoteTab: (v: OpenNoteTab) => dispatch({ type: "OPEN_NOTE_TAB", payload: v }),
+    closeNoteTab: (id: string) => dispatch({ type: "CLOSE_NOTE_TAB", payload: id }),
+    updateNoteTab: (v: Partial<OpenNoteTab> & { id: string }) => dispatch({ type: "UPDATE_NOTE_TAB", payload: v }),
+    removeNoteTab: (id: string) => dispatch({ type: "REMOVE_NOTE_TAB", payload: id }),
+    clearNoteTabs: () => dispatch({ type: "CLEAR_NOTE_TABS" }),
+    setNoteTabs: (v: OpenNoteTab[]) => dispatch({ type: "SET_NOTE_TABS", payload: v }),
     refreshNotebooks: () => {
       api.getNotebooks().then((v) => dispatch({ type: "SET_NOTEBOOKS", payload: v })).catch(console.error);
     },
