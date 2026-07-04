@@ -14,6 +14,7 @@ export interface OpenNoteTab {
   isLocked?: number;
   isTrashed?: number;
   updatedAt?: string;
+  pinned?: boolean;
 }
 
 interface AppState {
@@ -90,6 +91,22 @@ const DEFAULT_NOTELIST_WIDTH = 300;
 const MIN_NOTELIST_WIDTH = 220;
 const MAX_NOTELIST_WIDTH = 500;
 const MAX_OPEN_NOTE_TABS = 12;
+
+function sortOpenNoteTabs(tabs: OpenNoteTab[]): OpenNoteTab[] {
+  return [...tabs].sort((a, b) => {
+    if (!!a.pinned === !!b.pinned) return 0;
+    return a.pinned ? -1 : 1;
+  });
+}
+
+function trimOpenNoteTabs(tabs: OpenNoteTab[], activeId?: string | null): OpenNoteTab[] {
+  if (tabs.length <= MAX_OPEN_NOTE_TABS) return tabs;
+  const removableIndex = tabs.findIndex((tab) => !tab.pinned && tab.id !== activeId);
+  const fallbackIndex = tabs.findIndex((tab) => tab.id !== activeId);
+  const index = removableIndex >= 0 ? removableIndex : fallbackIndex;
+  if (index < 0) return tabs.slice(-MAX_OPEN_NOTE_TABS);
+  return tabs.filter((_, tabIndex) => tabIndex !== index);
+}
 
 function getSavedSidebarWidth(): number {
   try {
@@ -259,13 +276,11 @@ function reducer(state: AppState, action: Action): AppState {
       const incoming = action.payload;
       const existingIndex = state.openNoteTabs.findIndex((tab) => tab.id === incoming.id);
       let tabs = existingIndex >= 0
-        ? state.openNoteTabs.map((tab) => tab.id === incoming.id ? { ...tab, ...incoming } : tab)
+        ? state.openNoteTabs.map((tab) =>
+          tab.id === incoming.id ? { ...tab, ...incoming, pinned: incoming.pinned ?? tab.pinned } : tab
+        )
         : [...state.openNoteTabs, incoming];
-      if (tabs.length > MAX_OPEN_NOTE_TABS) {
-        const activeId = state.activeNote?.id;
-        const removableIndex = tabs.findIndex((tab) => tab.id !== activeId);
-        tabs = tabs.filter((_, index) => index !== (removableIndex >= 0 ? removableIndex : 0));
-      }
+      tabs = trimOpenNoteTabs(sortOpenNoteTabs(tabs), state.activeNote?.id);
       return { ...state, openNoteTabs: tabs };
     }
     case "CLOSE_NOTE_TAB":
@@ -277,14 +292,14 @@ function reducer(state: AppState, action: Action): AppState {
     case "UPDATE_NOTE_TAB":
       return {
         ...state,
-        openNoteTabs: state.openNoteTabs.map((tab) =>
+        openNoteTabs: sortOpenNoteTabs(state.openNoteTabs.map((tab) =>
           tab.id === action.payload.id ? { ...tab, ...action.payload } : tab
-        ),
+        )),
       };
     case "CLEAR_NOTE_TABS":
       return { ...state, openNoteTabs: [] };
     case "SET_NOTE_TABS":
-      return { ...state, openNoteTabs: action.payload.slice(0, MAX_OPEN_NOTE_TABS) };
+      return { ...state, openNoteTabs: trimOpenNoteTabs(sortOpenNoteTabs(action.payload), state.activeNote?.id) };
     default:
       return state;
   }

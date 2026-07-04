@@ -588,7 +588,16 @@
     "closeOthers": "关闭其他标签",
     "closeAll": "关闭全部标签",
     "noTitle": "无标题笔记",
-    "openedTabs": "已打开笔记"
+    "openedTabs": "已打开笔记",
+    "closeOtherTabs": "关闭其他标签",
+    "closeTabsToRight": "关闭右侧标签",
+    "closeTabsToLeft": "关闭左侧标签",
+    "closeAllTabs": "关闭全部标签",
+    "copyTitle": "复制标题",
+    "pinTab": "固定标签",
+    "unpinTab": "取消固定",
+    "copySuccess": "已复制",
+    "copyFailed": "复制失败"
   },
   "securitySettings": {
     "title": "账号与安全",
