@@ -2881,6 +2881,7 @@ const moveToTrash = useCallback(async () => {
               onUpdate={handleUpdate}
               onTagsChange={handleTagsChange}
               onHeadingsChange={setHeadings}
+              onEditorReady={(fn) => { scrollToRef.current = fn; }}
               editable={false}
             />
           ) : editorMode === "md" ? (

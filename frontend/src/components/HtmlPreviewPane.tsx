@@ -27,6 +27,12 @@ import { useTranslation } from "react-i18next";
 import { Eye } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { NoteEditorHandle, NoteEditorProps } from "@/components/editors/types";
+import { resolveAttachmentUrl } from "@/lib/api";
+import { resolveHtmlPreviewAssetUrls } from "@/lib/htmlPreviewAssets";
+import {
+  scrollToHtmlPreviewHeading,
+  syncHtmlPreviewOutline,
+} from "@/lib/htmlPreviewOutline";
 
 /**
  * DOMPurify 配置：保留常见剪藏标签 & 属性（图片、链接、样式），
@@ -143,12 +149,16 @@ function prepareIframeHtml(html: string): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const HtmlPreviewPane = forwardRef<NoteEditorHandle, NoteEditorProps>(
-  function HtmlPreviewPane({ note, onUpdate, onHeadingsChange }, ref) {
+  function HtmlPreviewPane({ note, onUpdate, onHeadingsChange, onEditorReady }, ref) {
     const { t } = useTranslation();
     const containerRef = useRef<HTMLDivElement>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
     const isFullDoc = isFullHtmlDocument(note.content);
+    const getOutlineRoot = useCallback(
+      () => (isFullDoc ? iframeRef.current?.contentDocument?.body ?? null : containerRef.current),
+      [isFullDoc],
+    );
 
     // ── NoteEditorHandle：只读模式下大部分操作是 no-op ──
     useImperativeHandle(
@@ -164,35 +174,36 @@ const HtmlPreviewPane = forwardRef<NoteEditorHandle, NoteEditorProps>(
       [note.content],
     );
 
-    // ── 从 HTML 提取标题供大纲面板使用（仅片段模式） ──
+    // ── 暴露大纲跳转能力：HTML 预览按渲染后的标题序号滚动 ──
+    useEffect(() => {
+      if (!onEditorReady) return;
+      onEditorReady((pos: number) => {
+        const root = getOutlineRoot();
+        syncHtmlPreviewOutline(root);
+        scrollToHtmlPreviewHeading(root, pos);
+      });
+    }, [getOutlineRoot, onEditorReady]);
+
+    const syncIframeOutline = useCallback(() => {
+      if (!onHeadingsChange) return;
+      const root = iframeRef.current?.contentDocument?.body;
+      if (!root) return;
+      onHeadingsChange(syncHtmlPreviewOutline(root));
+    }, [onHeadingsChange]);
+
+    // ── 从 HTML 提取标题供大纲面板使用 ──
     useEffect(() => {
       if (!onHeadingsChange) return;
 
       if (isFullDoc) {
-        // 完整文档模式：从 iframe 内容中解析标题
+        // 完整文档模式：先从字符串解析大纲，iframe load 后再同步真实 DOM id。
         const parser = new DOMParser();
         const doc = parser.parseFromString(note.content, "text/html");
-        const hNodes = doc.querySelectorAll("h1, h2, h3");
-        const items = Array.from(hNodes).map((node, idx) => ({
-          id: `html-h-${idx}`,
-          level: parseInt(node.tagName[1], 10) as 1 | 2 | 3,
-          text: (node as HTMLElement).textContent?.trim() || "",
-          pos: idx,
-        }));
-        onHeadingsChange(items);
+        onHeadingsChange(syncHtmlPreviewOutline(doc.body));
         return;
       }
 
-      if (!containerRef.current) return;
-      const el = containerRef.current;
-      const hNodes = el.querySelectorAll("h1, h2, h3");
-      const items = Array.from(hNodes).map((node, idx) => ({
-        id: `html-h-${idx}`,
-        level: parseInt(node.tagName[1], 10) as 1 | 2 | 3,
-        text: (node as HTMLElement).textContent?.trim() || "",
-        pos: idx,
-      }));
-      onHeadingsChange(items);
+      onHeadingsChange(syncHtmlPreviewOutline(containerRef.current));
     }, [note.content, onHeadingsChange, isFullDoc]);
 
     // ── 链接在新窗口打开（仅片段模式） ──
@@ -208,7 +219,9 @@ const HtmlPreviewPane = forwardRef<NoteEditorHandle, NoteEditorProps>(
     // iframe 直接占满剩余高度，由 iframe 内部自行滚动，
     // 不再套 ScrollArea，避免出现双重滚动条。
     if (isFullDoc) {
-      const iframeSrc = prepareIframeHtml(note.content);
+      const iframeSrc = prepareIframeHtml(
+        resolveHtmlPreviewAssetUrls(note.content, resolveAttachmentUrl, { fullDocument: true }),
+      );
       return (
         <div className="flex flex-col h-full overflow-hidden">
           {/* 提示条 */}
@@ -224,13 +237,14 @@ const HtmlPreviewPane = forwardRef<NoteEditorHandle, NoteEditorProps>(
             sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
             className="flex-1 w-full border-0 bg-white"
             title="HTML Preview"
+            onLoad={syncIframeOutline}
           />
         </div>
       );
     }
 
     // ── HTML 片段模式：dangerouslySetInnerHTML 渲染 ──
-    const cleanHtml = sanitize(note.content);
+    const cleanHtml = resolveHtmlPreviewAssetUrls(sanitize(note.content), resolveAttachmentUrl);
 
     return (
       <ScrollArea className="h-full">
