@@ -66,6 +66,22 @@ contextBridge.exposeInMainWorld("nowenDesktop", {
     return ipcRenderer.invoke("app:open-data-dir");
   },
 
+  /** 本地数据目录：查询、选择与迁移。 */
+  dataDir: {
+    getInfo() {
+      return ipcRenderer.invoke("app:get-data-dir-info");
+    },
+    choose() {
+      return ipcRenderer.invoke("app:choose-data-dir");
+    },
+    migrate(targetPath) {
+      if (typeof targetPath !== "string") {
+        return Promise.resolve({ ok: false, error: "INVALID_PATH" });
+      }
+      return ipcRenderer.invoke("app:migrate-data-dir", { targetPath: targetPath.slice(0, 4096) });
+    },
+  },
+
   /** 设置 Windows/Linux 原生菜单栏是否隐藏。 */
   setHideMenuBar(next) {
     return ipcRenderer.invoke("app:set-hide-menu-bar", Boolean(next));

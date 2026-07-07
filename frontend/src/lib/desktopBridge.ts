@@ -93,6 +93,30 @@ export interface DiagnosticsInfo {
   remoteUrl: string;
 }
 
+export interface DataDirInfo {
+  ok: boolean;
+  currentPath: string;
+  defaultPath: string;
+  isCustom: boolean;
+  exists: boolean;
+  mode?: "full" | "lite";
+}
+
+export interface DataDirChooseResult {
+  ok: boolean;
+  path?: string;
+  canceled?: boolean;
+  error?: string;
+}
+
+export interface DataDirMigrationResult {
+  ok: boolean;
+  path?: string;
+  error?: string;
+  detail?: string;
+  restartError?: string;
+}
+
 export interface OpenFilePayload {
   name: string;
   size: number;
@@ -217,6 +241,11 @@ interface NowenDesktopAPI {
     switchToLite?: () => Promise<{ ok: boolean }>;
     switchToFull?: () => Promise<{ ok: boolean }>;
     changeServer?: () => Promise<{ ok: boolean }>;
+  };
+  dataDir?: {
+    getInfo?: () => Promise<DataDirInfo>;
+    choose?: () => Promise<DataDirChooseResult>;
+    migrate?: (targetPath: string) => Promise<DataDirMigrationResult>;
   };
   getLocalAuth?: () => Promise<{ token: string; user: unknown } | null>;
   clearLocalAuth?: () => Promise<{ ok: boolean }>;
@@ -393,6 +422,24 @@ export async function openDataDir(): Promise<{ ok: boolean; path?: string; reaso
   const bridge = getBridge();
   if (!bridge?.openDataDir) return { ok: false, reason: "not-supported" };
   return bridge.openDataDir();
+}
+
+export async function getDesktopDataDirInfo(): Promise<DataDirInfo | null> {
+  const bridge = getBridge();
+  if (!bridge?.dataDir?.getInfo) return null;
+  return bridge.dataDir.getInfo();
+}
+
+export async function chooseDesktopDataDir(): Promise<DataDirChooseResult> {
+  const bridge = getBridge();
+  if (!bridge?.dataDir?.choose) return { ok: false, error: "not-supported" };
+  return bridge.dataDir.choose();
+}
+
+export async function migrateDesktopDataDir(targetPath: string): Promise<DataDirMigrationResult> {
+  const bridge = getBridge();
+  if (!bridge?.dataDir?.migrate) return { ok: false, error: "not-supported" };
+  return bridge.dataDir.migrate(targetPath);
 }
 
 export async function resetDesktopLocalAuth(): Promise<{ ok: boolean; token?: string; user?: unknown; error?: string; reason?: string }> {

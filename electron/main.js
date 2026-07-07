@@ -28,6 +28,15 @@ const {
   assertMainWindowSender,
   setTrustedMainWindowId,
 } = require("./security");
+const {
+  getDefaultDataPath,
+  getUserDataPathFromRoot,
+  readCustomDataDir,
+  writeCustomDataDir,
+  validateMigrationTarget,
+  copyDataDir,
+  verifyCopiedDataDir,
+} = require("./dataDir");
 
 // 日志 & 崩溃上报需尽早初始化（crashReporter.start 建议在 ready 之前）
 initLogger({
@@ -66,8 +75,25 @@ app.on("second-instance", (_event, argv) => {
 });
 
 // ---------- 路径工具 ----------
+function getUserDataRoot() {
+  return app.getPath("userData");
+}
+
 function getUserDataPath() {
-  return path.join(app.getPath("userData"), "nowen-data");
+  return getUserDataPathFromRoot(getUserDataRoot());
+}
+
+function getDataDirInfo() {
+  const currentPath = getUserDataPath();
+  const defaultPath = getDefaultDataPath(getUserDataRoot());
+  return {
+    ok: true,
+    currentPath,
+    defaultPath,
+    isCustom: !!readCustomDataDir(getUserDataRoot()),
+    exists: fs.existsSync(currentPath),
+    mode: currentMode,
+  };
 }
 
 // ---------- JWT 密钥：桌面版"首启自动生成并持久化" ----------
@@ -429,13 +455,37 @@ async function startBackend() {
 
 function stopBackend() {
   if (backendProcess) {
+    const proc = backendProcess;
+    backendProcess = null;
     try {
-      backendProcess.kill();
+      proc.kill();
     } catch {
       /* ignore */
     }
-    backendProcess = null;
   }
+}
+
+function stopBackendForMigration(timeoutMs = 2000) {
+  const proc = backendProcess;
+  if (!proc) return Promise.resolve();
+  backendProcess = null;
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    try {
+      proc.once("exit", finish);
+      proc.once("error", finish);
+      proc.kill();
+      const timer = setTimeout(finish, timeoutMs);
+      if (typeof timer.unref === "function") timer.unref();
+    } catch {
+      finish();
+    }
+  });
 }
 
 // ---------- Phase A: 桌面零登录的本地账号自动准备 ----------
@@ -1108,6 +1158,71 @@ function relaunchApp() {
   app.exit(0);
 }
 
+async function restartBackendAfterMigrationFailure() {
+  if (currentMode !== "full" || isLiteOnlyBuild()) return;
+  if (backendProcess) return;
+  await startBackend();
+  localAuthCache = await ensureLocalAccount();
+}
+
+async function migrateDataDir(targetPath) {
+  if (currentMode === "lite") {
+    return { ok: false, error: "LITE_MODE" };
+  }
+
+  const currentDir = getUserDataPath();
+  const validation = validateMigrationTarget(targetPath, {
+    currentDir,
+    appPath: app.getAppPath(),
+    resourcesPath: process.resourcesPath,
+  });
+  if (!validation.ok) return validation;
+
+  const targetDir = validation.resolved;
+  try {
+    fs.mkdirSync(targetDir, { recursive: true });
+  } catch (err) {
+    return { ok: false, error: "CREATE_TARGET_FAILED", detail: err?.message || String(err) };
+  }
+
+  try {
+    await stopBackendForMigration();
+    copyDataDir(currentDir, targetDir);
+
+    const verification = verifyCopiedDataDir(currentDir, targetDir);
+    if (!verification.ok) {
+      throw new Error(verification.error);
+    }
+
+    writeCustomDataDir(getUserDataRoot(), targetDir);
+
+    await dialog.showMessageBox(mainWindow || undefined, {
+      type: "info",
+      buttons: ["重启应用"],
+      defaultId: 0,
+      title: "本地数据目录已迁移",
+      message: "数据已迁移到新目录，应用将重启以使用新的存储位置。",
+      detail: `新目录：\n${targetDir}\n\n旧目录不会自动删除，请确认数据无误后再手动清理。`,
+    });
+    relaunchApp();
+    return { ok: true, path: targetDir };
+  } catch (err) {
+    const message = err?.message || String(err);
+    console.error("[dataDir] migration failed:", message);
+    try {
+      await restartBackendAfterMigrationFailure();
+    } catch (restartErr) {
+      console.error("[dataDir] backend restart after migration failure failed:", restartErr?.message || restartErr);
+      return {
+        ok: false,
+        error: message,
+        restartError: restartErr?.message || String(restartErr),
+      };
+    }
+    return { ok: false, error: message };
+  }
+}
+
 /**
  * 切换到 Lite 模式。会弹出 setup 窗，让用户选远端 URL。
  * @param {Electron.BrowserWindow | null} parentWin 父窗口（可空）
@@ -1212,6 +1327,35 @@ function registerAppIpc() {
     const dir = getUserDataPath();
     await shell.openPath(dir);
     return { ok: true, path: dir };
+  });
+
+  ipcMain.removeHandler("app:get-data-dir-info");
+  ipcMain.handle("app:get-data-dir-info", (event) => {
+    const reject = assertMainWindowSender(event);
+    if (reject) return reject;
+    return getDataDirInfo();
+  });
+
+  ipcMain.removeHandler("app:choose-data-dir");
+  ipcMain.handle("app:choose-data-dir", async (event) => {
+    const reject = assertMainWindowSender(event);
+    if (reject) return reject;
+    const result = await dialog.showOpenDialog(mainWindow || undefined, {
+      title: "选择本地数据存储目录",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (result.canceled || !result.filePaths?.[0]) {
+      return { ok: false, canceled: true };
+    }
+    return { ok: true, path: result.filePaths[0] };
+  });
+
+  ipcMain.removeHandler("app:migrate-data-dir");
+  ipcMain.handle("app:migrate-data-dir", async (event, payload = {}) => {
+    const reject = assertMainWindowSender(event);
+    if (reject) return reject;
+    const targetPath = typeof payload?.targetPath === "string" ? payload.targetPath : "";
+    return migrateDataDir(targetPath);
   });
 
   

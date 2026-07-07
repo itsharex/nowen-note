@@ -28,7 +28,18 @@ import {
 import { useApp, useAppActions } from "@/store/AppContext";
 import { api, withSudo, getCurrentWorkspace, setCurrentWorkspace, getBaseUrl } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { getAppInfo, getDiagnosticsInfo, isDesktop as isDesktopApp, openDataDir, resetDesktopLocalAuth, type AppInfo } from "@/lib/desktopBridge";
+import {
+  chooseDesktopDataDir,
+  getAppInfo,
+  getDesktopDataDirInfo,
+  getDiagnosticsInfo,
+  isDesktop as isDesktopApp,
+  migrateDesktopDataDir,
+  openDataDir,
+  resetDesktopLocalAuth,
+  type AppInfo,
+  type DataDirInfo,
+} from "@/lib/desktopBridge";
 import { getSyncSummary, getLastSyncAt, subscribeSyncSummary, syncNow, type SyncSummary } from "@/lib/syncEngine";
 import { confirm as confirmDialog, prompt as promptDialog } from "@/components/ui/confirm";
 import MiCloudImport from "@/components/MiCloudImport";
@@ -127,13 +138,18 @@ function SyncCenterCard() {
 
 function DesktopDataSafetyCard() {
   const [info, setInfo] = useState<AppInfo | null>(null);
+  const [dataDirInfo, setDataDirInfo] = useState<DataDirInfo | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     if (!isDesktopApp()) return;
     // SEC-ELECTRON-01-C: 分开获取安全信息和诊断信息
     getAppInfo().then(setInfo).catch(() => {});
+    getDesktopDataDirInfo().then((dir) => {
+      if (dir?.ok) setDataDirInfo(dir);
+    }).catch(() => {});
     getDiagnosticsInfo().then((diag) => {
       if (diag) setInfo((prev) => prev ? { ...prev, ...diag } : prev);
     }).catch(() => {});
@@ -141,11 +157,63 @@ function DesktopDataSafetyCard() {
 
   if (!isDesktopApp() || !info) return null;
 
-  const isFullLocal = info.mode !== "lite";
+  const isFullLocal = (dataDirInfo?.mode ?? info.mode) !== "lite";
+  const currentDataDir = dataDirInfo?.currentPath || info.userData || "";
 
   const handleOpenDataDir = async () => {
     const res = await openDataDir();
     if (!res.ok) setMessage("打开数据目录失败");
+  };
+
+  const formatMigrationError = (error?: string) => {
+    const messages: Record<string, string> = {
+      INVALID_PATH: "请选择有效的绝对路径",
+      TARGET_IS_CURRENT: "新目录不能与当前目录相同",
+      TARGET_INSIDE_CURRENT: "新目录不能放在当前数据目录内部",
+      TARGET_IS_ROOT: "不能选择磁盘根目录",
+      TARGET_INSIDE_APP: "不能选择应用安装目录",
+      TARGET_NOT_DIRECTORY: "目标路径不是文件夹",
+      TARGET_NOT_EMPTY: "目标目录非空，请选择空目录或已有 nowen-note 数据目录",
+      LITE_MODE: "轻量模式不使用本机完整数据库",
+      CREATE_TARGET_FAILED: "创建目标目录失败",
+    };
+    return messages[error || ""] || error || "unknown";
+  };
+
+  const handleChangeDataDir = async () => {
+    if (!isFullLocal) {
+      setMessage("轻量模式连接远端服务器，本机不保存完整数据库。");
+      return;
+    }
+
+    const picked = await chooseDesktopDataDir();
+    if (picked.canceled) return;
+    if (!picked.ok || !picked.path) {
+      setMessage(`选择目录失败：${formatMigrationError(picked.error)}`);
+      return;
+    }
+
+    const ok = await confirmDialog({
+      title: "迁移本地数据目录？",
+      description:
+        `将把数据库、附件、备份和设置迁移到：\n${picked.path}\n\n` +
+        "迁移会先停止本地后端并在完成后重启应用。迁移成功前请不要关闭应用。旧目录不会自动删除。",
+      confirmText: "迁移并重启",
+      cancelText: "取消",
+      danger: true,
+    });
+    if (!ok) return;
+
+    setMigrating(true);
+    setMessage("正在迁移本地数据，请不要关闭应用…");
+    const res = await migrateDesktopDataDir(picked.path);
+    setMigrating(false);
+    if (res.ok) {
+      setMessage("迁移完成，应用即将重启。");
+    } else {
+      const restartHint = res.restartError ? `；后端恢复失败：${res.restartError}` : "";
+      setMessage(`迁移失败：${formatMigrationError(res.error)}${restartHint}`);
+    }
   };
 
   const handleResetLocalAuth = async () => {
@@ -172,9 +240,12 @@ function DesktopDataSafetyCard() {
           </div>
           <div className="min-w-0">
             <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">本地数据位置</h4>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 break-all">{info.userData}</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 break-all">{currentDataDir}</p>
             <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
-              数据库文件：nowen-note.db · 日志目录：{info.logDir}
+              {isFullLocal
+                ? `数据库文件：nowen-note.db · 日志目录：${info.logDir}`
+                : "轻量模式数据存储在远端服务器，本机不保存完整数据库。"}
+              {dataDirInfo?.isCustom ? " · 自定义目录" : ""}
             </p>
           </div>
         </div>
@@ -187,6 +258,17 @@ function DesktopDataSafetyCard() {
             <ExternalLink className="w-3.5 h-3.5" />
             打开数据目录
           </button>
+          {isFullLocal && (
+            <button
+              type="button"
+              onClick={handleChangeDataDir}
+              disabled={migrating}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-900/50 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-500/10 disabled:opacity-60 transition-colors"
+            >
+              {migrating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FolderDown className="w-3.5 h-3.5" />}
+              更改位置
+            </button>
+          )}
           {isFullLocal && (
             <button
               type="button"
