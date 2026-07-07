@@ -99,13 +99,23 @@ function looksLikeAssetOrUrl(value: string): boolean {
         /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif|mp4|webm|ogg|ogv|m4v|mov|mp3|wav|m4a|flac|aac)([?#].*)?$/i.test(value);
 }
 
+function normalizeImportedTitle(value: string): string {
+    return value
+        .replace(/[\u200B-\u200D\uFEFF]/g, "")
+        .replace(/^\s{0,3}#{1,6}\s+/, "")
+        .replace(/\s+#{1,6}\s*$/, "")
+        .trim();
+}
+
 function getTitle(node: SiyuanNode): string {
-    return (
+    const raw = (
         getString(node, ["title", "name", "Title", "Name"]) ||
         getString(node, ["Data"]) ||
         node.ID ||
         "Untitled"
-    ).trim();
+    );
+    const normalized = normalizeImportedTitle(raw);
+    return normalized || "Untitled";
 }
 
 export function siyuanTimestampToIso(value?: string): string | undefined {

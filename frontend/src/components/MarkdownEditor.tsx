@@ -246,9 +246,9 @@ const baseTheme = EditorView.theme({
     outline: "none",
   },
   "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
-    {
-      backgroundColor: "rgba(59, 130, 246, 0.2)",
-    },
+  {
+    backgroundColor: "rgba(59, 130, 246, 0.2)",
+  },
   ".cm-activeLine": {
     backgroundColor: "transparent",
   },
@@ -385,7 +385,23 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
 
   // MARKDOWN-PREVIEW-MODE-01: 源码/预览/分屏模式
   const defaultViewMode = userPrefs.markdownDefaultViewMode;
-  const [viewMode, setViewMode] = useState<MarkdownViewMode>(defaultViewMode);
+
+  const resolvePreferredViewMode = useCallback((content: string): MarkdownViewMode => {
+    if (defaultViewMode !== "source") return defaultViewMode;
+    const hasAttachmentMedia =
+      /!\[[^\]]*\]\(\/api\/attachments\/[0-9a-fA-F-]{36}/.test(content) ||
+      /@\[video\]\(\/api\/attachments\/[0-9a-fA-F-]{36}/.test(content);
+    const hasMarkdownStructure =
+      /(^|\n)\s{0,3}#{1,6}\s+/.test(content) ||
+      /(^|\n)\s{0,3}>\s+/.test(content) ||
+      /(^|\n)\s{0,3}[-*+]\s+/.test(content) ||
+      /(^|\n)\s{0,3}\d+\.\s+/.test(content);
+    return hasAttachmentMedia || hasMarkdownStructure ? "split" : defaultViewMode;
+  }, [defaultViewMode]);
+
+  const [viewMode, setViewMode] = useState<MarkdownViewMode>(() =>
+    resolvePreferredViewMode(normalizeToMarkdown(note.content, note.contentText))
+  );
   const [previewMarkdown, setPreviewMarkdown] = useState(() =>
     normalizeToMarkdown(note.content, note.contentText)
   );
@@ -938,8 +954,8 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
         // P3-#14����ʽ���� UndoManager �ó������Ȱ�����ϲ���350ms window��
         ...(collabEnabled && yDoc && awareness
           ? [yCollab(yDoc.getText("content"), awareness, {
-              undoManager: new Y.UndoManager(yDoc.getText("content"), { captureTimeout: 350 }),
-            })]
+            undoManager: new Y.UndoManager(yDoc.getText("content"), { captureTimeout: 350 }),
+          })]
           : []),
 
         // �����༭����
@@ -1115,11 +1131,12 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
     // Phase 3: CRDT ģʽ���ĵ��� yCollab �йܣ���Ҫ�ֶ� dispatch setContent��
     // ������������ update ����Զ��״̬��ֻ����ͳ��/���ˢ�¡�
     const isSwitchingNote = lastSyncedNoteIdRef.current !== note.id;
+    const preferredViewMode = resolvePreferredViewMode(normalizeToMarkdown(note.content, note.contentText));
 
     if (collabEnabledRef.current) {
       if (isSwitchingNote) {
         lastSyncedNoteIdRef.current = note.id;
-        setViewMode(defaultViewMode);
+        setViewMode(preferredViewMode);
       }
       const currentDoc = view.state.doc.toString();
       setPreviewMarkdown(currentDoc);
@@ -1139,7 +1156,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
     if (isSwitchingNote) {
       lastEmittedContentRef.current = null;
       lastSyncedNoteIdRef.current = note.id;
-      setViewMode(defaultViewMode);
+      setViewMode(preferredViewMode);
     }
 
     // ��д�Զ����������� EditorPane ����ɹ���� content ��� activeNote��
@@ -1195,7 +1212,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
     // ���� content ������ version���� TiptapEditor ����һ�µ����塣
     // ���� EditorPane ����� content������ effect ���Ƶ��������
     // ����� lastEmittedContentRef �����������"�Լ�д���ֱ� setContent ����"��
-  }, [note.id, note.content, note.contentText, defaultViewMode]);
+  }, [note.id, note.content, note.contentText, defaultViewMode, resolvePreferredViewMode]);
 
   // ---------- ���ⵥ��ͬ�� ----------
   //
@@ -1336,10 +1353,10 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
 
       if (detail.mark) {
         switch (detail.mark) {
-          case "bold":      toggleWrap(view, "**");   break;
-          case "italic":    toggleWrap(view, "*");    break;
-          case "strike":    toggleWrap(view, "~~");   break;
-          case "code":      toggleInlineCode(view);   break;
+          case "bold": toggleWrap(view, "**"); break;
+          case "italic": toggleWrap(view, "*"); break;
+          case "strike": toggleWrap(view, "~~"); break;
+          case "code": toggleInlineCode(view); break;
           // MD ��ԭ���»����﷨���� HTML ���ס�toggleWrap �ĵ� 3 �����ڷǶԳư�����
           case "underline": toggleWrap(view, "<u>", "</u>"); break;
         }
@@ -1651,7 +1668,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
           paddingBottom ֻ�Լ��̸߶ȣ������걻���뷨��ס��
           v2026-05-18 ���Ƴ��ƶ��������������ɶ��� sticky ��������ͳһ
           �е���ʽ����� */}
-            {/* editor content area - source/preview/split */}
+      {/* editor content area - source/preview/split */}
       <div className={cn(
         "flex-1 min-h-0",
         viewMode === "split" ? "flex overflow-hidden" : "overflow-auto px-4 md:px-8"
@@ -1708,7 +1725,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
           style={{ top: bubble.top, left: bubble.left }}
           onMouseDown={(e) => e.preventDefault()}
         >
-                    <ToolbarButton
+          <ToolbarButton
             onClick={() => void copySelectionText()}
             title={tr('tiptap.copySelectionText')}
           >
@@ -1740,7 +1757,7 @@ export default forwardRef<NoteEditorHandle, MarkdownEditorProps>(function Markdo
               <ExternalLink size={14} />
             </ToolbarButton>
           )}
-<ToolbarButton
+          <ToolbarButton
             onClick={() => withView((v) => toggleWrap(v, "**"))}
             title={tr("tiptap.bold") || "�Ӵ�"}
           >

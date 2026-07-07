@@ -1716,7 +1716,17 @@ export const api = {
   importSiyuanPackage: async (
     file: File,
     opts?: { targetNotebookId?: string; workspaceId?: string; contentFormat?: "tiptap-json" | "markdown" },
-  ): Promise<ImportNotesResponse & { warnings?: string[]; stats?: Record<string, number> }> => {
+  ): Promise<ImportNotesResponse & {
+    warnings?: string[];
+    stats?: {
+      syFiles: number;
+      importedDocuments: number;
+      assets: number;
+      importedAssets: number;
+      unresolvedAssets: number;
+      unsupportedNodes?: Record<string, number>;
+    };
+  }> => {
     const token = getToken();
     const ws = opts?.workspaceId ?? getCurrentWorkspace();
     const params = new URLSearchParams();

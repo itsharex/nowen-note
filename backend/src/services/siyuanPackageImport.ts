@@ -33,6 +33,7 @@ export interface SiyuanPackageImportResult {
         assets: number;
         importedAssets: number;
         unresolvedAssets: number;
+        unsupportedNodes: Record<string, number>;
     };
 }
 
@@ -188,7 +189,13 @@ function getDocIdFromPath(value: string): string {
 
 function getSiyuanDocTitle(ast: SiyuanNode, fallback: string): string {
     const title = ast.Properties?.title || ast.Properties?.name || ast.Properties?.Title || ast.Properties?.Name || ast.Data;
-    return typeof title === "string" && title.trim() ? title.trim() : fallback;
+    if (typeof title !== "string") return fallback;
+    const normalized = title
+        .replace(/[\u200B-\u200D\uFEFF]/g, "")
+        .replace(/^\s{0,3}#{1,6}\s+/, "")
+        .replace(/\s+#{1,6}\s*$/, "")
+        .trim();
+    return normalized || fallback;
 }
 
 function getSiyuanUpdatedAt(ast: SiyuanNode): string | undefined {
@@ -697,6 +704,7 @@ export async function importSiyuanPackageFromZipFile(
                 assets: totalAssets,
                 importedAssets,
                 unresolvedAssets,
+                unsupportedNodes,
             },
         };
     } catch (err) {
