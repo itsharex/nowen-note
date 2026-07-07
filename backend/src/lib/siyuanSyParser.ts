@@ -243,6 +243,11 @@ function renderInline(node: SiyuanNode, ctx: RenderContext): string {
             return "\n";
         case "NodeImage":
             return renderImage(node, ctx).trim();
+        case "NodeIFrame":
+        case "NodeVideo":
+        case "NodeAudio":
+        case "NodeWidget":
+            return renderMedia(node, ctx);
         case "NodeInlineHTML":
             return getString(node, ["Data", "Tokens", "HTML", "html"]);
         default:
