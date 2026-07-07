@@ -45,6 +45,7 @@ import {
   moveNoteInNotebookCache,
   upsertNoteInNotebookCache,
 } from "@/lib/notebookNoteCache";
+import { getNotebookExpansionChanges, type NotebookExpandedState } from "@/lib/notebookExpansion";
 import { SIDEBAR_TREE_INDENT, sidebarTreeContentMinWidth, sidebarTreeRowMinWidth } from "@/lib/sidebarLayout";
 
 /* ===== Emoji 图标选择器 ===== */
@@ -1125,6 +1126,8 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
     () => sidebarTreeContentMinWidth(getMaxNotebookDepth(tree)),
     [tree]
   );
+  const collapseAllNotebooksLabel = t("sidebar.collapseAllNotebooks");
+  const expandAllNotebooksLabel = t("sidebar.expandAllNotebooks");
 
   useEffect(() => {
     notesByNotebookIdRef.current = notesByNotebookId;
@@ -1552,6 +1555,37 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
       if (nextExpanded === 1) void loadNotesForNotebook(id);
     }
   };
+
+  const handleSetAllNotebooksExpanded = useCallback(async (expanded: NotebookExpandedState) => {
+    const { changed, nextNotebooks } = getNotebookExpansionChanges(state.notebooks, expanded);
+    if (changed.length === 0) return;
+
+    actions.setNotebooks(nextNotebooks);
+
+    if (expanded === 1 && showNotesInNotebookTree) {
+      changed.forEach((notebook) => {
+        void loadNotesForNotebook(notebook.id);
+      });
+    }
+
+    const results = await Promise.allSettled(
+      changed.map((notebook) => api.updateNotebook(notebook.id, { isExpanded: expanded } as any))
+    );
+
+    if (results.some((result) => result.status === "rejected")) {
+      console.error("[Sidebar] batch update notebook expanded state failed", results);
+      toast.error(t("common.operationFailed") || "操作失败");
+      actions.refreshNotebooks();
+    }
+  }, [actions, loadNotesForNotebook, showNotesInNotebookTree, state.notebooks, t]);
+
+  const handleCollapseAllNotebooks = useCallback(() => {
+    void handleSetAllNotebooksExpanded(0);
+  }, [handleSetAllNotebooksExpanded]);
+
+  const handleExpandAllNotebooks = useCallback(() => {
+    void handleSetAllNotebooksExpanded(1);
+  }, [handleSetAllNotebooksExpanded]);
 
   const openTabIfEnabled = useCallback((note: Note) => {
     if (!userPrefs.enableNoteTabs) return;
@@ -2334,9 +2368,38 @@ export default function Sidebar({ variant = "mobile" }: { variant?: "desktop" | 
           />
           <span className="text-xs font-medium text-tx-tertiary uppercase tracking-wider">{t('sidebar.notebooks')}</span>
         </button>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleCreateNotebook}>
-          <Plus size={14} />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={handleCollapseAllNotebooks}
+            title={collapseAllNotebooksLabel}
+            aria-label={collapseAllNotebooksLabel}
+          >
+            <ChevronRight size={14} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={handleExpandAllNotebooks}
+            title={expandAllNotebooksLabel}
+            aria-label={expandAllNotebooksLabel}
+          >
+            <ChevronDown size={14} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            onClick={handleCreateNotebook}
+            title={t("common.newNotebook")}
+            aria-label={t("common.newNotebook")}
+          >
+            <Plus size={14} />
+          </Button>
+        </div>
       </div>
 
       <AnimatePresence initial={false}>

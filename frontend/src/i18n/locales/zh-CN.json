@@ -133,6 +133,8 @@
     "navModules": "内容模块",
     "navTools": "工具",
     "notebooks": "笔记本",
+    "collapseAllNotebooks": "折叠全部",
+    "expandAllNotebooks": "展开全部",
     "tags": "标签",
     "noTags": "暂无标签",
     "settings": "设置",

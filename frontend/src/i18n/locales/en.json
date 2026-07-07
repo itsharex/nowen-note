@@ -128,6 +128,8 @@
     "navModules": "Modules",
     "navTools": "Tools",
     "notebooks": "Notebooks",
+    "collapseAllNotebooks": "Collapse all",
+    "expandAllNotebooks": "Expand all",
     "tags": "Tags",
     "noTags": "No tags",
     "settings": "Settings",
