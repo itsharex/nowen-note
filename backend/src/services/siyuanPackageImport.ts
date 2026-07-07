@@ -81,6 +81,13 @@ interface NotePlan {
     attachments: AttachmentRow[];
 }
 
+interface TiptapJsonNode {
+    type: string;
+    attrs?: Record<string, unknown>;
+    content?: TiptapJsonNode[];
+    text?: string;
+}
+
 const SIYUAN_SY_EXT_RE = /\.sy$/i;
 const SIYUAN_CONF_RE = /(^|\/)\.siyuan\/conf\.json$/i;
 const ASSETS_SEGMENT_RE = /(^|\/)assets\//i;
@@ -118,6 +125,90 @@ export class SiyuanZipBudgetError extends Error {
 
 function normalizeZipPath(value: string): string {
     return String(value || "").replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+function cleanInlineMarkdownText(value: string): string {
+    return value
+        .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+        .replace(/[*_~`]/g, "")
+        .replace(/<[^>]+>/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function addParagraph(content: TiptapJsonNode[], text: string) {
+    const cleaned = cleanInlineMarkdownText(text);
+    if (!cleaned) return;
+    content.push({ type: "paragraph", content: [{ type: "text", text: cleaned }] });
+}
+
+function appendMarkdownBlockAsTiptap(content: TiptapJsonNode[], block: string) {
+    const heading = block.match(/^(#{1,6})\s+(.+)$/);
+    if (heading && !block.includes("\n")) {
+        const text = cleanInlineMarkdownText(heading[2]);
+        if (text) {
+            content.push({
+                type: "heading",
+                attrs: { level: Math.min(6, heading[1].length) },
+                content: [{ type: "text", text }],
+            });
+        }
+        return;
+    }
+
+    const mediaRe = /!\[([^\]]*)]\(([^)\s]+)(?:\s+"([^"]*)")?\)|@\[video]\(([^)]+)\)/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = mediaRe.exec(block)) !== null) {
+        addParagraph(content, block.slice(lastIndex, match.index));
+        if (match[2]) {
+            content.push({
+                type: "image",
+                attrs: {
+                    src: match[2],
+                    alt: match[1] || null,
+                    title: match[3] || null,
+                },
+            });
+        } else if (match[4]) {
+            content.push({
+                type: "video",
+                attrs: {
+                    src: match[4],
+                    platform: "file",
+                    kind: "file",
+                    originalUrl: match[4],
+                },
+            });
+        }
+        lastIndex = match.index + match[0].length;
+    }
+    addParagraph(content, block.slice(lastIndex));
+}
+
+function markdownToBasicTiptapJson(markdown: string): string {
+    const content: TiptapJsonNode[] = [];
+    for (const block of markdown.replace(/\r\n/g, "\n").split(/\n{2,}/)) {
+        const trimmed = block.trim();
+        if (!trimmed) continue;
+
+        const code = trimmed.match(/^```([^\n]*)\n([\s\S]*?)\n```$/);
+        if (code) {
+            content.push({
+                type: "codeBlock",
+                attrs: { language: code[1].trim() || null },
+                content: code[2] ? [{ type: "text", text: code[2] }] : undefined,
+            });
+            continue;
+        }
+
+        appendMarkdownBlockAsTiptap(content, trimmed);
+    }
+
+    if (content.length === 0) {
+        content.push({ type: "paragraph" });
+    }
+    return JSON.stringify({ type: "doc", content });
 }
 
 function isSafeZipPath(value: string): boolean {
@@ -659,7 +750,7 @@ export async function importSiyuanPackageFromZipFile(
             const rewritten = rewriteAssetRefs(markdown, urlMap);
             const finalContent = targetContentFormat === "markdown"
                 ? rewriteMarkdownAttachmentRender(rewritten, urlMimeMap)
-                : rewritten;
+                : markdownToBasicTiptapJson(rewritten);
             notePlans.push({
                 id: noteId,
                 title: converted.title || doc.title,

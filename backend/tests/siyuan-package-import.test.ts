@@ -273,6 +273,53 @@ test("route import matches service behavior for target notebook and workspace wr
   assert.ok(routeAttachments.every((item) => routeDoc.content.includes(`/api/attachments/${item.id}`)));
 });
 
+test("service import stores Tiptap JSON when contentFormat is tiptap-json", async () => {
+  const zipPath = await writeZip("tiptap-json-import.zip", {
+    "doc.sy": JSON.stringify(syDoc("tiptap-doc", "Tiptap Import", [
+      paragraph([text("Rich text "), image("assets/pic.png"), text(" "), attachment("assets/demo.mp4")]),
+    ])),
+    "assets/pic.png": new Uint8Array([1, 2, 3]),
+    "assets/demo.mp4": new Uint8Array([4, 5, 6, 7]),
+  });
+
+  const result = await importSiyuanPackageFromZipFile(zipPath, {
+    userId: USER_ID,
+    workspaceId: WORKSPACE_ID,
+    targetNotebookId: TARGET_NOTEBOOK_ID,
+    contentFormat: "tiptap-json",
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.count, 1);
+
+  const note = getNoteByTitle("Tiptap Import", TARGET_NOTEBOOK_ID);
+  assert.ok(note);
+  assert.equal(note.contentFormat, "tiptap-json");
+  assert.doesNotMatch(note.content, /^Rich text/);
+  assert.doesNotMatch(note.content, /!\[图片]\(/);
+  assert.doesNotMatch(note.content, /@\[video]\(/);
+
+  const parsed = JSON.parse(note.content) as {
+    type: string;
+    content: Array<{ type: string; attrs?: Record<string, unknown>; content?: Array<{ type: string; text?: string }> }>;
+  };
+  assert.equal(parsed.type, "doc");
+  assert.ok(Array.isArray(parsed.content));
+  assert.equal(parsed.content[0].type, "paragraph");
+  assert.equal(parsed.content[0].content?.[0].text, "Rich text");
+  assert.equal(parsed.content[1].type, "image");
+  assert.match(String(parsed.content[1].attrs?.src), /^\/api\/attachments\//);
+  assert.equal(parsed.content[2].type, "video");
+  assert.match(String(parsed.content[2].attrs?.src), /^\/api\/attachments\//);
+
+  const attachments = listAttachments(note.id);
+  assert.equal(attachments.length, 2);
+  const referenceCount = db()
+    .prepare("SELECT COUNT(*) AS count FROM attachment_references WHERE noteId = ?")
+    .get(note.id) as { count: number };
+  assert.equal(referenceCount.count, 2);
+});
+
 test("service import removes newly written files when database insert fails", async () => {
   const zipPath = await writeZip("cleanup-on-failure.zip", {
     "doc.sy": JSON.stringify(syDoc("doc", "清理测试", [
