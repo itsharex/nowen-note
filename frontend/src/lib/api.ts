@@ -1715,13 +1715,14 @@ export const api = {
   /** 服务端导入思源 .sy 数据包：用于大 zip，避免浏览器解压和 base64 JSON 膨胀。 */
   importSiyuanPackage: async (
     file: File,
-    opts?: { targetNotebookId?: string; workspaceId?: string },
+    opts?: { targetNotebookId?: string; workspaceId?: string; contentFormat?: "tiptap-json" | "markdown" },
   ): Promise<ImportNotesResponse & { warnings?: string[]; stats?: Record<string, number> }> => {
     const token = getToken();
     const ws = opts?.workspaceId ?? getCurrentWorkspace();
     const params = new URLSearchParams();
     if (ws && ws !== "personal") params.set("workspaceId", ws);
     if (opts?.targetNotebookId) params.set("targetNotebookId", opts.targetNotebookId);
+    if (opts?.contentFormat) params.set("contentFormat", opts.contentFormat);
     const qs = params.toString() ? `?${params.toString()}` : "";
     const form = new FormData();
     form.append("file", file);

@@ -16,6 +16,7 @@ interface ImportParams {
     userId: string;
     workspaceId: string | null;
     targetNotebookId?: string;
+    contentFormat?: "tiptap-json" | "markdown";
 }
 
 export interface SiyuanPackageImportResult {
@@ -307,6 +308,88 @@ function rewriteAssetRefs(content: string, urlMap: Map<string, string>): string 
     return out;
 }
 
+function isImageMimeType(value: string): boolean {
+    return value.toLowerCase().startsWith("image/");
+}
+
+function isVideoMimeType(value: string): boolean {
+    return value.toLowerCase().startsWith("video/");
+}
+
+function isAudioMimeType(value: string): boolean {
+    return value.toLowerCase().startsWith("audio/");
+}
+
+function appendUrlParam(url: string, key: string, value: string): string {
+    if (!url) return url;
+    const hashIndex = url.indexOf("#");
+    const hash = hashIndex >= 0 ? url.slice(hashIndex) : "";
+    const base = hashIndex >= 0 ? url.slice(0, hashIndex) : url;
+    const hit = new RegExp(`(?:^|[?&])${key}=`).test(base);
+    if (hit) return `${base}${hash}`;
+    const sep = base.includes("?") ? "&" : "?";
+    return `${base}${sep}${key}=${encodeURIComponent(value)}${hash}`;
+}
+
+function findAttachmentMime(url: string, urlMimeMap: Map<string, string>): string | undefined {
+    const normalized = stripQueryHash(url.trim());
+    return urlMimeMap.get(normalized) || urlMimeMap.get(url.trim());
+}
+
+function rewriteMarkdownAttachmentRender(content: string, urlMimeMap: Map<string, string>): string {
+    if (!content || urlMimeMap.size === 0) return content;
+
+    let out = content.replace(/[\u200B-\u200D\uFEFF]/g, "");
+
+    out = out.replace(/<video\b[^>]*\bsrc=["']([^"']+)["'][^>]*>(?:<\/video>)?/gi, (match, rawSrc) => {
+        const src = rawSrc.trim();
+        const mime = findAttachmentMime(src, urlMimeMap);
+        if (!mime || !isVideoMimeType(mime)) return match;
+        return `@[video](${appendUrlParam(src, "inline", "1")})`;
+    });
+
+    out = out.replace(/<audio\b[^>]*\bsrc=["']([^"']+)["'][^>]*>(?:<\/audio>)?/gi, (match, rawSrc) => {
+        const src = rawSrc.trim();
+        const mime = findAttachmentMime(src, urlMimeMap);
+        if (!mime || !isAudioMimeType(mime)) return match;
+        return `[音频附件](${appendUrlParam(src, "download", "1")})`;
+    });
+
+    out = out.replace(/<iframe\b[^>]*\bsrc=["']([^"']+)["'][^>]*>(?:<\/iframe>)?/gi, (match, rawSrc) => {
+        const src = rawSrc.trim();
+        const mime = findAttachmentMime(src, urlMimeMap);
+        if (!mime) return match;
+        return `[嵌入内容](${src})`;
+    });
+
+    out = out.replace(/(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"([^"]*)")?\)/g, (match, bang, text, rawUrl, title) => {
+        const src = rawUrl.trim();
+        const mime = findAttachmentMime(src, urlMimeMap);
+        if (!mime) return match;
+
+        const label = (text || title || "附件").trim() || "附件";
+
+        if (bang === "!") {
+            if (isImageMimeType(mime)) return match;
+            if (isVideoMimeType(mime)) {
+                const escapedTitle = (text || title || "video").replace(/"/g, "\\\"");
+                return `@[video](${appendUrlParam(src, "inline", "1")} "${escapedTitle}")`;
+            }
+            if (isAudioMimeType(mime)) {
+                return `[🔊 ${label}](${appendUrlParam(src, "download", "1")})`;
+            }
+            return `[📎 ${label}](${appendUrlParam(src, "download", "1")})`;
+        }
+
+        if (!isImageMimeType(mime)) {
+            return `[${label}](${appendUrlParam(src, "download", "1")})`;
+        }
+        return match;
+    });
+
+    return out;
+}
+
 function mergeUnsupported(target: Record<string, number>, source: Record<string, number>): void {
     for (const [type, count] of Object.entries(source)) {
         target[type] = (target[type] || 0) + count;
@@ -436,6 +519,7 @@ export async function importSiyuanPackageFromZipFile(
     const physicalCache = new Map<string, PhysicalAsset>();
     const notePlans: NotePlan[] = [];
     const unsupportedNodes: Record<string, number> = {};
+    const targetContentFormat: "tiptap-json" | "markdown" = params.contentFormat === "markdown" ? "markdown" : "tiptap-json";
     let importedAssets = 0;
     let unresolvedAssets = 0;
 
@@ -448,6 +532,7 @@ export async function importSiyuanPackageFromZipFile(
             const noteId = uuid();
             const attachmentRows: AttachmentRow[] = [];
             const urlMap = new Map<string, string>();
+            const urlMimeMap = new Map<string, string>();
             const rowByEntryPath = new Map<string, AttachmentRow>();
             const refs = uniqueSorted([
                 ...converted.stats.images,
@@ -486,15 +571,21 @@ export async function importSiyuanPackageFromZipFile(
                     importedAssets++;
                 }
 
-                for (const alias of normalizeAssetRef(ref)) urlMap.set(alias, `/api/attachments/${row.id}`);
-                for (const alias of normalizeAssetRef(entryPath)) urlMap.set(alias, `/api/attachments/${row.id}`);
+                const attachmentUrl = `/api/attachments/${row.id}`;
+                urlMimeMap.set(attachmentUrl, row.mimeType || "application/octet-stream");
+                for (const alias of normalizeAssetRef(ref)) urlMap.set(alias, attachmentUrl);
+                for (const alias of normalizeAssetRef(entryPath)) urlMap.set(alias, attachmentUrl);
             }
 
             const markdown = converted.markdown || doc.title;
+            const rewritten = rewriteAssetRefs(markdown, urlMap);
+            const finalContent = targetContentFormat === "markdown"
+                ? rewriteMarkdownAttachmentRender(rewritten, urlMimeMap)
+                : rewritten;
             notePlans.push({
                 id: noteId,
                 title: converted.title || doc.title,
-                content: rewriteAssetRefs(markdown, urlMap),
+                content: finalContent,
                 contentText: converted.plainText,
                 notebookPath: buildSiyuanNotebookPath(doc.path, docById, boxNames),
                 updatedAt: converted.updatedAt || doc.updatedAt,
@@ -513,13 +604,13 @@ export async function importSiyuanPackageFromZipFile(
             "INSERT INTO notebooks (id, userId, parentId, name, icon, workspaceId) VALUES (?, ?, ?, ?, ?, ?)",
         );
         const insertNote = db.prepare(`
-      INSERT INTO notes (id, userId, notebookId, title, content, contentText, contentFormat, createdAt, updatedAt, workspaceId)
-      VALUES (?, ?, ?, ?, ?, ?, 'markdown', ?, ?, ?)
-    `);
+            INSERT INTO notes (id, userId, notebookId, title, content, contentText, contentFormat, createdAt, updatedAt, workspaceId)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
         const insertAttachment = db.prepare(`
-      INSERT INTO attachments (id, noteId, userId, filename, mimeType, size, path, workspaceId, hash, uploadSource)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'siyuan_import')
-    `);
+            INSERT INTO attachments (id, noteId, userId, filename, mimeType, size, path, workspaceId, hash, uploadSource)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'siyuan_import')
+        `);
 
         const getOrCreateNotebookByPath = (notebookPath: string[]): string => {
             if (params.targetNotebookId) return params.targetNotebookId;
@@ -568,6 +659,7 @@ export async function importSiyuanPackageFromZipFile(
                     note.title,
                     note.content,
                     note.contentText,
+                    targetContentFormat,
                     createdAt,
                     updatedAt,
                     params.workspaceId,

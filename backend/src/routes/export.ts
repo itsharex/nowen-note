@@ -458,6 +458,7 @@ app.post("/import/siyuan-package", async (c) => {
   const targetWs: string | null =
     !wsRaw || wsRaw.trim() === "" || wsRaw.trim() === "personal" ? null : wsRaw.trim();
   const targetNotebookId = (c.req.query("targetNotebookId") || "").trim() || undefined;
+  const contentFormat = normalizeImportedContentFormat(c.req.query("contentFormat"));
 
   const denied = denyIfPersonalFeatureDisabled(
     userId,
@@ -494,6 +495,7 @@ app.post("/import/siyuan-package", async (c) => {
       userId,
       workspaceId: targetWs,
       targetNotebookId,
+      contentFormat,
     });
 
     broadcastToUser(userId, {

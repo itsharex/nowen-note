@@ -382,6 +382,7 @@ export default function DataManager() {
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [serverSiyuanFile, setServerSiyuanFile] = useState<File | null>(null);
+  const [siyuanImportContentFormat, setSiyuanImportContentFormat] = useState<"tiptap-json" | "markdown">("tiptap-json");
   const [activeImportMethod, setActiveImportMethod] = useState<ImportMethod>("siyuan");
   const [activeMobileMemoMethod, setActiveMobileMemoMethod] = useState<MobileMemoMethod>("xiaomi");
   // 记录"上一次导入实际落到的 workspaceId"和导入数量。
@@ -656,6 +657,7 @@ export default function DataManager() {
             const imported = await api.importSiyuanPackage(serverSiyuanFile, {
               targetNotebookId: safeNotebookId || undefined,
               workspaceId: effectiveWorkspaceId,
+              contentFormat: siyuanImportContentFormat,
             });
             setImportProgress({
               phase: "done",
@@ -1237,6 +1239,42 @@ export default function DataManager() {
                       <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">
                         {t('dataManager.siyuanImportPanelHint')}
                       </p>
+                    )}
+                    {activeImportMethod === "siyuan" && (
+                      <div className="mt-3">
+                        <p className="text-xs font-medium text-zinc-600 dark:text-zinc-300 mb-1.5">
+                          {t('dataManager.siyuanImportFormatLabel')}
+                        </p>
+                        <div className="inline-flex rounded-lg border border-zinc-200 dark:border-zinc-700 overflow-hidden">
+                          <button
+                            type="button"
+                            onClick={() => setSiyuanImportContentFormat("tiptap-json")}
+                            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                              siyuanImportContentFormat === "tiptap-json"
+                                ? "bg-emerald-600 text-white"
+                                : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                            }`}
+                          >
+                            {t('dataManager.siyuanImportFormatRichText')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSiyuanImportContentFormat("markdown")}
+                            className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-zinc-200 dark:border-zinc-700 ${
+                              siyuanImportContentFormat === "markdown"
+                                ? "bg-emerald-600 text-white"
+                                : "bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                            }`}
+                          >
+                            {t('dataManager.siyuanImportFormatMarkdown')}
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1.5">
+                          {siyuanImportContentFormat === "tiptap-json"
+                            ? t('dataManager.siyuanImportFormatRichTextHint')
+                            : t('dataManager.siyuanImportFormatMarkdownHint')}
+                        </p>
+                      </div>
                     )}
                   </div>
                 </div>

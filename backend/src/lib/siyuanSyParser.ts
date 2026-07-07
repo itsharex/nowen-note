@@ -392,18 +392,18 @@ function renderMedia(node: SiyuanNode, ctx: RenderContext): string {
     addUnsupported(ctx, node.Type);
     if (src) ctx.attachments.add(src);
     if (node.Type === "NodeIFrame") {
-        return src ? `<iframe src="${escapeAttr(src)}"></iframe>` : "";
+        return src ? `[嵌入内容](${src})` : "";
     }
     if (node.Type === "NodeVideo") {
-        return src ? `<video controls playsinline preload="metadata" src="${escapeAttr(src)}"></video>` : "<video controls></video>";
+        return src ? `@[video](${src})` : "";
     }
     if (node.Type === "NodeAudio") {
-        return src ? `<audio controls src="${escapeAttr(src)}"></audio>` : "<audio controls></audio>";
+        return src ? `[音频](${src})` : "";
     }
     if (node.Type === "NodeWidget") {
-        return src ? `<iframe src="${escapeAttr(src)}"></iframe>` : raw;
+        return src ? `[挂件内容](${src})` : raw;
     }
-    return src;
+    return src ? `[附件](${src})` : "";
 }
 
 function renderCallout(node: SiyuanNode, ctx: RenderContext): string {
