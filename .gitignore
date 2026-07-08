@@ -37,6 +37,7 @@ bt-detail.json
 bt-pkgs.json
 node-procs.txt
 vs-list.json
+*.err
 
 # 鸿蒙构建产物
 nowen-harmony/.hvigor/
