@@ -14,6 +14,8 @@ import { AnimatePresence, motion } from "framer-motion";import StarterKit from "
 import Placeholder from "@tiptap/extension-placeholder";
 import Image from "@tiptap/extension-image";
 import ResizableImageView from "./ResizableImageView";
+import ImageEditDialog from "@/components/image-editor/ImageEditDialog";
+import { editedImageBlobToFile, isSvgImageSource } from "@/components/image-editor/imageEditService";
 import { TableGridPicker, TableResizeDialog } from "./TableGridPicker";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import Underline from "@tiptap/extension-underline";
@@ -1545,6 +1547,12 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
   });
   const [imageSizeMenuOpen, setImageSizeMenuOpen] = useState(false);
   const [replacingImage, setReplacingImage] = useState(false);
+  const [imageEditDialog, setImageEditDialog] = useState<{
+    open: boolean;
+    src: string;
+    filename: string;
+    imagePos: number;
+  } | null>(null);
   // 光标在表格内时的表格操作气泡（合并/拆分/增删行列等）
   // 与文本/图片气泡互斥：选中图片或选中非空文本时不显示表格气泡
   const [tableBubble, setTableBubble] = useState<{ open: boolean; top: number; left: number; cellText: string }>({
@@ -3108,8 +3116,54 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
   }, [editor]);
 
   const handleEditSelectedImage = useCallback(() => {
-    toast.info(t("tiptap.imageEditComingSoon", { defaultValue: "图片编辑将在下一阶段支持" }));
-  }, [t]);
+    if (!editor) return;
+    const currentNote = noteRef.current;
+    if (!currentNote?.id) {
+      toast.error(t("tiptap.imageEditOpenFailed", { defaultValue: "无法编辑图片" }));
+      return;
+    }
+    const attrs = getSelectedImageAttrs();
+    const src = typeof attrs?.src === "string" ? attrs.src : "";
+    if (!src) return;
+    if (isSvgImageSource(src)) {
+      toast.info(t("tiptap.imageEditSvgUnsupported", { defaultValue: "SVG 暂不支持编辑" }));
+      return;
+    }
+    setImageEditDialog({
+      open: true,
+      src: resolveAttachmentUrl(src),
+      filename: getImageDownloadFilename(attrs ?? {}),
+      imagePos: editor.state.selection.from,
+    });
+    setImageBubble((b) => (b.open ? { ...b, open: false } : b));
+  }, [editor, getSelectedImageAttrs, t]);
+
+  const handleSaveEditedImage = useCallback(async (blob: Blob) => {
+    if (!editor || !imageEditDialog) return;
+    const currentNote = noteRef.current;
+    if (!currentNote?.id) {
+      toast.error(t("tiptap.imageEditSaveFailed", { defaultValue: "图片保存失败" }));
+      throw new Error("missing note id");
+    }
+    toast.info(t("tiptap.imageEditUploading", { defaultValue: "正在保存编辑后的图片..." }));
+    const file = editedImageBlobToFile(blob, imageEditDialog.filename);
+    const res = await api.attachments.upload(currentNote.id, file);
+    if (res.category !== "image") {
+      throw new Error("uploaded file is not an image");
+    }
+    const targetNode = editor.state.doc.nodeAt(imageEditDialog.imagePos);
+    if (!isImageReplaceTargetNode(targetNode)) {
+      toast.error(t("tiptap.imageReplaceTargetChanged", { defaultValue: "原图片位置已变化，请重新选择图片后替换" }));
+      return;
+    }
+    editor
+      .chain()
+      .focus()
+      .setNodeSelection(imageEditDialog.imagePos)
+      .updateAttributes("image", buildReplacedImageAttrs(targetNode.attrs as ImageNodeAttrs, res.url))
+      .run();
+    toast.success(t("tiptap.imageEditSaveSuccess", { defaultValue: "图片已保存" }));
+  }, [editor, imageEditDialog, t]);
 
   const handleSetSelectedImageSize = useCallback((ratio: number | null) => {
     if (!editor) return;
@@ -5278,6 +5332,16 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
           query={noteLinkMenu.query}
           onSelect={handleNoteLinkSelect}
           onClose={() => setNoteLinkMenu(prev => ({ ...prev, open: false }))}
+        />
+      )}
+
+      {imageEditDialog?.open && (
+        <ImageEditDialog
+          open={imageEditDialog.open}
+          src={imageEditDialog.src}
+          filename={imageEditDialog.filename}
+          onClose={() => setImageEditDialog(null)}
+          onSave={handleSaveEditedImage}
         />
       )}
 
