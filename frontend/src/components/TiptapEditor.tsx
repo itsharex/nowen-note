@@ -92,6 +92,7 @@ import { Video as VideoExtension, createVideoFileAttrs } from "@/components/Vide
 import { serializeProseMirrorPlainText } from "@/lib/proseMirrorPlainText";
 import {
   insertPlainTextPreservingParagraphs,
+  insertCodeBlockNewline,
   isAllowedRemoteImageUrl,
   normalizeAdjacentLists,
   toggleBulletListSmart,
@@ -860,6 +861,11 @@ function createKeyboardExtension(flushSaveRef: React.MutableRefObject<() => void
         return true;
       };
 
+      const handleEnterInCodeBlock = () => {
+        if (!isInCodeBlock()) return false;
+        return insertCodeBlockNewline(editor.view);
+      };
+
       const handleTab = (delta: 1 | -1) => {
         // 表格：交给 tiptap-table 默认的 goToNextCell/goToPreviousCell
         if (isInTable()) return false;
@@ -959,8 +965,8 @@ function createKeyboardExtension(flushSaveRef: React.MutableRefObject<() => void
         },
         Tab: () => handleTab(1),
         "Shift-Tab": () => handleTab(-1),
-        "Shift-Enter": () => handleEnterOnImage(true),
-        Enter: () => handleEnterOnImage(false) || handleEnterInListItem(),
+        "Shift-Enter": () => handleEnterOnImage(true) || handleEnterInCodeBlock(),
+        Enter: () => handleEnterOnImage(false) || handleEnterInCodeBlock() || handleEnterInListItem(),
         "Mod-s": () => {
           flushSaveRef.current?.();
           return true; // 返回 true 阻止浏览器默认的"保存网页"对话框

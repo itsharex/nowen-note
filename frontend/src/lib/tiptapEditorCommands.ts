@@ -70,6 +70,18 @@ export function replaceCodeBlockWithPlainText(
   return true;
 }
 
+export function insertCodeBlockNewline(view: EditorView): boolean {
+  const { state } = view;
+  const { selection } = state;
+  if (selection.$from.parent.type.name !== "codeBlock") return false;
+  if (selection.$to.parent.type.name !== "codeBlock") return false;
+
+  const tr = state.tr.insertText("\n", selection.from, selection.to);
+  view.dispatch(tr.scrollIntoView());
+  view.focus();
+  return true;
+}
+
 export function isAllowedRemoteImageUrl(raw: string): boolean {
   try {
     const url = new URL(raw.trim());

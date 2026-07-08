@@ -1,9 +1,11 @@
 import { Schema } from "@tiptap/pm/model";
+import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { describe, expect, it } from "vitest";
 import {
   createPlainTextParagraphNodes,
   createPlainTextParagraphContainer,
   findAdjacentListJoinPositions,
+  insertCodeBlockNewline,
   isAllowedRemoteImageUrl,
 } from "@/lib/tiptapEditorCommands";
 
@@ -53,6 +55,25 @@ const p = (text: string) =>
 const li = (text: string) => listSchema.node("listItem", null, p(text));
 const ol = (...items: string[]) => listSchema.node("orderedList", null, items.map(li));
 const ul = (...items: string[]) => listSchema.node("bulletList", null, items.map(li));
+const code = (text: string) =>
+  text ? listSchema.node("codeBlock", null, listSchema.text(text)) : listSchema.node("codeBlock");
+
+function createTestView(doc: any, selectionPos: number, selectionTo = selectionPos) {
+  let state = EditorState.create({
+    schema: listSchema,
+    doc,
+    selection: TextSelection.create(doc, selectionPos, selectionTo),
+  });
+  return {
+    get state() {
+      return state;
+    },
+    dispatch(tr: any) {
+      state = state.apply(tr);
+    },
+    focus() {},
+  };
+}
 
 describe("createPlainTextParagraphContainer", () => {
   it("turns CRLF multiline text into real paragraph elements", () => {
@@ -91,6 +112,30 @@ describe("createPlainTextParagraphNodes", () => {
     const nodes = createPlainTextParagraphNodes(listSchema, "first\r\nsecond\rthird");
 
     expect(nodes.map((node) => node.textContent)).toEqual(["first", "second", "third"]);
+  });
+});
+
+describe("insertCodeBlockNewline", () => {
+  it("inserts a real newline inside the current code block", () => {
+    const view = createTestView(listSchema.node("doc", null, [code("abc")]), 3);
+
+    expect(insertCodeBlockNewline(view as any)).toBe(true);
+    expect(view.state.doc.child(0).textContent).toBe("ab\nc");
+    expect(view.state.doc.child(0).type.name).toBe("codeBlock");
+  });
+
+  it("replaces selected code text with a newline", () => {
+    const view = createTestView(listSchema.node("doc", null, [code("abcd")]), 2, 4);
+
+    expect(insertCodeBlockNewline(view as any)).toBe(true);
+    expect(view.state.doc.child(0).textContent).toBe("a\nd");
+  });
+
+  it("does not handle Enter outside code blocks", () => {
+    const view = createTestView(listSchema.node("doc", null, [p("abc")]), 2);
+
+    expect(insertCodeBlockNewline(view as any)).toBe(false);
+    expect(view.state.doc.child(0).textContent).toBe("abc");
   });
 });
 
