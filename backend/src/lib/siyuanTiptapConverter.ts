@@ -313,6 +313,41 @@ function renderBlockquote(node: SiyuanNode, options: SiyuanTiptapConvertOptions)
     return [{ type: "blockquote", content: content.length > 0 ? content : [{ type: "paragraph" }] }];
 }
 
+function flattenTableRows(node: SiyuanNode): SiyuanNode[] {
+    const rows: SiyuanNode[] = [];
+    const visit = (current: SiyuanNode) => {
+        if (current.Type === "NodeTableRow") {
+            rows.push(current);
+            return;
+        }
+        for (const child of current.Children || []) visit(child);
+    };
+    visit(node);
+    return rows;
+}
+
+function renderTableCell(node: SiyuanNode, options: SiyuanTiptapConvertOptions, type: "tableHeader" | "tableCell"): TiptapJsonNode {
+    const content = renderBlocks(node.Children || [], options);
+    return {
+        type,
+        content: content.length > 0 ? content : [{ type: "paragraph" }],
+    };
+}
+
+function renderTable(node: SiyuanNode, options: SiyuanTiptapConvertOptions): TiptapJsonNode[] {
+    const rows: TiptapJsonNode[] = [];
+    for (const [rowIndex, row] of flattenTableRows(node).entries()) {
+        const cells = (row.Children || []).filter((cell) => cell.Type === "NodeTableCell");
+        if (cells.length === 0) continue;
+        const cellType = rowIndex === 0 ? "tableHeader" : "tableCell";
+        rows.push({
+            type: "tableRow",
+            content: cells.map((cell) => renderTableCell(cell, options, cellType)),
+        });
+    }
+    return rows.length > 0 ? [{ type: "table", content: rows }] : [];
+}
+
 function renderPlainText(node: SiyuanNode | undefined): string {
     if (!node) return "";
     const data = getString(node, ["Data", "Text", "text", "Tokens", "HTML", "html"]);
@@ -364,6 +399,8 @@ function renderBlock(node: SiyuanNode, options: SiyuanTiptapConvertOptions): Tip
             return renderCodeBlock(node);
         case "NodeThematicBreak":
             return [{ type: "horizontalRule" }];
+        case "NodeTable":
+            return renderTable(node, options);
         case "NodeImage":
             return renderImage(node, options);
         case "NodeVideo":

@@ -104,6 +104,19 @@ function video(src: string) {
   return { Type: "NodeVideo", Data: `<video src="${src}"></video>` };
 }
 
+function table(rows: any[][]) {
+  return {
+    Type: "NodeTable",
+    Children: rows.map((cells) => ({
+      Type: "NodeTableRow",
+      Children: cells.map((cell) => ({
+        Type: "NodeTableCell",
+        Children: [paragraph(Array.isArray(cell) ? cell : [text(String(cell))])],
+      })),
+    })),
+  };
+}
+
 async function writeZip(name: string, files: Record<string, string | Uint8Array>) {
   const zip = new JSZip();
   for (const [filePath, content] of Object.entries(files)) {
@@ -276,4 +289,52 @@ test("Rich Text import builds P0 Tiptap nodes and marks from Siyuan AST", async 
     .prepare("SELECT COUNT(*) AS count FROM attachment_references WHERE noteId = ?")
     .get(note.id) as { count: number };
   assert.equal(referenceCount.count, 2);
+});
+
+test("Rich Text import converts Siyuan tables to supported Tiptap table nodes", async () => {
+  const zipPath = await writeZip("table-fidelity.zip", {
+    "table.sy": JSON.stringify(syDoc("table-doc", "表格保真", [
+      table([
+        ["姓名", "状态"],
+        [[text("张三")], [textMark("strong", "完成")]],
+        ["李四", "待办"],
+      ]),
+    ])),
+  });
+
+  const result = await importSiyuanPackageFromZipFile(zipPath, {
+    userId: USER_ID,
+    workspaceId: WORKSPACE_ID,
+    targetNotebookId: TARGET_NOTEBOOK_ID,
+    contentFormat: "tiptap-json",
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.stats.importedAssets, 0);
+  assert.equal(result.stats.unresolvedAssets, 0);
+
+  const note = getNoteByTitle("表格保真");
+  assert.ok(note);
+  assert.equal(note.contentFormat, "tiptap-json");
+
+  const parsed = JSON.parse(note.content) as TiptapNode;
+  assert.equal(parsed.type, "doc");
+  const tableNode = parsed.content?.find((node) => node.type === "table");
+  assert.ok(tableNode);
+  assert.deepEqual(tableNode.content?.map((node) => node.type), ["tableRow", "tableRow", "tableRow"]);
+
+  const headerRow = tableNode.content![0];
+  assert.deepEqual(headerRow.content?.map((node) => node.type), ["tableHeader", "tableHeader"]);
+  assert.equal(headerRow.content?.[0].content?.[0].content?.[0].text, "姓名");
+  assert.equal(headerRow.content?.[1].content?.[0].content?.[0].text, "状态");
+
+  const bodyRow = tableNode.content![1];
+  assert.deepEqual(bodyRow.content?.map((node) => node.type), ["tableCell", "tableCell"]);
+  assert.equal(bodyRow.content?.[0].content?.[0].content?.[0].text, "张三");
+  assert.ok(
+    bodyRow.content?.[1].content?.[0].content?.[0].marks?.some((mark) => mark.type === "bold"),
+  );
+
+  assert.equal(tableNode.content![2].content?.[1].content?.[0].content?.[0].text, "待办");
+  assert.ok(!flattenNodes(parsed).some((node) => node.type === "paragraph" && node.text?.includes("|")));
 });
