@@ -226,7 +226,7 @@ export async function cacheNoteContent(note: Note): Promise<void> {
     return;
   }
   try {
-    await putNote(note);
+    await putNote({ ...note, __detailCached: true });
   } catch (error) {
     console.warn("[syncEngine] cacheNoteContent failed:", error);
   }
