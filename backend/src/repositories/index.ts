@@ -1,3 +1,5 @@
+import "./noteWriteSafety";
+
 /**
  * Repositories 统一导出
  *
