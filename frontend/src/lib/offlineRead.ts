@@ -7,15 +7,13 @@ import {
 } from "@/lib/localStore";
 import type { Note, NoteListItem, Notebook, Tag } from "@/types";
 
-/**
- * A detail returned from IndexedDB is usable for offline reading, but it must never be
- * mistaken for a server-confirmed base revision when the client starts writing again.
- */
 export interface OfflineNoteSnapshot {
   noteId: string;
   version: number;
   updatedAt?: string;
   capturedAt: number;
+  /** Fingerprint of the cached base body, not of later editor changes. */
+  contentFingerprint?: string;
 }
 
 export const OFFLINE_NOTE_SNAPSHOT_EVENT = "nowen:offline-note-snapshot";
@@ -23,6 +21,18 @@ export const OFFLINE_NOTE_SNAPSHOT_EVENT = "nowen:offline-note-snapshot";
 let offlineHit = false;
 const offlineListeners = new Set<(value: boolean) => void>();
 const offlineNoteSnapshots = new Map<string, OfflineNoteSnapshot>();
+
+export function fingerprintNoteContent(content: unknown): string | undefined {
+  if (typeof content !== "string") return undefined;
+  // FNV-1a over UTF-16 code units. This is not a security hash; it is a compact stale-base
+  // detector combined with length and version checks.
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < content.length; index += 1) {
+    hash ^= content.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `${content.length}:${hash.toString(16).padStart(8, "0")}`;
+}
 
 function setOffline(value: boolean): void {
   if (offlineHit === value) return;
@@ -32,12 +42,15 @@ function setOffline(value: boolean): void {
   });
 }
 
-export function markOfflineNoteSnapshot(note: Pick<Note, "id" | "version" | "updatedAt">): void {
+export function markOfflineNoteSnapshot(
+  note: Pick<Note, "id" | "version"> & { updatedAt?: string; content?: string },
+): void {
   const snapshot: OfflineNoteSnapshot = {
     noteId: note.id,
     version: Number.isFinite(note.version) ? note.version : 0,
     updatedAt: note.updatedAt,
     capturedAt: Date.now(),
+    contentFingerprint: fingerprintNoteContent(note.content),
   };
   offlineNoteSnapshots.set(note.id, snapshot);
   if (typeof window !== "undefined") {
@@ -58,8 +71,6 @@ export function isOfflineNoteSnapshot(noteId: string): boolean {
 }
 
 if (typeof window !== "undefined") {
-  // Going online only means that a transport may be available. Per-note stale markers are
-  // cleared only after that note has been fetched successfully from the server.
   window.addEventListener("online", () => setOffline(false));
 }
 
@@ -133,8 +144,6 @@ export function readNote(id: string, online: () => Promise<Note>): Promise<Note>
     async () => {
       const note = await localGetNote(id);
       if (!note) throw new Error("笔记不在本地缓存中");
-      // Empty string is a valid document. Missing/non-string content means the detail body
-      // was never cached and must not be synthesized as an empty note.
       if (typeof note.content !== "string") {
         throw new Error("该笔记的正文未缓存，离线时无法打开");
       }
