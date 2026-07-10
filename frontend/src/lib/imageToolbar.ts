@@ -1,9 +1,13 @@
+import type { ImageRotation } from "@/lib/imageNodeTransformBootstrap";
+
 export interface ImageNodeAttrs {
   src?: string | null;
   alt?: string | null;
   title?: string | null;
   width?: number | string | null;
   height?: number | string | null;
+  rotation?: ImageRotation | number | string | null;
+  flipX?: boolean | number | string | null;
 }
 
 export interface ImageToolbarRect {
@@ -26,6 +30,8 @@ export function buildReplacedImageAttrs(current: ImageNodeAttrs, nextSrc: string
     title: current.title ?? null,
     width: current.width ?? null,
     height: current.height ?? null,
+    rotation: current.rotation ?? 0,
+    flipX: current.flipX ?? false,
   };
 }
 
