@@ -2,14 +2,17 @@ import { describe, expect, it } from "vitest";
 import { generateHTML, generateJSON } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
+import TurndownService from "turndown";
 import {
   getPersistentImageTransform,
+  installImageTransformTurndownGuard,
   installPersistentImageTransformAttributes,
   normalizeImageFlipX,
   normalizeImageRotation,
 } from "@/lib/imageNodeTransformBootstrap";
 
 installPersistentImageTransformAttributes();
+installImageTransformTurndownGuard();
 
 const ImageWithEditorWidths = Image.extend({
   addAttributes() {
@@ -65,5 +68,15 @@ describe("persistent image transform attributes", () => {
     expect(parsed.content[0].attrs.width).toBe(320);
     expect(parsed.content[0].attrs.rotation).toBe(270);
     expect(parsed.content[0].attrs.flipX).toBe(true);
+  });
+
+  it("preserves transformed images as raw HTML when exporting Markdown", () => {
+    const td = new TurndownService();
+    const markdown = td.turndown(
+      '<p>before</p><img src="/a.png" width="320" data-image-rotation="90" data-image-flip-x="true" style="transform:rotate(90deg) scaleX(-1);transform-origin:center center;"><p>after</p>',
+    );
+    expect(markdown).toContain('<img src="/a.png"');
+    expect(markdown).toContain('data-image-rotation="90"');
+    expect(markdown).toContain('data-image-flip-x="true"');
   });
 });
