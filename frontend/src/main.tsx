@@ -10,6 +10,7 @@ import AIProfileSwitcherBridge from "./components/AIProfileSwitcherBridge";
 import MarkdownExperienceBridge from "./components/MarkdownExperienceBridge";
 import ImageExperienceBridge from "./components/ImageExperienceBridge";
 import EditorImageTransformBridge from "./components/EditorImageTransformBridge";
+import DesktopUpdateCenter from "./components/DesktopUpdateCenter";
 import "./index.css";
 import "./overlay-layers.css";
 import { initCodeBlockTheme } from "./lib/codeBlockTheme";
@@ -70,6 +71,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <MarkdownExperienceBridge />
     <ImageExperienceBridge />
     <EditorImageTransformBridge />
+    <DesktopUpdateCenter />
     <App />
   </React.StrictMode>
 );
