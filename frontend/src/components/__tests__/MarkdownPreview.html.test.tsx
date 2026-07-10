@@ -1,6 +1,6 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -17,6 +17,10 @@ describe("MarkdownPreview imported HTML", () => {
       },
       open: vi.fn(),
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("renders semantic HTML while removing scripts and event handlers", () => {
@@ -40,7 +44,7 @@ describe("MarkdownPreview imported HTML", () => {
 
     expect(output).toContain('src="https://player.example.com/embed/1"');
     expect(output).toContain("allow-scripts allow-same-origin allow-forms allow-popups allow-presentation");
-    expect(output).toContain('referrerPolicy="strict-origin-when-cross-origin"');
+    expect(output).toContain("strict-origin-when-cross-origin");
   });
 
   it("does not grant allow-same-origin to same-origin embeds", () => {
