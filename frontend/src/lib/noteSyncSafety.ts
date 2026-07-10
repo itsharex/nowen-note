@@ -75,11 +75,16 @@ export function recordNoteSyncConflict(record: NoteSyncConflictRecord): void {
     records.unshift(record);
     localStorage.setItem(CONFLICT_STORAGE_KEY, JSON.stringify(records.slice(0, MAX_CONFLICTS)));
   } catch {
-    // The full local edit is also kept in draftStorage. Conflict metadata is best effort.
+    // The complete local edit remains in draftStorage even if conflict metadata hits quota.
   }
 }
 
-function persistLocalDraft(noteId: string, data: NoteMutation, baseVersion: number): void {
+function persistLocalDraft(
+  noteId: string,
+  data: NoteMutation,
+  baseVersion: number,
+  conflict?: { serverVersion?: number },
+): void {
   if (typeof data.content !== "string") return;
   saveDraft({
     noteId,
@@ -89,6 +94,8 @@ function persistLocalDraft(noteId: string, data: NoteMutation, baseVersion: numb
     title: typeof data.title === "string" ? data.title : "",
     baseVersion,
     savedAt: Date.now(),
+    conflicted: conflict ? true : undefined,
+    serverVersion: conflict?.serverVersion,
   });
 }
 
@@ -104,10 +111,7 @@ function syncError(code: string, message: string, status?: number): Error {
   return error;
 }
 
-function dispatchConflict(
-  record: NoteSyncConflictRecord,
-  localPayload: NoteMutation,
-): void {
+function dispatchConflict(record: NoteSyncConflictRecord, localPayload: NoteMutation): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(OFFLINE_QUEUE_CONFLICT_EVENT, {
     detail: {
@@ -157,8 +161,8 @@ function preserveConflict(
   server: Partial<Note> | null,
   reason: NoteSyncConflictRecord["reason"],
 ): NoteSyncConflictRecord {
-  persistLocalDraft(noteId, data, baseVersion);
   const record = buildConflictRecord(noteId, data, baseVersion, server, reason);
+  persistLocalDraft(noteId, data, baseVersion, { serverVersion: record.serverVersion });
   recordNoteSyncConflict(record);
   dispatchConflict(record, data);
   return record;
@@ -184,10 +188,7 @@ export function installNoteSyncSafety(): void {
 
   (api as any).getNote = async (noteId: string): Promise<Note> => {
     const note = await originalGetNote(noteId);
-    // offlineRead marks fallback results. Clear only when this call genuinely ended online.
-    if (!isCurrentlyOffline() && !isOfflineNoteSnapshot(noteId)) {
-      clearOfflineNoteSnapshot(noteId);
-    }
+    if (!isCurrentlyOffline()) clearOfflineNoteSnapshot(noteId);
     return note;
   };
 
@@ -205,14 +206,11 @@ export function installNoteSyncSafety(): void {
 
     if (versioned) persistLocalDraft(noteId, data, baseVersion);
 
-    // The note was opened from an offline cache. Once transport is available, validate the
-    // base revision before sending anything. A failed validation is not equivalent to an
-    // empty server note and must not fall through to PUT.
     if (versioned && isOfflineNoteSnapshot(noteId) && !isCurrentlyOffline()) {
       let fresh: Note;
       try {
         fresh = await originalGetNote(noteId);
-      } catch (error) {
+      } catch {
         preserveConflict(noteId, data, baseVersion, null, "REMOTE_BASE_UNVERIFIED");
         throw syncError(
           "REMOTE_BASE_UNVERIFIED",
@@ -220,7 +218,7 @@ export function installNoteSyncSafety(): void {
         );
       }
 
-      if (isCurrentlyOffline() || isOfflineNoteSnapshot(noteId)) {
+      if (isCurrentlyOffline()) {
         preserveConflict(noteId, data, baseVersion, fresh, "REMOTE_BASE_UNVERIFIED");
         throw syncError(
           "REMOTE_BASE_UNVERIFIED",
@@ -228,22 +226,19 @@ export function installNoteSyncSafety(): void {
         );
       }
 
+      clearOfflineNoteSnapshot(noteId);
       if (fresh.version !== baseVersion) {
         preserveConflict(noteId, data, baseVersion, fresh, "STALE_OFFLINE_BASE");
         const error = syncError("VERSION_CONFLICT", "Version conflict", 409) as any;
         error.currentVersion = fresh.version;
         throw error;
       }
-      clearOfflineNoteSnapshot(noteId);
     }
 
     try {
       const updated = await originalUpdateNote(noteId, data as Partial<Note>);
 
       if (versioned && !isServerConfirmedNoteWrite(baseVersion, updated?.version)) {
-        // api.ts intentionally resolves queued offline mutations with an optimistic object.
-        // Treat it as pending rather than saved, keep the draft and mark the cached detail
-        // stale so a later write must revalidate against the server.
         persistLocalDraft(noteId, data, baseVersion);
         markOfflineNoteSnapshot({
           id: noteId,
@@ -268,8 +263,9 @@ export function installNoteSyncSafety(): void {
         let server: Note | null = null;
         try {
           server = await originalGetNote(noteId);
+          if (!isCurrentlyOffline()) clearOfflineNoteSnapshot(noteId);
         } catch {
-          // The server version from the 409 is still enough to stop the write safely.
+          // The version from the 409 is enough to stop the write safely.
         }
         const record = preserveConflict(noteId, data, baseVersion, server, "VERSION_CONFLICT");
         if (typeof error.currentVersion !== "number" && typeof record.serverVersion === "number") {
