@@ -6,6 +6,7 @@ import App from "./App";
 import NoteIconBridge from "./components/NoteIconBridge";
 import AIProfileSwitcherBridge from "./components/AIProfileSwitcherBridge";
 import MarkdownExperienceBridge from "./components/MarkdownExperienceBridge";
+import ImageExperienceBridge from "./components/ImageExperienceBridge";
 import "./index.css";
 import "./overlay-layers.css";
 import { initCodeBlockTheme } from "./lib/codeBlockTheme";
@@ -62,6 +63,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <NoteIconBridge />
     <AIProfileSwitcherBridge />
     <MarkdownExperienceBridge />
+    <ImageExperienceBridge />
     <App />
   </React.StrictMode>
 );
