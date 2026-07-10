@@ -10,7 +10,7 @@ import { remarkSiyuanCallouts, type SiyuanCalloutType } from "@/lib/markdownCall
 import { headingDataAttrs } from "@/lib/markdownPreviewOutline";
 import { preprocessMarkdownVideos } from "@/lib/markdownVideoSyntax";
 import { MarkdownVideoPreview } from "@/components/MarkdownVideoPreview";
-import { MarkdownPreview as LegacyMarkdownPreview } from "@/components/MarkdownPreviewLegacy";
+import { MarkdownCodeBlock, isMarkdownBlockCode } from "@/components/MarkdownCodeBlock";
 
 interface MarkdownPreviewProps {
   markdown: string;
@@ -22,9 +22,6 @@ interface MarkdownPreviewProps {
 
 const RAW_HTML_RE = /<\/?[a-z][^>]*>/i;
 
-// Start from GitHub's conservative HTML schema and add only presentation-oriented
-// elements used by SiYuan exports. Scripts, styles, forms, event handlers and unsafe
-// URL protocols remain forbidden.
 const safeHtmlSchema = {
   ...defaultSchema,
   tagNames: Array.from(new Set([
@@ -48,6 +45,10 @@ const safeHtmlSchema = {
     audio: ["src", "controls", "preload"],
     source: ["src", "type"],
     details: ["open"],
+    ul: ["className"],
+    li: ["className"],
+    input: ["type", "checked", "disabled"],
+    code: ["className"],
   },
   protocols: {
     ...(defaultSchema.protocols || {}),
@@ -78,9 +79,6 @@ function PreviewIframe({ src, title }: { src?: string; title?: string }) {
     );
   }
 
-  // `allow-same-origin` is useful for third-party players, but is deliberately omitted
-  // for same-origin content so an imported document cannot combine it with scripts to
-  // escape the iframe sandbox and reach Nowen's authenticated page context.
   const sandbox = resolved.sameOrigin
     ? "allow-scripts allow-forms allow-popups allow-presentation"
     : "allow-scripts allow-same-origin allow-forms allow-popups allow-presentation";
@@ -153,11 +151,11 @@ function CalloutBlockquote({ node, children }: { node?: any; children?: React.Re
   const title = node?.properties?.["data-callout-title"] as string | undefined;
   const style = type ? calloutStyles[type] : undefined;
   if (!type || !title || !style) {
-    return <blockquote className="my-4 rounded-r-lg border-l-4 border-accent-primary/40 bg-app-hover/40 px-4 py-2 italic text-tx-secondary">{children}</blockquote>;
+    return <blockquote {...headingDataAttrs(node)} className="my-4 rounded-r-lg border-l-4 border-accent-primary/40 bg-app-hover/40 px-4 py-2 italic text-tx-secondary">{children}</blockquote>;
   }
   const Icon = style.icon;
   return (
-    <blockquote className={cn("my-4 rounded-r-lg border-l-4 px-4 py-3", style.className)}>
+    <blockquote {...headingDataAttrs(node)} className={cn("my-4 rounded-r-lg border-l-4 px-4 py-3", style.className)}>
       <div className="flex items-center gap-2 text-sm font-semibold"><Icon size={16} className="shrink-0" /><span>{title}</span></div>
       <div className="mt-2 text-tx-primary [&>p:first-child]:mt-0 [&>p:last-child]:mb-0">{children}</div>
     </blockquote>
@@ -172,10 +170,40 @@ function createComponents(onTaskCheckboxChange?: (taskIndex: number, checked: bo
     h4: ({ node, children }) => <h4 {...headingDataAttrs(node)} className="mb-2 mt-4 text-lg font-semibold text-tx-primary">{children}</h4>,
     h5: ({ node, children }) => <h5 {...headingDataAttrs(node)} className="mb-1.5 mt-3 text-base font-semibold text-tx-primary">{children}</h5>,
     h6: ({ node, children }) => <h6 {...headingDataAttrs(node)} className="mb-1.5 mt-3 text-sm font-semibold text-tx-secondary">{children}</h6>,
-    p: ({ children }) => <p className="my-3 leading-7 text-tx-primary">{children}</p>,
-    ul: ({ children }) => <ul className="my-3 list-disc space-y-1 pl-6 text-tx-primary">{children}</ul>,
-    ol: ({ children }) => <ol className="my-3 list-decimal space-y-1 pl-6 text-tx-primary">{children}</ol>,
-    li: ({ children }) => <li className="pl-1 leading-7">{children}</li>,
+    p: ({ node, children }) => <p {...headingDataAttrs(node)} className="my-3 leading-7 text-tx-primary">{children}</p>,
+    ul: ({ node, children, className }) => {
+      const isTaskList = /(?:^|\s)contains-task-list(?:\s|$)/.test(className || "");
+      return (
+        <ul
+          {...headingDataAttrs(node)}
+          className={cn(
+            "my-3 space-y-1 text-tx-primary",
+            isTaskList ? "list-none pl-0" : "list-disc pl-6",
+            className,
+          )}
+        >
+          {children}
+        </ul>
+      );
+    },
+    ol: ({ node, children, className }) => <ol {...headingDataAttrs(node)} className={cn("my-3 list-decimal space-y-1 pl-6 text-tx-primary", className)}>{children}</ol>,
+    li: ({ node, children, className }) => {
+      const isTask = /(?:^|\s)task-list-item(?:\s|$)/.test(className || "");
+      return (
+        <li
+          {...headingDataAttrs(node)}
+          className={cn(
+            "leading-7",
+            isTask
+              ? "list-none pl-0 [&>p]:my-1 [&>p]:flex [&>p]:items-start [&>p]:gap-2 [&>ul]:ml-6"
+              : "pl-1",
+            className,
+          )}
+        >
+          {children}
+        </li>
+      );
+    },
     strong: ({ children }) => <strong className="font-semibold text-tx-primary">{children}</strong>,
     em: ({ children }) => <em className="italic">{children}</em>,
     a: PreviewLink,
@@ -183,24 +211,25 @@ function createComponents(onTaskCheckboxChange?: (taskIndex: number, checked: bo
     iframe: PreviewIframe,
     video: ({ src, children, ...props }) => <video src={src} controls preload="metadata" className="my-4 max-h-[520px] w-full rounded-xl border border-app-border bg-black" {...props}>{children}</video>,
     audio: ({ src, children, ...props }) => <audio src={src} controls preload="metadata" className="my-4 w-full" {...props}>{children}</audio>,
-    details: ({ children, open }) => <details open={open} className="my-4 rounded-lg border border-app-border bg-app-surface px-4 py-2">{children}</details>,
+    details: ({ node, children, open }) => <details {...headingDataAttrs(node)} open={open} className="my-4 rounded-lg border border-app-border bg-app-surface px-4 py-2">{children}</details>,
     summary: ({ children }) => <summary className="cursor-pointer py-1 font-medium text-tx-primary">{children}</summary>,
     mark: ({ children }) => <mark className="rounded bg-yellow-200/80 px-0.5 text-inherit dark:bg-yellow-500/30">{children}</mark>,
     kbd: ({ children }) => <kbd className="rounded border border-app-border bg-app-hover px-1.5 py-0.5 font-mono text-xs shadow-sm">{children}</kbd>,
     u: ({ children }) => <u className="underline underline-offset-2">{children}</u>,
     code: ({ className, children }: any) => {
-      const isBlock = /language-/.test(className || "");
+      const raw = String(children ?? "");
+      const isBlock = isMarkdownBlockCode(className) || raw.endsWith("\n");
       return isBlock
-        ? <pre className="my-4 overflow-x-auto rounded-lg border border-app-border bg-app-hover p-3"><code className={cn("font-mono text-sm leading-6", className)}>{children}</code></pre>
+        ? <MarkdownCodeBlock className={className}>{children}</MarkdownCodeBlock>
         : <code className="rounded bg-app-hover px-1.5 py-0.5 font-mono text-[13px] text-accent-primary">{children}</code>;
     },
-    pre: ({ children }) => <>{children}</>,
+    pre: ({ node, children }) => <div {...headingDataAttrs(node)}>{children}</div>,
     blockquote: CalloutBlockquote,
-    table: ({ children }) => <div className="my-4 overflow-x-auto"><table className="w-full border-collapse text-sm">{children}</table></div>,
+    table: ({ node, children }) => <div {...headingDataAttrs(node)} className="my-4 overflow-x-auto"><table className="w-full border-collapse text-sm">{children}</table></div>,
     thead: ({ children }) => <thead className="bg-app-hover">{children}</thead>,
     th: ({ children }) => <th className="border border-app-border px-3 py-2 text-left font-semibold text-tx-primary">{children}</th>,
     td: ({ children }) => <td className="border border-app-border px-3 py-2 text-tx-primary">{children}</td>,
-    hr: () => <hr className="my-6 border-app-border" />,
+    hr: ({ node }) => <hr {...headingDataAttrs(node)} className="my-6 border-app-border" />,
     del: ({ children }) => <del className="text-tx-tertiary line-through">{children}</del>,
     input: ({ checked, type }: { checked?: boolean; type?: string }) => {
       if (type !== "checkbox") return <input type={type} />;
@@ -215,31 +244,25 @@ function createComponents(onTaskCheckboxChange?: (taskIndex: number, checked: bo
             const index = inputs.indexOf(event.currentTarget);
             if (index >= 0) onTaskCheckboxChange?.(index, event.currentTarget.checked);
           }}
-          className={cn("mr-1.5 align-middle accent-accent-primary", onTaskCheckboxChange && "cursor-pointer")}
+          className={cn("mt-[0.38rem] h-4 w-4 shrink-0 accent-accent-primary", onTaskCheckboxChange && "cursor-pointer")}
         />
       );
     },
   };
 }
 
-export function MarkdownPreview(props: MarkdownPreviewProps) {
-  const { markdown, className, compact, containerRef, onTaskCheckboxChange } = props;
+export function MarkdownPreview({ markdown, className, compact, containerRef, onTaskCheckboxChange }: MarkdownPreviewProps) {
   const { t } = useTranslation();
   const containsRawHtml = RAW_HTML_RE.test(markdown || "");
   const renderedMarkdown = useMemo(() => preprocessMarkdownVideos((markdown || "")
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .replace(/[\u00A0\u3000]/g, " ")), [markdown]);
-
-  // Keep the proven renderer for ordinary notes. The enhanced path is activated only
-  // when raw HTML is present, minimizing visual/regression risk for existing Markdown.
-  if (!containsRawHtml) return <LegacyMarkdownPreview {...props} />;
+  const components = useMemo(() => createComponents(onTaskCheckboxChange), [onTaskCheckboxChange]);
+  const rehypePlugins: any[] = containsRawHtml ? [rehypeRaw, [rehypeSanitize, safeHtmlSchema]] : [];
 
   if (!markdown || !markdown.trim()) {
     return <div ref={containerRef} className={cn("flex h-full items-center justify-center text-sm text-tx-tertiary", className)}>{t("markdown.preview.empty")}</div>;
   }
-
-  const components = createComponents(onTaskCheckboxChange);
-  const rehypePlugins: any[] = [rehypeRaw, [rehypeSanitize, safeHtmlSchema]];
 
   return (
     <div
