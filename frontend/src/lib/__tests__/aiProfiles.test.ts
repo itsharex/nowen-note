@@ -29,12 +29,10 @@ describe("aiProfiles client", () => {
     const result = await aiProfiles.list();
 
     expect(result.activeProfileId).toBe("p1");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://note.example.com/api/user-preferences/ai-profiles",
-      expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: "Bearer token-1" }),
-      }),
-    );
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://note.example.com/api/user-preferences/ai-profiles");
+    expect(new Headers(init.headers).get("authorization")).toBe("Bearer token-1");
+    expect(new Headers(init.headers).get("content-type")).toBe("application/json");
   });
 
   it("activates a profile through the dedicated endpoint", async () => {
@@ -65,8 +63,8 @@ describe("aiProfiles client", () => {
     }, "p-qwen");
 
     expect(result.models[0].id).toBe("qwen-plus");
-    const [, init] = fetchMock.mock.calls[0];
-    expect(JSON.parse(init.body)).toMatchObject({
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toMatchObject({
       profileId: "p-qwen",
       provider: "qwen",
       apiKey: "dash-key",
