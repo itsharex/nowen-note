@@ -66,18 +66,23 @@ export default function NoteIconPickerModal({
 
   useEffect(() => {
     if (!noteId) return;
+    let cancelled = false;
     const cached = getCachedNoteIcon(noteId) || "";
     setIcon(cached);
     setOriginalIcon(cached);
     setError("");
     setLoading(true);
     void refreshNoteIcons([noteId]).finally(() => {
+      if (cancelled) return;
       const fresh = getCachedNoteIcon(noteId) || "";
       setIcon(fresh);
       setOriginalIcon(fresh);
       setLoading(false);
       window.setTimeout(() => inputRef.current?.focus(), 0);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [noteId]);
 
   useEffect(() => {
@@ -126,7 +131,15 @@ export default function NoteIconPickerModal({
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={saving ? undefined : onClose} />
-      <div className="relative w-full max-w-[460px] overflow-hidden rounded-xl border border-app-border bg-app-elevated shadow-2xl">
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!loading && !saving && !locked && !invalid && !unchanged) {
+            void persist(normalizedIcon);
+          }
+        }}
+        className="relative w-full max-w-[460px] overflow-hidden rounded-xl border border-app-border bg-app-elevated shadow-2xl"
+      >
         <div className="flex items-center justify-between border-b border-app-border px-4 py-3">
           <div className="flex min-w-0 items-center gap-2">
             <SmilePlus size={16} className="shrink-0 text-accent-primary" />
@@ -208,17 +221,16 @@ export default function NoteIconPickerModal({
               {copy.cancel}
             </Button>
             <Button
-              type="button"
+              type="submit"
               size="sm"
               disabled={loading || saving || locked || invalid || unchanged}
-              onClick={() => void persist(normalizedIcon)}
               className="bg-accent-primary text-white hover:bg-accent-primary/90 disabled:opacity-40"
             >
               {saving ? copy.saving : copy.save}
             </Button>
           </div>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
