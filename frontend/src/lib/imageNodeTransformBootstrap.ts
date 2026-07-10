@@ -2,14 +2,7 @@ import Image from "@tiptap/extension-image";
 
 export type ImageRotation = 0 | 90 | 180 | 270;
 
-const INSTALL_KEY = Symbol.for("nowen.image-transform-attrs.v1");
-
-type MutableImageExtension = typeof Image & {
-  [INSTALL_KEY]?: boolean;
-  config: typeof Image.config & {
-    addAttributes?: (...args: any[]) => Record<string, any>;
-  };
-};
+const INSTALL_KEY = "__NOWEN_IMAGE_TRANSFORM_ATTRS_V1__";
 
 export function normalizeImageRotation(value: unknown): ImageRotation {
   const numeric = Number(value);
@@ -50,11 +43,14 @@ function parseFlipX(element: HTMLElement): boolean {
  * callers inherit these attributes through `this.parent?.()`.
  */
 export function installPersistentImageTransformAttributes(): void {
-  const extension = Image as MutableImageExtension;
+  const extension = Image as any;
   if (extension[INSTALL_KEY]) return;
 
-  const originalAddAttributes = extension.config.addAttributes;
-  extension.config.addAttributes = function patchedImageAttributes(this: any) {
+  const config = extension.config as {
+    addAttributes?: (...args: any[]) => Record<string, any>;
+  };
+  const originalAddAttributes = config.addAttributes;
+  config.addAttributes = function patchedImageAttributes(this: any) {
     const inherited = originalAddAttributes?.call(this) || {};
     return {
       ...inherited,
