@@ -1,8 +1,10 @@
 import Image from "@tiptap/extension-image";
+import TurndownService from "turndown";
 
 export type ImageRotation = 0 | 90 | 180 | 270;
 
 const INSTALL_KEY = "__NOWEN_IMAGE_TRANSFORM_ATTRS_V1__";
+const TURNDOWN_INSTALL_KEY = "__NOWEN_IMAGE_TRANSFORM_TURNDOWN_V1__";
 
 export function normalizeImageRotation(value: unknown): ImageRotation {
   const numeric = Number(value);
@@ -80,4 +82,30 @@ export function installPersistentImageTransformAttributes(): void {
   extension[INSTALL_KEY] = true;
 }
 
+/** Preserve transformed images as CommonMark-compatible raw HTML islands. */
+export function installImageTransformTurndownGuard(): void {
+  const prototype = TurndownService.prototype as any;
+  if (prototype[TURNDOWN_INSTALL_KEY]) return;
+  const originalTurndown = prototype.turndown;
+  prototype.turndown = function guardedTurndown(input: unknown): string {
+    if (typeof input !== "string" || !/data-image-(?:rotation|flip-x)\s*=/i.test(input)) {
+      return originalTurndown.call(this, input);
+    }
+    const preserved: string[] = [];
+    const prepared = input.replace(/<img\b[^>]*>/gi, (tag) => {
+      if (!/data-image-(?:rotation|flip-x)\s*=/i.test(tag)) return tag;
+      const token = `NOWENIMAGETRANSFORM${preserved.length}TOKEN`;
+      preserved.push(tag);
+      return token;
+    });
+    let markdown = String(originalTurndown.call(this, prepared));
+    preserved.forEach((tag, index) => {
+      markdown = markdown.split(`NOWENIMAGETRANSFORM${index}TOKEN`).join(tag);
+    });
+    return markdown;
+  };
+  prototype[TURNDOWN_INSTALL_KEY] = true;
+}
+
 installPersistentImageTransformAttributes();
+installImageTransformTurndownGuard();
