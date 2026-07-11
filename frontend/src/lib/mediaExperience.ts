@@ -159,9 +159,17 @@ export function dispatchMediaFilesToEditor(
     Object.defineProperty(event, "dataTransfer", { configurable: true, value: transfer });
   }
 
-  Object.defineProperty(event, "clientX", { configurable: true, value: coords.clientX });
-  Object.defineProperty(event, "clientY", { configurable: true, value: coords.clientY });
-  return target.dispatchEvent(event);
+  try {
+    Object.defineProperty(event, "clientX", { configurable: true, value: coords.clientX });
+    Object.defineProperty(event, "clientY", { configurable: true, value: coords.clientY });
+  } catch {
+    // Native DragEvent already exposes coordinates as read-only own properties.
+  }
+
+  // Editors call preventDefault() when they accept a file drop, making dispatchEvent return false.
+  // Reaching this point means the event was delivered; report success independently of that flag.
+  target.dispatchEvent(event);
+  return true;
 }
 
 export function appendDownloadFlag(url: string): string {
