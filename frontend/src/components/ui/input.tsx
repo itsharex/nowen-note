@@ -1,22 +1,24 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import {
+  emitSidebarSearchChange,
+  normalizeSidebarSearchValue,
+  SIDEBAR_SEARCH_SYNC_EVENT,
+} from "@/lib/sidebarSearchBridge"
 
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {}
 
-const SIDEBAR_SEARCH_IME_COMMIT = "__nowenSidebarSearchImeCommit"
-
 type SearchNativeEvent = Event & {
   isComposing?: boolean
-  [SIDEBAR_SEARCH_IME_COMMIT]?: boolean
 }
 
 export function shouldForwardSidebarSearchChange(
   nativeEvent: SearchNativeEvent,
   composing: boolean,
 ): boolean {
-  if (composing || nativeEvent.isComposing === true) return false
-  if (nativeEvent[SIDEBAR_SEARCH_IME_COMMIT] === true) return true
-  return nativeEvent.isTrusted === true
+  return !composing
+    && nativeEvent.isComposing !== true
+    && nativeEvent.isTrusted === true
 }
 
 function normalizeInputValue(value: InputProps["value"] | InputProps["defaultValue"]): string {
@@ -47,9 +49,23 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     )
 
     React.useEffect(() => {
-      if (!isSidebarSearch || composingRef.current) return
-      setSidebarValue(normalizeInputValue(value ?? defaultValue))
-    }, [defaultValue, isSidebarSearch, value])
+      if (!isSidebarSearch || typeof window === "undefined") return
+
+      const handleSync = (event: Event) => {
+        const nextValue = normalizeSidebarSearchValue((event as CustomEvent<unknown>).detail)
+        if (nextValue == null || composingRef.current) return
+        awaitingCompositionCommitRef.current = false
+        suppressTrustedDuplicateRef.current = null
+        setSidebarValue(nextValue)
+      }
+
+      window.addEventListener(SIDEBAR_SEARCH_SYNC_EVENT, handleSync)
+      return () => window.removeEventListener(SIDEBAR_SEARCH_SYNC_EVENT, handleSync)
+    }, [isSidebarSearch])
+
+    const commitSidebarSearch = React.useCallback((nextValue: string) => {
+      emitSidebarSearchChange(nextValue)
+    }, [])
 
     const handleChange = React.useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
       if (!isSidebarSearch) {
@@ -61,28 +77,20 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       const nativeEvent = event.nativeEvent as SearchNativeEvent
       setSidebarValue(nextValue)
 
-      // SearchCenter synchronizes the mounted sidebar input with an untrusted input event.
-      // It must update only the visible value: forwarding it to Sidebar's onChange would
-      // turn an empty query into viewMode="all" and make the search page disappear.
-      if (!shouldForwardSidebarSearchChange(nativeEvent, composingRef.current)) {
-        if (nativeEvent.isTrusted === false) {
-          suppressTrustedDuplicateRef.current = null
-        }
-        return
-      }
+      // SearchCenter still mirrors the visible sidebar field with an untrusted native input
+      // event. It may update presentation, but it must never execute Sidebar's legacy
+      // "empty value -> viewMode all" branch.
+      if (!shouldForwardSidebarSearchChange(nativeEvent, composingRef.current)) return
 
-      if (
-        nativeEvent.isTrusted === true
-        && suppressTrustedDuplicateRef.current === nextValue
-      ) {
+      if (suppressTrustedDuplicateRef.current === nextValue) {
         suppressTrustedDuplicateRef.current = null
         awaitingCompositionCommitRef.current = false
         return
       }
 
       awaitingCompositionCommitRef.current = false
-      onChange?.(event)
-    }, [isSidebarSearch, onChange])
+      commitSidebarSearch(nextValue)
+    }, [commitSidebarSearch, isSidebarSearch, onChange])
 
     const handleCompositionStart = React.useCallback((event: React.CompositionEvent<HTMLInputElement>) => {
       if (isSidebarSearch) {
@@ -96,46 +104,21 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const handleCompositionEnd = React.useCallback((event: React.CompositionEvent<HTMLInputElement>) => {
       if (isSidebarSearch) {
         const input = event.currentTarget
-        const compositionEvent = event
         composingRef.current = false
         awaitingCompositionCommitRef.current = true
         setSidebarValue(input.value)
 
-        // Chromium normally emits one final trusted input event after compositionend.
-        // Some Windows IME / Electron combinations do not, and React's value tracker can
-        // also ignore a synthetic DOM input whose value did not change. Commit through the
-        // original controlled callback as a Promise microtask fallback. A later trusted
-        // duplicate with the same value is suppressed.
+        // Most Chromium builds emit a final trusted input after compositionend. Some Android
+        // and Windows IMEs do not, so commit once in a microtask and suppress a late duplicate.
         void Promise.resolve().then(() => {
           if (!awaitingCompositionCommitRef.current || !input.isConnected) return
           awaitingCompositionCommitRef.current = false
           suppressTrustedDuplicateRef.current = input.value
-          const commitEvent = {
-            target: input,
-            currentTarget: input,
-            nativeEvent: {
-              isTrusted: false,
-              isComposing: false,
-              [SIDEBAR_SEARCH_IME_COMMIT]: true,
-            },
-            type: "change",
-            bubbles: true,
-            cancelable: true,
-            defaultPrevented: false,
-            eventPhase: compositionEvent.eventPhase,
-            isTrusted: false,
-            timeStamp: compositionEvent.timeStamp,
-            preventDefault: () => compositionEvent.preventDefault(),
-            isDefaultPrevented: () => compositionEvent.isDefaultPrevented(),
-            stopPropagation: () => compositionEvent.stopPropagation(),
-            isPropagationStopped: () => compositionEvent.isPropagationStopped(),
-            persist: () => undefined,
-          } as unknown as React.ChangeEvent<HTMLInputElement>
-          onChange?.(commitEvent)
+          commitSidebarSearch(input.value)
         })
       }
       onCompositionEnd?.(event)
-    }, [isSidebarSearch, onChange, onCompositionEnd])
+    }, [commitSidebarSearch, isSidebarSearch, onCompositionEnd])
 
     return (
       <input
