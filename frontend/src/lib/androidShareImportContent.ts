@@ -38,6 +38,12 @@ function escapeMarkdownLabel(value: string): string {
   return value.replace(/([\\\[\]])/g, "\\$1");
 }
 
+function escapeMarkdownText(value: string): string {
+  // Shared text is untrusted. Neutralize raw HTML before it reaches Markdown renderers;
+  // ordinary Markdown syntax remains available and attachment URLs are built separately.
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 function stripExtension(filename: string): string {
   const normalized = compactText(filename);
   const dot = normalized.lastIndexOf(".");
@@ -90,9 +96,7 @@ function buildMarkdownBlock(
   payload: AndroidSharePayload,
   attachments: SharedUploadedAttachment[],
 ): string {
-  const parts = sharedTextParts(payload);
-  const lines: string[] = [];
-  if (parts.length) lines.push(...parts);
+  const lines = sharedTextParts(payload).map((part) => escapeMarkdownText(part));
   for (const attachment of attachments) {
     const label = escapeMarkdownLabel(attachment.filename || "附件");
     lines.push(
