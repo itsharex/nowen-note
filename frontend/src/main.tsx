@@ -21,6 +21,7 @@ import { installShareLightboxRotationGuard } from "./lib/shareLightboxRotationGu
 import { installMobileImageFocusGuard } from "./lib/mobileImageFocusGuard";
 import { installNoteSyncSafety } from "./lib/noteSyncSafety";
 import { installNoteUpdateResponseGuard } from "./lib/noteUpdateResponseGuard";
+import { installTaskAttachmentExportFallback } from "./lib/taskAttachmentExportFallback";
 import { installTwoFactorLoginChallengeBridge } from "./lib/twoFactorLoginChallenge";
 
 function removeBootSplash() {
@@ -52,6 +53,8 @@ installNoteSyncSafety();
 installNoteUpdateResponseGuard();
 installShareLightboxRotationGuard();
 installMobileImageFocusGuard();
+// Keep one stale task-image reference from aborting an otherwise valid full task backup.
+installTaskAttachmentExportFallback();
 
 initCodeBlockTheme();
 
