@@ -38,7 +38,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     },
     ref,
   ) => {
-    const isSidebarSearch = (props as Record<string, unknown>)["data-sidebar-search"] !== undefined
+    const isSidebarSearch = Object.prototype.hasOwnProperty.call(props, "data-sidebar-search")
     const localRef = React.useRef<HTMLInputElement | null>(null)
     const composingRef = React.useRef(false)
     const awaitingCompositionCommitRef = React.useRef(false)
@@ -71,7 +71,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       const nativeEvent = event.nativeEvent as SearchNativeEvent
       setSidebarValue(nextValue)
 
-      // SearchCenter synchronizes the mounted sidebar input with a synthetic input event.
+      // SearchCenter synchronizes the mounted sidebar input with an untrusted input event.
       // It must update only the visible value: forwarding it to Sidebar's onChange would
       // turn an empty query into viewMode="all" and make the search page disappear.
       if (!shouldForwardSidebarSearchChange(nativeEvent, composingRef.current)) return
@@ -85,9 +85,6 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         return
       }
 
-      if (nativeEvent[SIDEBAR_SEARCH_IME_COMMIT] === true) {
-        suppressTrustedDuplicateRef.current = nextValue
-      }
       awaitingCompositionCommitRef.current = false
       onChange?.(event)
     }, [isSidebarSearch, onChange])
@@ -104,22 +101,46 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const handleCompositionEnd = React.useCallback((event: React.CompositionEvent<HTMLInputElement>) => {
       if (isSidebarSearch) {
         const input = event.currentTarget
+        const compositionEvent = event
         composingRef.current = false
         awaitingCompositionCommitRef.current = true
         setSidebarValue(input.value)
 
         // Chromium normally emits one final trusted input event after compositionend.
-        // Some Windows IME / Electron combinations do not. Dispatch one marked fallback
-        // in a microtask; the trusted event wins when it exists, so Sidebar commits once.
+        // Some Windows IME / Electron combinations do not, and React's value tracker can
+        // also ignore a synthetic DOM input whose value did not change. Commit through the
+        // original controlled callback as a microtask fallback. A later trusted duplicate
+        // with the same value is suppressed.
         queueMicrotask(() => {
           if (!awaitingCompositionCommitRef.current || !input.isConnected) return
-          const commitEvent = new Event("input", { bubbles: true }) as SearchNativeEvent
-          Object.defineProperty(commitEvent, SIDEBAR_SEARCH_IME_COMMIT, { value: true })
-          input.dispatchEvent(commitEvent)
+          awaitingCompositionCommitRef.current = false
+          suppressTrustedDuplicateRef.current = input.value
+          const commitEvent = {
+            target: input,
+            currentTarget: input,
+            nativeEvent: {
+              isTrusted: false,
+              isComposing: false,
+              [SIDEBAR_SEARCH_IME_COMMIT]: true,
+            },
+            type: "change",
+            bubbles: true,
+            cancelable: true,
+            defaultPrevented: false,
+            eventPhase: compositionEvent.eventPhase,
+            isTrusted: false,
+            timeStamp: compositionEvent.timeStamp,
+            preventDefault: () => compositionEvent.preventDefault(),
+            isDefaultPrevented: () => compositionEvent.isDefaultPrevented(),
+            stopPropagation: () => compositionEvent.stopPropagation(),
+            isPropagationStopped: () => compositionEvent.isPropagationStopped(),
+            persist: () => undefined,
+          } as unknown as React.ChangeEvent<HTMLInputElement>
+          onChange?.(commitEvent)
         })
       }
       onCompositionEnd?.(event)
-    }, [isSidebarSearch, onCompositionEnd])
+    }, [isSidebarSearch, onChange, onCompositionEnd])
 
     return (
       <input
