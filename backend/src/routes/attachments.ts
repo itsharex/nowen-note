@@ -22,7 +22,7 @@ const VIDEO_MIME_BY_EXTENSION: Record<string, string> = {
   mkv: "video/x-matroska",
 };
 
-function inferVideoMime(filename: string): string | null {
+export function inferVideoMime(filename: string): string | null {
   const normalized = String(filename || "").trim().toLowerCase();
   const dot = normalized.lastIndexOf(".");
   if (dot < 0 || dot === normalized.length - 1) return null;
