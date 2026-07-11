@@ -11,7 +11,7 @@ import java.nio.charset.StandardCharsets;
 public class ShareImportSecurityTest {
     @Test
     public void sanitizesUntrustedDisplayNames() {
-        assertEquals(".._.._secret.pdf", ShareImportSecurity.sanitizeDisplayName("../../secret.pdf", "fallback"));
+        assertEquals("_.._secret.pdf", ShareImportSecurity.sanitizeDisplayName("../../secret.pdf", "fallback"));
         assertEquals("evil_name.txt", ShareImportSecurity.sanitizeDisplayName("evil\nname.txt", "fallback"));
         assertEquals("shared-file", ShareImportSecurity.sanitizeDisplayName("...", "shared-file"));
     }
