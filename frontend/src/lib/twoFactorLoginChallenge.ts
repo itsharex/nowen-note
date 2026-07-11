@@ -12,7 +12,7 @@ export interface TwoFactorLoginChallenge {
   expiresAt: number;
 }
 
-type AuthEndpointKind = "login" | "verify";
+export type AuthEndpointKind = "login" | "verify";
 
 let memoryChallenge: TwoFactorLoginChallenge | null = null;
 let bridgeInstalled = false;
@@ -30,6 +30,14 @@ function getSessionStorage(): Storage | null {
   if (typeof window === "undefined") return null;
   try {
     return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function readStoredChallenge(storage: Storage | null): string | null {
+  try {
+    return storage?.getItem(STORAGE_KEY) ?? null;
   } catch {
     return null;
   }
@@ -130,11 +138,11 @@ export function clearTwoFactorLoginChallenge(): void {
 export function readTwoFactorLoginChallenge(now = Date.now()): TwoFactorLoginChallenge | null {
   let candidate = memoryChallenge;
   const storage = getSessionStorage();
+  const storedRaw = readStoredChallenge(storage);
 
-  if (!candidate) {
+  if (!candidate && storedRaw) {
     try {
-      const raw = storage?.getItem(STORAGE_KEY);
-      if (raw) candidate = JSON.parse(raw) as TwoFactorLoginChallenge;
+      candidate = JSON.parse(storedRaw) as TwoFactorLoginChallenge;
     } catch {
       candidate = null;
     }
@@ -152,7 +160,7 @@ export function readTwoFactorLoginChallenge(now = Date.now()): TwoFactorLoginCha
     && candidate.expiresAt - candidate.createdAt <= MAX_TTL_SECONDS * 1000;
 
   if (!valid) {
-    if (candidate || storage?.getItem(STORAGE_KEY)) clearTwoFactorLoginChallenge();
+    if (candidate || storedRaw) clearTwoFactorLoginChallenge();
     return null;
   }
 
