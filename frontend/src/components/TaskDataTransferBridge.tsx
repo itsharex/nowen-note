@@ -32,9 +32,7 @@ const TASK_ROOT_CLASSES = TASK_CENTER_ROOT_CLASS.split(/\s+/).filter(Boolean);
 export function findTaskCenterRoot(root: ParentNode = document): HTMLElement | null {
   const candidates = root.querySelectorAll<HTMLElement>("div");
   for (const candidate of candidates) {
-    if (TASK_ROOT_CLASSES.every((className) => candidate.classList.contains(className))) {
-      return candidate;
-    }
+    if (TASK_ROOT_CLASSES.every((className) => candidate.classList.contains(className))) return candidate;
   }
   return null;
 }
@@ -45,7 +43,7 @@ function ProgressBar({ progress }: { progress: TaskTransferProgress | null }) {
     ? Math.min(100, Math.max(4, Math.round((progress.current / progress.total) * 100)))
     : 12;
   return (
-    <div className="rounded-xl border border-app-border bg-app-bg px-3 py-2.5">
+    <div className="rounded-xl border border-app-border bg-app-bg px-3 py-2.5" aria-live="polite">
       <div className="flex items-center justify-between gap-3 text-xs">
         <span className="truncate text-tx-secondary">{progress.message}</span>
         <span className="shrink-0 tabular-nums text-tx-tertiary">
@@ -87,7 +85,6 @@ function ResultSummary({ result }: { result: TaskImportResult }) {
           </p>
         </div>
       </div>
-
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Metric label="新增任务" value={result.createdTasks} />
         <Metric label="跳过任务" value={result.skippedTasks} />
@@ -98,7 +95,6 @@ function ResultSummary({ result }: { result: TaskImportResult }) {
         <Metric label="新增提醒" value={result.createdReminders} />
         <Metric label="跳过提醒" value={result.skippedReminders} />
       </div>
-
       {result.warnings.length > 0 && (
         <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 px-3 py-2.5 text-xs leading-5 text-amber-700 dark:text-amber-300">
           <div className="mb-1 flex items-center gap-1.5 font-medium"><AlertTriangle size={13} /> 导入提示</div>
@@ -111,8 +107,44 @@ function ResultSummary({ result }: { result: TaskImportResult }) {
   );
 }
 
-export default function TaskDataTransferBridge() {
+function useTaskCenterRoot(): HTMLElement | null {
   const [taskRoot, setTaskRoot] = useState<HTMLElement | null>(null);
+  const rootRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    let frame = 0;
+    const scan = () => {
+      frame = 0;
+      const current = rootRef.current;
+      if (current?.isConnected) return;
+      const next = findTaskCenterRoot(document);
+      rootRef.current = next;
+      setTaskRoot(next);
+    };
+    const scheduleScan = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(scan);
+    };
+
+    scan();
+    const observer = new MutationObserver(() => {
+      // Task rows mutate frequently. Keep the current connected root without rescanning all divs.
+      if (rootRef.current?.isConnected) return;
+      scheduleScan();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      if (frame) window.cancelAnimationFrame(frame);
+      rootRef.current = null;
+    };
+  }, []);
+
+  return taskRoot;
+}
+
+export default function TaskDataTransferBridge() {
+  const taskRoot = useTaskCenterRoot();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<"json" | "csv" | "import" | null>(null);
   const [progress, setProgress] = useState<TaskTransferProgress | null>(null);
@@ -122,14 +154,6 @@ export default function TaskDataTransferBridge() {
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const sync = () => setTaskRoot(findTaskCenterRoot(document));
-    sync();
-    const observer = new MutationObserver(sync);
-    observer.observe(document.body, { childList: true, subtree: true });
-    return () => observer.disconnect();
-  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -192,8 +216,7 @@ export default function TaskDataTransferBridge() {
     setError("");
     setProgress(null);
     try {
-      const imported = await importTaskBackup(preview.pkg, { duplicateMode, onProgress: setProgress });
-      setResult(imported);
+      setResult(await importTaskBackup(preview.pkg, { duplicateMode, onProgress: setProgress }));
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "导入失败，请稍后重试");
     } finally {
@@ -220,7 +243,7 @@ export default function TaskDataTransferBridge() {
     <div
       className="fixed inset-0 z-[210] flex items-end justify-center bg-black/45 px-0 backdrop-blur-sm sm:items-center sm:p-5"
       data-swipe-blocker="task-data-transfer"
-      onMouseDown={(event) => {
+      onPointerDown={(event) => {
         if (event.target === event.currentTarget && !busy) setOpen(false);
       }}
     >
@@ -230,7 +253,7 @@ export default function TaskDataTransferBridge() {
         aria-label="待办数据导入导出"
         className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[24px] border border-app-border bg-app-elevated shadow-2xl sm:max-h-[86vh] sm:max-w-[780px] sm:rounded-2xl"
         style={{ paddingBottom: "var(--safe-area-bottom)" }}
-        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
       >
         <header className="flex shrink-0 items-start gap-3 border-b border-app-border px-4 py-4 sm:px-5">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-primary/12 text-accent-primary">
@@ -239,7 +262,7 @@ export default function TaskDataTransferBridge() {
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold text-tx-primary">待办数据导入导出</h2>
             <p className="mt-1 text-xs leading-5 text-tx-tertiary">
-              JSON 用于完整备份，CSV 用于 Excel 批量整理。导入默认不会覆盖现有任务。
+              JSON 用于结构化备份，CSV 用于 Excel 批量整理。导入默认不会覆盖现有任务。
             </p>
           </div>
           <button
@@ -254,15 +277,15 @@ export default function TaskDataTransferBridge() {
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
-          {result ? (
-            <ResultSummary result={result} />
-          ) : (
+          {result ? <ResultSummary result={result} /> : (
             <div className="space-y-5">
               <section>
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-tx-primary">导出当前空间</h3>
-                    <p className="mt-0.5 text-xs text-tx-tertiary">包含当前个人空间或工作区中的全部待办数据。</p>
+                    <p className="mt-0.5 text-xs leading-5 text-tx-tertiary">
+                      保存任务、项目、层级、循环、依赖和提醒；不包含任务附件文件、习惯与模板。
+                    </p>
                   </div>
                   <div className="hidden items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] text-emerald-700 dark:text-emerald-300 sm:flex">
                     <ShieldCheck size={12} /> 本地生成文件
@@ -279,8 +302,8 @@ export default function TaskDataTransferBridge() {
                       {busy === "json" ? <Loader2 size={19} className="animate-spin" /> : <FileJson size={19} />}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 text-sm font-medium text-tx-primary">JSON 完整备份 <Download size={13} /></div>
-                      <p className="mt-1 text-xs leading-5 text-tx-tertiary">项目、层级、循环、依赖和提醒均可恢复。</p>
+                      <div className="flex items-center gap-2 text-sm font-medium text-tx-primary">JSON 结构化备份 <Download size={13} /></div>
+                      <p className="mt-1 text-xs leading-5 text-tx-tertiary">保留任务层级、循环配置、依赖关系与提醒。</p>
                     </div>
                   </button>
                   <button
@@ -305,7 +328,7 @@ export default function TaskDataTransferBridge() {
               <section>
                 <div className="mb-2">
                   <h3 className="text-sm font-semibold text-tx-primary">导入待办数据</h3>
-                  <p className="mt-0.5 text-xs text-tx-tertiary">支持 Nowen JSON 备份和 CSV 表格，单文件最大 10MB。</p>
+                  <p className="mt-0.5 text-xs text-tx-tertiary">支持 Nowen JSON 和 CSV，单文件最大 10MB，写入前先预检。</p>
                 </div>
 
                 {!preview ? (
@@ -315,7 +338,8 @@ export default function TaskDataTransferBridge() {
                     onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
                     onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
                     onDragLeave={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+                      const related = event.relatedTarget;
+                      if (!(related instanceof Node) || !event.currentTarget.contains(related)) setDragging(false);
                     }}
                     onDrop={(event) => {
                       event.preventDefault();
@@ -333,7 +357,7 @@ export default function TaskDataTransferBridge() {
                       <Upload size={20} />
                     </div>
                     <div className="mt-3 text-sm font-medium text-tx-primary">点击选择，或把 JSON / CSV 拖到这里</div>
-                    <div className="mt-1 text-xs text-tx-tertiary">导入前会先预览数量，不会直接写入数据</div>
+                    <div className="mt-1 text-xs text-tx-tertiary">导入前会展示数量、缺失关系与笔记关联风险</div>
                   </button>
                 ) : (
                   <div className="space-y-3 rounded-2xl border border-app-border bg-app-bg p-3.5 sm:p-4">
@@ -347,7 +371,6 @@ export default function TaskDataTransferBridge() {
                       </div>
                       <button type="button" onClick={resetImport} disabled={!!busy} className="rounded-lg px-2 py-1 text-xs text-tx-tertiary hover:bg-app-hover hover:text-tx-primary">重选</button>
                     </div>
-
                     <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
                       <Metric label="项目" value={preview.projects} />
                       <Metric label="任务" value={preview.tasks} />
@@ -356,33 +379,21 @@ export default function TaskDataTransferBridge() {
                       <Metric label="依赖" value={preview.dependencies} />
                       <Metric label="提醒" value={preview.reminders} />
                     </div>
-
                     <div className="rounded-xl border border-app-border bg-app-elevated p-3">
                       <div className="text-xs font-medium text-tx-primary">重复数据处理</div>
                       <div className="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-app-hover/70 p-1">
                         <button
                           type="button"
                           onClick={() => setDuplicateMode("skip")}
-                          className={cn(
-                            "rounded-md px-3 py-2 text-xs transition-colors",
-                            duplicateMode === "skip" ? "bg-app-elevated font-medium text-accent-primary shadow-sm" : "text-tx-secondary",
-                          )}
-                        >
-                          安全跳过重复（推荐）
-                        </button>
+                          className={cn("rounded-md px-3 py-2 text-xs transition-colors", duplicateMode === "skip" ? "bg-app-elevated font-medium text-accent-primary shadow-sm" : "text-tx-secondary")}
+                        >安全跳过重复（推荐）</button>
                         <button
                           type="button"
                           onClick={() => setDuplicateMode("append")}
-                          className={cn(
-                            "rounded-md px-3 py-2 text-xs transition-colors",
-                            duplicateMode === "append" ? "bg-app-elevated font-medium text-accent-primary shadow-sm" : "text-tx-secondary",
-                          )}
-                        >
-                          全部追加为副本
-                        </button>
+                          className={cn("rounded-md px-3 py-2 text-xs transition-colors", duplicateMode === "append" ? "bg-app-elevated font-medium text-accent-primary shadow-sm" : "text-tx-secondary")}
+                        >全部追加为副本</button>
                       </div>
                     </div>
-
                     {preview.warnings.length > 0 && (
                       <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 px-3 py-2.5 text-xs leading-5 text-amber-700 dark:text-amber-300">
                         {preview.warnings.map((warning) => <div key={warning}>• {warning}</div>)}
@@ -402,7 +413,7 @@ export default function TaskDataTransferBridge() {
 
               <ProgressBar progress={progress} />
               {error && (
-                <div className="flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/8 px-3 py-2.5 text-xs leading-5 text-red-600 dark:text-red-400">
+                <div className="flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/8 px-3 py-2.5 text-xs leading-5 text-red-600 dark:text-red-400" role="alert">
                   <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                   <span>{error}</span>
                 </div>
@@ -414,7 +425,7 @@ export default function TaskDataTransferBridge() {
         <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-app-border bg-app-bg/70 px-4 py-3 sm:px-5">
           {result ? (
             <>
-              <button type="button" onClick={() => { resetImport(); }} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-tx-secondary hover:bg-app-hover">
+              <button type="button" onClick={resetImport} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs text-tx-secondary hover:bg-app-hover">
                 <RefreshCw size={13} /> 继续导入
               </button>
               <button type="button" onClick={() => window.location.reload()} className="rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90">
@@ -424,7 +435,7 @@ export default function TaskDataTransferBridge() {
           ) : (
             <>
               <div className="hidden items-center gap-1.5 text-[11px] text-tx-tertiary sm:flex">
-                <ShieldCheck size={12} /> 不导入用户 ID 与工作区 ID，不静默覆盖现有任务
+                <ShieldCheck size={12} /> 不导入用户、工作区及源笔记 ID，不静默覆盖现有任务
               </div>
               <div className="ml-auto flex items-center gap-2">
                 <button type="button" onClick={() => setOpen(false)} disabled={!!busy} className="rounded-lg px-3 py-2 text-sm text-tx-secondary hover:bg-app-hover disabled:opacity-40">取消</button>
