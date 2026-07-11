@@ -55,6 +55,40 @@ function truncateTitle(value: string): string {
   return (title || "来自 Android 的分享").slice(0, 120);
 }
 
+function resolveNoteFormat(
+  note: Pick<Note, "content" | "contentFormat">,
+): "markdown" | "html" | "tiptap-json" {
+  if (note.contentFormat === "html" || note.contentFormat === "tiptap-json" || note.contentFormat === "markdown") {
+    return note.contentFormat;
+  }
+
+  // Older rows may not have contentFormat populated. Detect only strong signatures so a
+  // Markdown document beginning with ordinary braces or angle brackets is not reclassified.
+  const trimmed = String(note.content || "")
+    .replace(/^[\s\uFEFF\u200B\u200C\u200D]+|[\s\uFEFF\u200B\u200C\u200D]+$/g, "");
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        && (parsed.type === "doc" || (typeof parsed.type === "string" && Array.isArray(parsed.content)))) {
+        return "tiptap-json";
+      }
+    } catch {
+      // Invalid JSON is ordinary Markdown here; the existing content is never replaced.
+    }
+  }
+
+  const withoutLeadingComments = trimmed.replace(/^(\s*<!--[\s\S]*?-->\s*)+/, "");
+  const lower = withoutLeadingComments.slice(0, 20).toLowerCase();
+  if (lower.startsWith("<!doctype") || lower.startsWith("<html")) return "html";
+  if (trimmed.startsWith("<")
+    && /^<[A-Za-z][A-Za-z0-9-]*(\s|\/|>)/.test(trimmed)
+    && /<[A-Za-z][^<>]*>|<\/[A-Za-z][^<>]*>/.test(trimmed)) {
+    return "html";
+  }
+  return "markdown";
+}
+
 export function buildAndroidShareNoteTitle(payload: AndroidSharePayload): string {
   if (compactText(payload.subject)) return truncateTitle(payload.subject);
 
@@ -198,9 +232,7 @@ export function appendAndroidShareToNote(
   payload: AndroidSharePayload,
   attachments: SharedUploadedAttachment[],
 ): SharedNotePatch {
-  const format = note.contentFormat === "html" || note.contentFormat === "tiptap-json"
-    ? note.contentFormat
-    : "markdown";
+  const format = resolveNoteFormat(note);
   const plainBlock = [
     ...sharedTextParts(payload),
     ...attachments.map(attachmentPlainText),
