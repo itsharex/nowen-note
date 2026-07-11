@@ -34,10 +34,17 @@ function SidebarSearchStateBridge() {
   const { state } = useApp();
   const actions = useAppActions();
   const focusTimerRef = useRef<number | null>(null);
+  const mobileSidebarOpenRef = useRef(state.mobileSidebarOpen);
+  const viewModeRef = useRef(state.viewMode);
+
+  useEffect(() => {
+    mobileSidebarOpenRef.current = state.mobileSidebarOpen;
+    viewModeRef.current = state.viewMode;
+  }, [state.mobileSidebarOpen, state.viewMode]);
 
   useEffect(() => {
     emitSidebarSearchSync(state.searchQuery || "");
-  }, [state.mobileSidebarOpen, state.searchQuery]);
+  }, [state.mobileSidebarOpen, state.searchQuery, state.sidebarCollapsed]);
 
   useEffect(() => {
     const handleSidebarSearchChange = (event: Event) => {
@@ -45,17 +52,17 @@ function SidebarSearchStateBridge() {
       if (value == null) return;
 
       actions.setSearchQuery(value);
-      if (state.viewMode !== "search") actions.setViewMode("search");
+      if (viewModeRef.current !== "search") actions.setViewMode("search");
 
-      // SearchCenter 会在首次进入 search 时自动 focus。移动抽屉仍打开时，把焦点交还
-      // 给用户正在使用的 Sidebar 输入框，避免 Android 键盘突然收起或跳到遮罩后的输入框。
-      if (state.mobileSidebarOpen) {
+      // SearchCenter 会在首次进入 search 时自动 focus。移动抽屉仍打开时，稍后把焦点
+      // 交还给用户正在使用的 Sidebar 输入框，避免 Android 键盘突然收起或跳到遮罩后。
+      if (mobileSidebarOpenRef.current) {
         if (focusTimerRef.current != null) window.clearTimeout(focusTimerRef.current);
         focusTimerRef.current = window.setTimeout(() => {
           const input = document.querySelector<HTMLInputElement>("[data-sidebar-search]");
           input?.focus({ preventScroll: true });
           focusTimerRef.current = null;
-        }, 0);
+        }, 40);
       }
     };
 
@@ -64,7 +71,7 @@ function SidebarSearchStateBridge() {
       window.removeEventListener(SIDEBAR_SEARCH_CHANGE_EVENT, handleSidebarSearchChange);
       if (focusTimerRef.current != null) window.clearTimeout(focusTimerRef.current);
     };
-  }, [actions, state.mobileSidebarOpen, state.viewMode]);
+  }, [actions]);
 
   return null;
 }
