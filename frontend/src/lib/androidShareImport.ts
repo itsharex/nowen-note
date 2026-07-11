@@ -86,7 +86,9 @@ interface ShareImportPlugin {
 const ShareImport = registerPlugin<ShareImportPlugin>("ShareImport");
 
 export function isAndroidShareImportAvailable(): boolean {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
+  return Capacitor.isNativePlatform()
+    && Capacitor.getPlatform() === "android"
+    && Capacitor.isPluginAvailable("ShareImport");
 }
 
 export async function getPendingAndroidShares(): Promise<AndroidSharePendingResult> {
