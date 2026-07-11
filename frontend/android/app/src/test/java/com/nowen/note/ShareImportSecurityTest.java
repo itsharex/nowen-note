@@ -18,6 +18,18 @@ public class ShareImportSecurityTest {
     }
 
     @Test
+    public void rejectsMimeHeaderInjectionAndNormalizesSafeMime() {
+        assertEquals("image/jpeg", ShareImportSecurity.normalizeMime(" Image/JPEG "));
+        assertEquals("", ShareImportSecurity.normalizeMime("image/png\r\nX-Evil: yes"));
+        assertEquals("", ShareImportSecurity.normalizeMime("text/plain; charset=utf-8"));
+        byte[] text = "plain text".getBytes(StandardCharsets.UTF_8);
+        assertEquals(
+            "text/plain",
+            ShareImportSecurity.sniffMime(text, text.length, "image/png\r\nX-Evil: yes", "note.txt")
+        );
+    }
+
+    @Test
     public void blocksExecutableNamesMimeAndMagic() {
         assertTrue(ShareImportSecurity.isBlockedExtension("payload.APK"));
         assertTrue(ShareImportSecurity.isBlockedExtension("bootstrap.sh"));
