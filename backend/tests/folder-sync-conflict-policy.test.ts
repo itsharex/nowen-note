@@ -118,6 +118,37 @@ test("protect blocks silent overwrite and copy preserves the edited Nowen note",
   assert.doesNotMatch(copy.content, /nowen-folder-sync:/);
 });
 
+test("rename with unchanged bytes updates the mapping and reuses the same note", async () => {
+  const sourcePathHash = "d".repeat(64);
+  const sourceContent = "same bytes after rename";
+  const created = await postJson(
+    "/folder-sync/import-file",
+    importPayload(sourcePathHash, "old/report.md", sourceContent),
+  );
+  assert.equal(created.status, 200);
+
+  const renamed = await postJson(
+    "/folder-sync/import-file",
+    importPayload(sourcePathHash, "renamed/report-final.md", sourceContent),
+  );
+  assert.equal(renamed.status, 200);
+  assert.equal(renamed.json.updated, true);
+  assert.equal(renamed.json.noteId, created.json.noteId);
+
+  const mapping = db().prepare(`
+    SELECT relativePath, filename, noteId FROM folder_sync_files WHERE sourcePathHash = ?
+  `).get(sourcePathHash) as { relativePath: string; filename: string; noteId: string };
+  assert.equal(mapping.relativePath, "renamed/report-final.md");
+  assert.equal(mapping.filename, "report-final.md");
+  assert.equal(mapping.noteId, created.json.noteId);
+
+  const note = db().prepare("SELECT title, content FROM notes WHERE id = ?").get(created.json.noteId) as { title: string; content: string };
+  assert.equal(note.title, "report-final");
+  assert.match(note.content, /renamed%2Freport-final.md/);
+  const count = db().prepare("SELECT COUNT(*) AS count FROM notes WHERE id = ?").get(created.json.noteId) as { count: number };
+  assert.equal(count.count, 1);
+});
+
 test("detach keeps note content but removes tracking metadata and mapping", async () => {
   const sourcePathHash = "b".repeat(64);
   const created = await postJson(
