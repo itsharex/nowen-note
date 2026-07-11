@@ -21,9 +21,19 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(APP_VERSION),
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-    },
+    alias: [
+      // Issue #218：只替换 App / SettingsModal 使用的绝对导入。
+      // 壳组件内部通过相对路径导入原组件，因此不会发生递归别名。
+      {
+        find: /^@\/components\/AIChatPanel$/,
+        replacement: path.resolve(__dirname, "./src/components/AIChatReliabilityShell.tsx"),
+      },
+      {
+        find: /^@\/components\/AISettingsPanel$/,
+        replacement: path.resolve(__dirname, "./src/components/AISettingsReliabilityShell.tsx"),
+      },
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+    ],
   },
   optimizeDeps: {
     esbuildOptions: {
