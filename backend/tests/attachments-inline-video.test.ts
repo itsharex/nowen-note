@@ -34,7 +34,7 @@ function seedBase() {
 async function uploadVideo() {
   const form = new FormData();
   form.set("noteId", NOTE_ID);
-  form.set("file", new File([new Uint8Array([0, 1, 2, 3])], "clip.mp4", { type: "video/mp4" }));
+  form.set("file", new File([new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7])], "clip.mp4", { type: "video/mp4" }));
   const res = await app.request("/attachments", {
     method: "POST",
     headers: { "X-User-Id": USER_ID },
@@ -92,6 +92,36 @@ test("video attachments can be uploaded and previewed inline", async () => {
   assert.equal(inlineRes.status, 200);
   assert.equal(inlineRes.headers.get("content-type"), "video/mp4");
   assert.equal(inlineRes.headers.get("content-disposition"), null);
+});
+
+test("video attachments respond to browser byte ranges for seeking", async () => {
+  const uploaded = await uploadVideo();
+  const rangeRes = await app.request(`/attachments/${uploaded.id}?inline=1`, {
+    headers: {
+      "X-User-Id": USER_ID,
+      Range: "bytes=2-5",
+    },
+  });
+
+  assert.equal(rangeRes.status, 206);
+  assert.equal(rangeRes.headers.get("accept-ranges"), "bytes");
+  assert.equal(rangeRes.headers.get("content-range"), "bytes 2-5/8");
+  assert.equal(rangeRes.headers.get("content-length"), "4");
+  assert.deepEqual(Array.from(new Uint8Array(await rangeRes.arrayBuffer())), [2, 3, 4, 5]);
+});
+
+test("unsatisfiable video ranges return RFC-compatible 416 metadata", async () => {
+  const uploaded = await uploadVideo();
+  const rangeRes = await app.request(`/attachments/${uploaded.id}?inline=1`, {
+    headers: {
+      "X-User-Id": USER_ID,
+      Range: "bytes=99-120",
+    },
+  });
+
+  assert.equal(rangeRes.status, 416);
+  assert.equal(rangeRes.headers.get("content-range"), "bytes */8");
+  assert.equal(rangeRes.headers.get("accept-ranges"), "bytes");
 });
 
 test("download=1 keeps video attachments as forced downloads", async () => {
