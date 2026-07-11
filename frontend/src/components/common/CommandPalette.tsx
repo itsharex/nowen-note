@@ -18,6 +18,7 @@ import {
 } from "@/lib/sidebarSearchBridge";
 import type { SearchResult } from "@/types";
 import SearchCenter from "@/components/SearchCenter";
+import MobileDrawerUxBridge from "@/components/MobileDrawerUxBridge";
 
 export interface CommandPaletteProps {
   /** 由外部控制开合；App 层一个 useState 即可 */
@@ -313,6 +314,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
     <>
       <SidebarSearchStateBridge />
       <SearchNavigationGuard />
+      <MobileDrawerUxBridge />
       <SearchCenter />
       {typeof document !== "undefined" && paletteBody ? createPortal(paletteBody, document.body) : null}
     </>
