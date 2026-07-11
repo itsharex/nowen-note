@@ -72,7 +72,8 @@ export function buildNotebookTree(notebooks: Notebook[], pref: NotebookSortResol
   });
 
   const isPerParentResolver = typeof pref === "function";
-  const resolvePref = isPerParentResolver ? pref : () => pref;
+  const resolvePref: (parentId: string | null) => NotebookSortPref =
+    typeof pref === "function" ? pref : () => pref;
   const rootPref = resolvePref(null);
   if (isPerParentResolver) activeRootNotebookSortPref = rootPref;
 
