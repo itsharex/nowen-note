@@ -21,7 +21,9 @@ public final class ShareImportSecurity {
     private static final Set<String> BLOCKED_EXTENSIONS = new HashSet<>(Arrays.asList(
         "apk", "apks", "xapk", "exe", "msi", "msp", "com", "scr", "pif",
         "bat", "cmd", "ps1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta",
-        "jar", "dex", "so", "dll", "sys", "lnk", "reg"
+        "jar", "dex", "so", "dll", "sys", "lnk", "reg", "sh", "bash", "zsh",
+        "fish", "command", "py", "pyw", "rb", "pl", "php", "cgi", "lua", "tcl",
+        "appimage", "run", "deb", "rpm"
     ));
 
     private static final Set<String> BLOCKED_MIMES = new HashSet<>(Arrays.asList(
@@ -31,8 +33,14 @@ public final class ShareImportSecurity {
         "application/x-ms-shortcut",
         "application/x-bat",
         "application/x-sh",
+        "application/x-executable",
+        "application/x-pie-executable",
+        "application/x-elf",
+        "application/x-httpd-php",
         "application/hta",
-        "application/java-archive"
+        "application/java-archive",
+        "text/x-shellscript",
+        "text/x-python"
     ));
 
     private static final Map<String, String> MIME_EXTENSIONS = new HashMap<>();
@@ -67,7 +75,8 @@ public final class ShareImportSecurity {
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < source.length() && out.length() < MAX_DISPLAY_NAME; i++) {
             char ch = source.charAt(i);
-            if (ch == '/' || ch == '\\' || ch == '\u0000' || Character.isISOControl(ch)) {
+            int category = Character.getType(ch);
+            if (ch == '/' || ch == '\\' || ch == '\u0000' || Character.isISOControl(ch) || category == Character.FORMAT) {
                 out.append('_');
             } else {
                 out.append(ch);
@@ -97,10 +106,16 @@ public final class ShareImportSecurity {
 
     public static boolean hasExecutableMagic(byte[] prefix, int length) {
         if (prefix == null || length <= 0) return false;
-        if (length >= 2 && prefix[0] == 'M' && prefix[1] == 'Z') return true;
-        if (length >= 4 && (prefix[0] & 0xff) == 0x7f && prefix[1] == 'E' && prefix[2] == 'L' && prefix[3] == 'F') return true;
-        if (length >= 4 && (prefix[0] & 0xff) == 0xca && (prefix[1] & 0xff) == 0xfe && (prefix[2] & 0xff) == 0xba && (prefix[3] & 0xff) == 0xbe) return true;
-        if (length >= 2 && prefix[0] == '#' && prefix[1] == '!') return true;
+        int n = Math.max(0, Math.min(length, prefix.length));
+        if (n >= 2 && prefix[0] == 'M' && prefix[1] == 'Z') return true;
+        if (n >= 4 && (prefix[0] & 0xff) == 0x7f && prefix[1] == 'E' && prefix[2] == 'L' && prefix[3] == 'F') return true;
+        if (n >= 4 && prefix[0] == 'd' && prefix[1] == 'e' && prefix[2] == 'x' && prefix[3] == '\n') return true;
+        if (n >= 4 && isMachOMagic(prefix)) return true;
+        if (n >= 2 && prefix[0] == '#' && prefix[1] == '!') return true;
+        // APK is a ZIP container. Many APK writers place one of these entries in the first
+        // local header; catch the disguised .zip case without decompressing untrusted input.
+        if (n >= 4 && prefix[0] == 'P' && prefix[1] == 'K'
+            && (containsAscii(prefix, n, "AndroidManifest.xml") || containsAscii(prefix, n, "classes.dex"))) return true;
         return false;
     }
 
@@ -158,6 +173,29 @@ public final class ShareImportSecurity {
         if (!ext.isEmpty() && ext.length() <= 10 && !BLOCKED_EXTENSIONS.contains(ext)) return ext;
         String mapped = MIME_EXTENSIONS.get(mime == null ? "" : mime.toLowerCase(Locale.ROOT));
         return mapped == null ? "bin" : mapped;
+    }
+
+    private static boolean isMachOMagic(byte[] value) {
+        int a = value[0] & 0xff;
+        int b = value[1] & 0xff;
+        int c = value[2] & 0xff;
+        int d = value[3] & 0xff;
+        return (a == 0xfe && b == 0xed && c == 0xfa && (d == 0xce || d == 0xcf))
+            || ((a == 0xce || a == 0xcf) && b == 0xfa && c == 0xed && d == 0xfe)
+            || (a == 0xca && b == 0xfe && c == 0xba && d == 0xbe);
+    }
+
+    private static boolean containsAscii(byte[] value, int length, String needle) {
+        byte[] target = needle.getBytes(StandardCharsets.US_ASCII);
+        if (target.length == 0 || target.length > length) return false;
+        outer:
+        for (int i = 0; i <= length - target.length; i++) {
+            for (int j = 0; j < target.length; j++) {
+                if (value[i + j] != target[j]) continue outer;
+            }
+            return true;
+        }
+        return false;
     }
 
     private static boolean startsWith(byte[] value, int length, byte[] signature) {
