@@ -185,7 +185,10 @@ function broadcastChanged(noteId: string, userId: string, title: string, content
 }
 
 function getAttachmentBaseDir(): string {
-  return process.env.NOWEN_DATA_DIR || path.join(process.cwd(), "data");
+  if (process.env.ELECTRON_USER_DATA) return process.env.ELECTRON_USER_DATA;
+  if (process.env.NOWEN_DATA_DIR) return process.env.NOWEN_DATA_DIR;
+  if (process.env.DB_PATH) return path.dirname(process.env.DB_PATH);
+  return path.join(process.cwd(), "data");
 }
 
 function safeRemoveAttachmentFile(relativePath: string): void {
