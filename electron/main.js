@@ -175,6 +175,22 @@ function getFrontendDist() {
   return path.join(__dirname, "..", "frontend", "dist");
 }
 
+// 开发时可复用 `npm run dev:backend` 的后端，避免 Electron full 模式再起一份
+// 临时 SQLite 数据库，导致桌面端与 localhost:5173 登录同一账号却看到不同数据。
+function getDevelopmentBackendUrl() {
+  if (app.isPackaged) return "";
+  const raw = String(process.env.NOWEN_DEV_BACKEND_URL || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    console.warn("[Electron] Ignoring invalid NOWEN_DEV_BACKEND_URL");
+    return "";
+  }
+}
+
 // 查找 Node 可执行文件：开发模式和打包后回退均用 Electron 自带 node 模式，确保原生模块 ABI 一致。
 function findNodeExecutable() {
   if (app.isPackaged) {
@@ -842,10 +858,11 @@ function createWindow() {
   //
   // 重要：桌面客户端永远加载本地 frontend/dist，而不是远端服务器页面。
   // 这样服务端即使开启「API-only / 关闭网页端」也不会影响 PC 客户端。
+  const developmentBackendUrl = getDevelopmentBackendUrl();
   const targetUrl =
     currentMode === "lite" && currentRemoteUrl
       ? currentRemoteUrl
-      : `http://127.0.0.1:${backendPort}`;
+      : developmentBackendUrl || `http://127.0.0.1:${backendPort}`;
   const frontendIndex = path.join(getFrontendDist(), "index.html");
   const frontendIndexExists = fs.existsSync(frontendIndex);
   const preloadExists = fs.existsSync(preloadPath);
@@ -853,7 +870,8 @@ function createWindow() {
     `[main-window] resourcesPath=${process.resourcesPath || ""} ` +
       `frontendIndex=${frontendIndex} exists=${frontendIndexExists} ` +
       `preload=${preloadPath} exists=${preloadExists} ` +
-      `targetUrl=${targetUrl} mode=${currentMode} packaged=${app.isPackaged}`
+      `targetUrl=${targetUrl} mode=${currentMode} packaged=${app.isPackaged}` +
+      (developmentBackendUrl ? " devBackend=external" : "")
   );
   const handleInitialLoadError = (err) => {
     console.error("[main-window] initial load failed:", err?.stack || err?.message || err);
@@ -1747,6 +1765,8 @@ app.whenReady().then(async () => {
   createSplash(
     currentMode === "lite"
       ? `正在连接 ${safeHost(currentRemoteUrl)}`
+      : getDevelopmentBackendUrl()
+        ? `正在连接开发服务 ${safeHost(getDevelopmentBackendUrl())}`
       : "正在启动本地服务"
   );
 
@@ -1758,6 +1778,9 @@ app.whenReady().then(async () => {
     if (currentMode === "lite") {
       // Lite：探测远端可达后直接建窗口；不启 backend、不建 DB
       await waitForRemoteReady(currentRemoteUrl, 15000);
+    } else if (getDevelopmentBackendUrl()) {
+      // 开发模式：复用 npm run dev:backend 的数据库与登录会话，不再启动第二个 backend。
+      await waitForRemoteReady(getDevelopmentBackendUrl(), 15000);
     } else {
       await startBackend();
       // Phase A: 后端就绪后立即准备本地零登录账号；失败不阻塞启动
