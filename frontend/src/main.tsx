@@ -22,6 +22,7 @@ import "./index.css";
 import "./overlay-layers.css";
 import { initCodeBlockTheme } from "./lib/codeBlockTheme";
 import { installAndroidNativeHttpBridge } from "./lib/androidNativeHttpBridge";
+import { installMobileStartupBridge } from "./lib/mobileStartupBridge";
 import { installNoteAttachmentAccessBridge } from "./lib/noteAttachmentAccessBridge";
 import { installShareLightboxRotationGuard } from "./lib/shareLightboxRotationGuard";
 import { installMobileImageFocusGuard } from "./lib/mobileImageFocusGuard";
@@ -50,6 +51,9 @@ function BootSplashRemover() {
 }
 
 installAndroidNativeHttpBridge();
+// Collapse the duplicate Android cold-start collection reads into one compact native response.
+// The bridge is Android-only and transparently falls back to the original APIs when unavailable.
+installMobileStartupBridge();
 // The attachment bridge wraps the active transport so Web, Electron and Capacitor all exchange
 // note/share read permission for the same revocable signed URLs before content is rendered.
 installNoteAttachmentAccessBridge();
@@ -98,5 +102,5 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <ServerConnectionCenter />
     <NoteImageExportCenter />
     <App />
-  </React.StrictMode>
+  </React.StrictMode>,
 );
