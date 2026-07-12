@@ -17,7 +17,7 @@ import { common, createLowlight } from "lowlight";
 import { api, resolveAttachmentUrl } from "./api";
 import { TextStyleKit } from "@/components/FontSizeExtension";
 import { Video as VideoExtension } from "@/components/VideoExtension";
-import { markdownToHtml } from "@/lib/contentFormat";
+import { detectFormat, markdownToHtml } from "@/lib/contentFormat";
 
 // TipTap 扩展列表（需与 importService / 编辑器保持一致，否则某些节点会被吞掉）
 const lowlight = createLowlight(common);
@@ -76,8 +76,10 @@ export function noteContentToExportHtml(
   contentText: string,
   contentFormat?: string,
 ): string {
-  if (contentFormat === "markdown") {
-    return markdownToHtml(rawContent || contentText || "");
+  const source = rawContent || contentText || "";
+  const detected = detectFormat(source);
+  if (contentFormat === "markdown" || detected === "md") {
+    return markdownToHtml(source);
   }
   return noteContentToHtml(rawContent, contentText);
 }
@@ -474,7 +476,7 @@ async function fetchRemoteImages(
 //     "图片加载失败 http://localhost:<旧端口>/api/attachments/<旧id>" 的 404。
 //   - 失败兜底：与 fetchRemoteImages 相同 —— 把死链规范化为相对路径，避免污染。
 // ============================================================================
-async function inlineRemoteImages(
+export async function inlineRemoteImages(
   html: string,
   stats: ImgStats,
   noteContext?: { noteId?: string; noteTitle?: string },
@@ -1781,136 +1783,33 @@ export async function exportSingleNoteAsPDF(noteId: string): Promise<ExportPdfRe
 export async function exportSingleNoteAsImage(noteId: string): Promise<boolean> {
   try {
     const note = await api.getNote(noteId);
-    const docHtml = await buildPrintableHtml(note);
-
-    // 1) 通过隐藏 iframe 渲染一遍，拿到真实高度
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.left = "-99999px";
-    iframe.style.top = "0";
-    iframe.style.width = "820px";
-    iframe.style.height = "100px";
-    iframe.style.border = "0";
-    iframe.setAttribute("aria-hidden", "true");
-    document.body.appendChild(iframe);
-
-    const cleanup = () => {
-      try { document.body.removeChild(iframe); } catch { /* noop */ }
-    };
-
-    const doc = iframe.contentDocument;
-    if (!doc) {
-      cleanup();
-      return false;
-    }
-    doc.open();
-    doc.write(docHtml);
-    doc.close();
-
-    // 等图片加载
-    await new Promise<void>((resolve) => {
-      const imgs = Array.from(doc.images);
-      if (imgs.length === 0) { setTimeout(resolve, 50); return; }
-      let pending = imgs.length;
-      const done = () => { if (--pending <= 0) resolve(); };
-      imgs.forEach((img) => {
-        if (img.complete) done();
-        else {
-          img.addEventListener("load", done, { once: true });
-          img.addEventListener("error", done, { once: true });
-        }
-      });
-      // 兜底
-      setTimeout(resolve, 4000);
-    });
-
-    const pageEl = doc.querySelector(".page") as HTMLElement | null;
-    if (!pageEl) { cleanup(); return false; }
-
-    // 读取真实尺寸
-    const rect = pageEl.getBoundingClientRect();
-    const width = Math.max(820, Math.ceil(rect.width));
-    const height = Math.max(100, Math.ceil(pageEl.scrollHeight + 32));
-
-    // 2) 序列化 page 节点为 SVG/foreignObject
-    // 关键点：<foreignObject> 内部必须是合法 XML（XHTML），不能用 HTML5 的 outerHTML（
-    // 会产出 <br>、<img ...> 这种自闭合不规范的字符串，导致 SVG 解析失败，img.onerror 立即触发）。
-    // 所以用 XMLSerializer + 先把节点克隆到一份 XHTML 文档里，保证所有标签合规。
-    const styleEl = doc.querySelector("style");
-    const styleText = styleEl ? styleEl.textContent || "" : "";
-
-    const XHTML_NS = "http://www.w3.org/1999/xhtml";
-    // 创建一份 XHTML 文档作为序列化载体
-    const xhtmlDoc = document.implementation.createDocument(XHTML_NS, "html", null);
-    const xBody = xhtmlDoc.createElementNS(XHTML_NS, "body");
-    xhtmlDoc.documentElement.appendChild(xBody);
-    // 克隆 pageEl 到 xhtml 文档（importNode 会递归转命名空间）
-    const importedPage = xhtmlDoc.importNode(pageEl, true) as Element;
-    xBody.appendChild(importedPage);
-
-    const serializer = new XMLSerializer();
-    const pageXml = serializer.serializeToString(importedPage);
-
-    // style 里的 CSS 可能含 <，要包在 CDATA 里避免 XML 解析报错
-    const safeStyle = `<style xmlns="${XHTML_NS}"><![CDATA[${styleText}]]></style>`;
-
-    const svg =
-      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">` +
-        `<foreignObject width="100%" height="100%">` +
-          `<div xmlns="${XHTML_NS}" style="background:#ffffff;width:${width}px;">` +
-            safeStyle +
-            pageXml +
-          `</div>` +
-        `</foreignObject>` +
-      `</svg>`;
-
-    cleanup();
-
-    // 3) 直接保存为 SVG 文件。
-    // 历史教训：SVG <foreignObject> 绘制到 canvas 在 Chromium 下会把 canvas 标
-    // 脏（出于保守策略，即便所有资源都是 data:），toBlob 抛 SecurityError。
-    // 引入 html2canvas/dom-to-image 等库能解决，但会新增 ~200KB 依赖。
-    // 当前方案：输出矢量 SVG（现代浏览器、看图软件、Office、设计工具均支持），
-    // 用户可再自行转 PNG；同时文件小、可无损缩放。
-    const svgBlob = new Blob(
-      ['<?xml version="1.0" encoding="UTF-8"?>\n', svg],
-      { type: "image/svg+xml;charset=utf-8" }
-    );
-    const safeTitle = sanitizeFilename(note.title);
-    saveAs(svgBlob, `${safeTitle}.svg`);
-    return true;
+    const { requestNoteImageExport } = await import("./noteImageExportBridge");
+    return await requestNoteImageExport({
+      id: note.id,
+      title: note.title,
+      content: note.content,
+      contentText: note.contentText,
+      contentFormat: note.contentFormat,
+      createdAt: note.createdAt,
+      updatedAt: note.updatedAt,
+    }, { format: "png" });
   } catch (error) {
     console.error("导出图片失败:", error);
     return false;
   }
 }
 
-// ========== NOTE-IMAGE-EXPORT-01: ??? PNG/JPG ==========
+// ========== NOTE-IMAGE-EXPORT-01: faithful cross-platform export ==========
 
-export type NoteImageExportFormat = "png" | "jpg";
+export type NoteImageExportFormat = "png" | "jpg" | "svg";
 
 export interface ExportNoteImageOptions {
-  format: NoteImageExportFormat;
-  quality?: number;        // jpg ???? 0.92
-  pixelRatio?: number;     // ?? Math.min(window.devicePixelRatio || 1, 2)
-}
-
-/**
- * ??????? PNG/JPG ???
- * ?? html2canvas ???????? HTML ??? canvas??? blob ???
- */
-// 把 HTML 中的附件图片 src 规范成绝对可访问 URL，兼容 Electron / Android WebView / 自定义 serverUrl
-function rewriteImageSrcForCanvas(html: string): string {
-  if (!html || !/<img\b/i.test(html)) return html;
-  return html.replace(
-    /<img\b([^>]*?)\bsrc\s*=\s*(["'])([^"']+)\2([^>]*)>/gi,
-    (full, before, quote, src, after) => {
-      if (/^(data:|blob:)/i.test(src)) return full;
-      if (!isAttachmentUrl(src)) return full;
-      const resolved = resolveAttachmentUrl(src);
-      return `<img${before} src=${quote}${resolved}${quote}${after}>`;
-    }
-  );
+  format?: NoteImageExportFormat;
+  quality?: number;
+  pixelRatio?: number;
+  layout?: "auto" | "long" | "pages";
+  theme?: "current" | "light" | "dark";
+  destination?: "download" | "gallery" | "files" | "share";
 }
 
 export async function exportNoteAsImage(
@@ -1920,148 +1819,16 @@ export async function exportNoteAsImage(
     content: string;
     contentText: string;
     contentFormat?: string;
+    createdAt?: string;
     updatedAt?: string;
   },
-  options: ExportNoteImageOptions
+  options: ExportNoteImageOptions = {},
 ): Promise<boolean> {
-  const { format, quality = 0.92, pixelRatio = Math.min(window.devicePixelRatio || 1, 2) } = options;
-
-  // ?? import ???? bundle
-  const [{ default: html2canvas }, DOMPurify] = await Promise.all([
-    import("html2canvas"),
-    import("dompurify"),
-  ]);
-
-  // 生成正文 HTML 并修正附件图片地址
-  let bodyHtml = noteContentToExportHtml(note.content, note.contentText, note.contentFormat);
-  bodyHtml = rewriteImageSrcForCanvas(bodyHtml);
-
-  // ??????
-  const host = document.createElement("div");
-  host.style.position = "fixed";
-  host.style.left = "-10000px";
-  host.style.top = "0";
-  host.style.width = "794px";
-  host.style.background = "#ffffff";
-  host.style.color = "#111827";
-  host.style.padding = "48px";
-  host.style.fontFamily = "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-  host.style.lineHeight = "1.7";
-  host.style.fontSize = "15px";
-  host.style.zIndex = "-1";
-
-  // ??
-  const titleEl = document.createElement("h1");
-  titleEl.textContent = note.title || "";
-  titleEl.style.fontSize = "28px";
-  titleEl.style.fontWeight = "700";
-  titleEl.style.marginBottom = "8px";
-  titleEl.style.color = "#111827";
-  titleEl.style.wordBreak = "break-word";
-  host.appendChild(titleEl);
-
-  // ????
-  if (note.updatedAt) {
-    const timeEl = document.createElement("p");
-    timeEl.textContent = parseServerTime(note.updatedAt)?.toLocaleString() || note.updatedAt;
-    timeEl.style.fontSize = "12px";
-    timeEl.style.color = "#9ca3af";
-    timeEl.style.marginBottom = "24px";
-    host.appendChild(timeEl);
-  }
-
-  // ??
-  const bodyEl = document.createElement("div");
-  bodyEl.className = "nowen-export-body";
-  bodyEl.innerHTML = DOMPurify.default.sanitize(bodyHtml, {
-    ADD_TAGS: ["img"],
-    ADD_ATTR: ["src", "alt", "width", "height", "style"],
-  });
-  host.appendChild(bodyEl);
-
-  // ??
-  const styleEl = document.createElement("style");
-  styleEl.textContent = `
-    .nowen-export-body h1 { font-size: 24px; font-weight: 700; margin: 24px 0 12px; }
-    .nowen-export-body h2 { font-size: 20px; font-weight: 600; margin: 20px 0 10px; }
-    .nowen-export-body h3 { font-size: 17px; font-weight: 600; margin: 16px 0 8px; }
-    .nowen-export-body p { margin: 0 0 12px; }
-    .nowen-export-body img { max-width: 100%; border-radius: 8px; margin: 12px 0; }
-    .nowen-export-body pre { background: #f3f4f6; padding: 12px 16px; border-radius: 8px; overflow-x: auto; font-size: 13px; margin: 12px 0; }
-    .nowen-export-body code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; font-size: 13px; }
-    .nowen-export-body pre code { background: none; padding: 0; }
-    .nowen-export-body ul, .nowen-export-body ol { padding-left: 24px; margin: 8px 0; }
-    .nowen-export-body li { margin: 4px 0; }
-    .nowen-export-body hr { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
-    .nowen-export-body img { max-width: 100%; }
-    .nowen-export-body a { color: #2563eb; text-decoration: none; }
-    .nowen-export-body a:hover { text-decoration: underline; }
-    .nowen-export-body table { width: 100%; border-collapse: collapse; }
-    .nowen-export-body th, .nowen-export-body td { border: 1px solid #e5e7eb; padding: 6px 8px; }
-    .nowen-export-body blockquote { border-left: 4px solid #d1d5db; margin-left: 0; padding-left: 12px; color: #4b5563; }
-  `;
-  host.appendChild(styleEl);
-
-  document.body.appendChild(host);
-
   try {
-    // ?????
-    const imgs = Array.from(host.querySelectorAll("img"));
-    await Promise.all(imgs.map((img) => {
-      if (img.complete) return Promise.resolve();
-      return new Promise<void>((resolve) => {
-        img.onload = () => resolve();
-        img.onerror = () => resolve();
-        setTimeout(() => resolve(), 5000);
-      });
-    }));
-
-    // ?????
-    if (host.scrollHeight > 20000) {
-      const proceed = window.confirm(
-        // confirm ??? i18n????????????????? i18n confirm
-        i18n.t("note.exportImageLongConfirm")
-      );
-      if (!proceed) return false;
-    }
-
-    const canvas = await html2canvas(host, {
-      scale: pixelRatio,
-      useCORS: true,
-      allowTaint: false,
-      backgroundColor: "#ffffff",
-      width: 794,
-      windowWidth: 794,
-    });
-
-    const mimeType = format === "jpg" ? "image/jpeg" : "image/png";
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, mimeType, quality)
-    );
-
-    if (!blob) return false;
-
-    const safeTitle = sanitizeFilename(note.title) || "note";
-    const ext = format === "jpg" ? "jpg" : "png";
-    const fileName = `${safeTitle}.${ext}`;
-
-    // Android 原生环境：保存到系统相册
-    if (isAndroidNative()) {
-      try {
-        await saveImageToGallery({ blob, fileName, mimeType });
-        return true;
-      } catch (err) {
-        console.error("[exportNoteAsImage] save to gallery failed, fallback to download:", err);
-      }
-    }
-
-    // Web / Electron / Android fallback
-    saveAs(blob, fileName);
-    return true;
+    const { requestNoteImageExport } = await import("./noteImageExportBridge");
+    return await requestNoteImageExport(note, options);
   } catch (error) {
-    console.error("??????:", error);
+    console.error("导出图片失败:", error);
     return false;
-  } finally {
-    document.body.removeChild(host);
   }
 }
