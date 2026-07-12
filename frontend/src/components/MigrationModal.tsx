@@ -25,6 +25,7 @@ import { motion } from "framer-motion";
 import { Cloud, Loader2, AlertCircle, CheckCircle2, ArrowRight, LogIn, UploadCloud } from "lucide-react";
 import { runLightMigration, runAttachmentMigration, rollbackMigration, MigrationProgress, MigrationError } from "@/lib/migrationEngine";
 import { getServerUrl as getLocalServerUrl } from "@/lib/api";
+import { getDesktopLocalAuth, getDiagnosticsInfo, isDesktop } from "@/lib/desktopBridge";
 
 type Step = "login" | "choice" | "confirm" | "running" | "success" | "error";
 type SuccessKind = "direct" | "migration";
@@ -122,9 +123,27 @@ export default function MigrationModal({
     | null
   >(null);
 
-  // 本地 endpoint：当前页面就是本地后端代理对象，token 是 localStorage 里的本地 token。
-  const localBaseUrl = getLocalServerUrl() || ""; // 桌面零登录态下为空，等同于"同源"
-  const localToken = localStorage.getItem("nowen-token") || "";
+  async function resolveLocalEndpoint(): Promise<{ baseUrl: string; token: string }> {
+    // Electron full 模式不能信任 renderer 的 URL 或 localStorage：它们可能已经被云端登录态覆盖。
+    // 直接向主进程读取本机后端端口与本地账号 token，保证导出请求始终命中同一实例。
+    if (isDesktop()) {
+      const [diagnostics, localAuth] = await Promise.all([
+        getDiagnosticsInfo(),
+        getDesktopLocalAuth(),
+      ]);
+      if (diagnostics?.backendPort && localAuth?.token) {
+        return {
+          baseUrl: `http://127.0.0.1:${diagnostics.backendPort}`,
+          token: localAuth.token,
+        };
+      }
+    }
+
+    return {
+      baseUrl: getLocalServerUrl() || "",
+      token: localStorage.getItem("nowen-token") || "",
+    };
+  }
 
   function normalizeCloudUrl(raw: string): string {
     const t = raw.trim().replace(/\/+$/, "");
@@ -304,12 +323,12 @@ export default function MigrationModal({
     return false;
   }
 
-  async function precheckMigrationTarget(): Promise<boolean> {
+  async function precheckMigrationTarget(local: { baseUrl: string; token: string }): Promise<boolean> {
     // ===== 1.1.7 防呆：拦截"迁移到同一台后端" =====
     // 只在用户明确选择"迁移本地数据"时执行；直接登录云端不应被迁移防呆阻塞。
     try {
       const [localVerRes, cloudVerRes] = await Promise.all([
-        fetch(`${localBaseUrl}/api/version`).catch(() => null),
+        fetch(`${local.baseUrl}/api/version`).catch(() => null),
         fetch(`${cloudUrl}/api/version`).catch(() => null),
       ]);
       const localVer = localVerRes && localVerRes.ok ? await localVerRes.json().catch(() => null) : null;
@@ -331,9 +350,9 @@ export default function MigrationModal({
 
       // 同账号软提示：即使是不同实例，把数据迁到同名账号通常也是误操作。
       let localUsername: string | null = null;
-      if (localToken) {
+      if (local.token) {
         try {
-          const parts = localToken.split(".");
+          const parts = local.token.split(".");
           if (parts.length >= 2) {
             const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
             const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
@@ -366,7 +385,13 @@ export default function MigrationModal({
     setError("");
     const sessionOk = await ensureCloudSessionValid();
     if (!sessionOk) return;
-    const ok = await precheckMigrationTarget();
+    const local = await resolveLocalEndpoint();
+    if (!local.token) {
+      setError("本地登录会话已失效，请重新登录本地账号后再迁移。");
+      setStep("choice");
+      return;
+    }
+    const ok = await precheckMigrationTarget(local);
     if (!ok) return;
     setSuccessKind("migration");
     setStep("running");
@@ -384,7 +409,7 @@ export default function MigrationModal({
       // ===== D-2：轻量数据迁移 =====
       // 改进进度显示：D-2 占总进度 0~30%（它二样快），D-3 占 30~100%（附件上传耗时）
       const lightResult = await runLightMigration({
-        local: { baseUrl: localBaseUrl, token: localToken },
+        local,
         cloud,
         onProgress: (p) =>
           setProgress({
@@ -398,7 +423,7 @@ export default function MigrationModal({
       // ===== D-3：附件 + content 重写 =====
       // noteIdMap 是"本地旧→云端新"，D-3 附件阶段需要用它判断附件位置。
       const attResult = await runAttachmentMigration({
-        local: { baseUrl: localBaseUrl, token: localToken },
+        local,
         cloud,
         noteIdMap: lightResult.idMap.notes,
         onProgress: (p) =>

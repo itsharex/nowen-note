@@ -368,6 +368,13 @@ export async function getAppInfo(): Promise<AppInfo | null> {
   return bridge.getAppInfo();
 }
 
+/** 获取 full 模式内置本地账号会话；非桌面端或 lite 模式返回 null。 */
+export async function getDesktopLocalAuth(): Promise<{ token: string; user: unknown } | null> {
+  const bridge = getBridge();
+  if (!bridge?.getLocalAuth) return null;
+  return bridge.getLocalAuth();
+}
+
 /** SEC-ELECTRON-01-C: 获取诊断信息（敏感字段，仅在诊断/关于页面调用） */
 export async function getDiagnosticsInfo(): Promise<DiagnosticsInfo | null> {
   const bridge = getBridge();
