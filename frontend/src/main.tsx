@@ -17,6 +17,7 @@ import TaskDataTransferBridgeV2 from "./components/TaskDataTransferBridgeV2";
 import SystemFullDataTransferBridge from "./components/SystemFullDataTransferBridge";
 import AndroidShareImportCenter from "./components/AndroidShareImportCenter";
 import ServerConnectionCenter from "./components/ServerConnectionCenter";
+import NoteImageExportCenter from "./components/NoteImageExportCenter";
 import "./index.css";
 import "./overlay-layers.css";
 import { initCodeBlockTheme } from "./lib/codeBlockTheme";
@@ -95,6 +96,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <SystemFullDataTransferBridge />
     <AndroidShareImportCenter />
     <ServerConnectionCenter />
+    <NoteImageExportCenter />
     <App />
   </React.StrictMode>
 );
