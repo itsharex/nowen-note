@@ -54,6 +54,9 @@ async function loadMermaid() {
       // 避免 mermaid 自己在 dom 里塞红色错误 svg（我们要自己控制错误 UI）
       suppressErrorRendering: true,
       securityLevel: "strict",
+      // DOMPurify 的 SVG profile 会安全地移除 foreignObject；禁用 HTML 标签，
+      // 让 Mermaid 使用原生 SVG text，避免节点外框保留而文字被清空。
+      htmlLabels: false,
       theme: isDarkMode() ? "dark" : "default",
       fontFamily: 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     });
