@@ -47,6 +47,11 @@ async function hideNativeKeyboard(): Promise<void> {
 }
 
 function hideOriginalSheet(controls: MobileImageSheetControls): void {
+  if (
+    controls.root.dataset.nowenCompactImageSheet === "source" &&
+    controls.root.style.getPropertyValue("display") === "none" &&
+    controls.root.style.getPropertyPriority("display") === "important"
+  ) return;
   if (!compactSheetOriginalDisplay.has(controls.root)) {
     compactSheetOriginalDisplay.set(controls.root, controls.root.style.display || "");
   }
@@ -156,8 +161,14 @@ export default function ImageExperienceBridge() {
       frame = requestAnimationFrame(reconcile);
     };
 
-    schedule();
-    const observer = new MutationObserver(schedule);
+    const observe = () => {
+      const sourceSheet = findMobileImageSheet(document);
+      if (sourceSheet) hideOriginalSheet(sourceSheet);
+      schedule();
+    };
+
+    observe();
+    const observer = new MutationObserver(observe);
     observer.observe(document.body, {
       childList: true,
       subtree: true,

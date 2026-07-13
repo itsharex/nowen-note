@@ -76,4 +76,33 @@ describe("ImageExperienceBridge 移动端图片菜单", () => {
     const morePanel = sheet?.querySelector<HTMLElement>('[data-nowen-image-more-panel="true"]');
     expect(morePanel?.className).toContain("p-2");
   });
+
+  it("原始图片面板动态出现时在首帧绘制前隐藏", async () => {
+    document.querySelector("div.fixed.bottom-0.left-0.right-0.z-50")?.remove();
+    await act(async () => {
+      root.render(<ImageExperienceBridge />);
+    });
+
+    const source = document.createElement("div");
+    source.className = "fixed bottom-0 left-0 right-0 z-50";
+    source.innerHTML = `
+      <div><button aria-label="关闭">x</button></div>
+      <div class="grid grid-cols-4">
+        <button>查看大图</button><button>下载图片</button><button>替换图片</button>
+        <button>复制图片地址</button><button>删除图片</button><button>编辑图片</button>
+      </div>
+      <div class="grid grid-cols-5">
+        <button>25%</button><button>50%</button><button>75%</button>
+        <button>100%</button><button>原始</button>
+      </div>
+    `;
+    document.body.appendChild(source);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(source.style.getPropertyValue("display")).toBe("none");
+    expect(source.style.getPropertyPriority("display")).toBe("important");
+  });
 });
