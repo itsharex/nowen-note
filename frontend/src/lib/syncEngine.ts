@@ -17,6 +17,7 @@ import {
 } from "@/lib/localStore";
 import {
   flushQueue,
+  getFailedQueueItems,
   getQueue as getOfflineQueue,
   getQueueLength,
   subscribe as subscribeOfflineQueue,
@@ -28,6 +29,8 @@ type SyncState = "idle" | "bootstrapping" | "ready" | "error";
 let state: SyncState = "idle";
 let lastError: string | null = null;
 const stateListeners = new Set<(state: SyncState) => void>();
+
+export const SYNC_SNAPSHOT_APPLIED_EVENT = "nowen:sync-snapshot-applied";
 
 export interface SyncSummary {
   state: SyncState;
@@ -60,6 +63,19 @@ function setState(next: SyncState, error?: string): void {
   notifySummary();
 }
 
+function describePendingQueue(pending: number): string {
+  const failed = getFailedQueueItems();
+  const conflicts = failed.filter((item) => item.conflict || item.errorCode === "VERSION_CONFLICT").length;
+  const blocked = failed.filter((item) => item.blocked && !item.conflict).length;
+  if (conflicts > 0) {
+    return `仍有 ${pending} 条待同步操作，其中 ${conflicts} 条存在版本冲突；本地内容已保留，请在同步状态面板处理。`;
+  }
+  if (blocked > 0) {
+    return `仍有 ${pending} 条待同步操作，其中 ${blocked} 条已暂停自动重试；请查看失败原因后重试或导出诊断。`;
+  }
+  return `仍有 ${pending} 条待同步操作，服务器尚未确认完成，请稍后重试。`;
+}
+
 export function getSyncState(): { state: SyncState; lastError: string | null } {
   return { state, lastError };
 }
@@ -90,6 +106,8 @@ async function pullServerSnapshot(): Promise<void> {
     api.getTags(),
   ]);
 
+  const pullErrors: string[] = [];
+
   if (notebooksResult.status === "fulfilled") {
     const local = await getAllNotebooks();
     const remoteIds = new Set(notebooksResult.value.map((notebook) => notebook.id));
@@ -99,6 +117,7 @@ async function pullServerSnapshot(): Promise<void> {
     await putNotebooks(notebooksResult.value);
   } else {
     console.warn("[syncEngine] pull notebooks failed:", notebooksResult.reason);
+    pullErrors.push(`笔记本：${notebooksResult.reason instanceof Error ? notebooksResult.reason.message : String(notebooksResult.reason)}`);
   }
 
   if (notesResult.status === "fulfilled") {
@@ -111,6 +130,7 @@ async function pullServerSnapshot(): Promise<void> {
     await putNoteListItems(notesResult.value);
   } else {
     console.warn("[syncEngine] pull notes list failed:", notesResult.reason);
+    pullErrors.push(`笔记列表：${notesResult.reason instanceof Error ? notesResult.reason.message : String(notesResult.reason)}`);
   }
 
   if (tagsResult.status === "fulfilled") {
@@ -122,11 +142,27 @@ async function pullServerSnapshot(): Promise<void> {
     await putTags(tagsResult.value);
   } else {
     console.warn("[syncEngine] pull tags failed:", tagsResult.reason);
+    pullErrors.push(`标签：${tagsResult.reason instanceof Error ? tagsResult.reason.message : String(tagsResult.reason)}`);
+  }
+
+  if (pullErrors.length > 0) {
+    throw new Error(`同步补拉未完整完成（${pullErrors.join("；")}）`);
   }
 
   lastSyncAtCache = Date.now();
   await setMeta("lastSyncAt", lastSyncAtCache);
   notifySummary();
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(SYNC_SNAPSHOT_APPLIED_EVENT, {
+      detail: {
+        lastSyncAt: lastSyncAtCache,
+        notesPulled: notesResult.status === "fulfilled",
+        notebooksPulled: notebooksResult.status === "fulfilled",
+        tagsPulled: tagsResult.status === "fulfilled",
+      },
+    }));
+  }
 }
 
 export async function bootstrap(user: User): Promise<void> {
@@ -144,7 +180,9 @@ export async function bootstrap(user: User): Promise<void> {
       });
     }
     await pullServerSnapshot();
-    setState("ready");
+    const pending = getQueueLength();
+    if (pending > 0) setState("error", describePendingQueue(pending));
+    else setState("ready");
   } catch (error) {
     console.warn("[syncEngine] bootstrap failed:", error);
     setState("error", error instanceof Error ? error.message : String(error));
@@ -167,8 +205,16 @@ export async function syncNow(): Promise<{
   try {
     if (getQueueLength() > 0) await flushQueue(offlineQueueFetch);
     await pullServerSnapshot();
+
+    const pending = getQueueLength();
+    if (pending > 0) {
+      const error = describePendingQueue(pending);
+      setState("error", error);
+      return { ok: false, pending, lastSyncAt: lastSyncAtCache ?? undefined, error };
+    }
+
     setState("ready");
-    return { ok: true, pending: getQueueLength(), lastSyncAt: lastSyncAtCache ?? undefined };
+    return { ok: true, pending: 0, lastSyncAt: lastSyncAtCache ?? undefined };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn("[syncEngine] syncNow failed:", error);
