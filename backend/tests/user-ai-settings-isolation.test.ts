@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import type Database from "better-sqlite3";
+import { Hono } from "hono";
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nowen-user-ai-settings-"));
 process.env.DB_PATH = path.join(tmpDir, "test.db");
@@ -12,21 +13,27 @@ let db: Database.Database;
 let closeDb: () => void;
 let repository: typeof import("../src/repositories/userAISettingsRepository").userAISettingsRepository;
 let settingsService: typeof import("../src/services/user-ai-settings");
+let aiApp: Hono;
 
 test.before(async () => {
-  const [schema, repositoryModule, serviceModule] = await Promise.all([
+  const [schema, repositoryModule, serviceModule, aiRoutes] = await Promise.all([
     import("../src/db/schema"),
     import("../src/repositories/userAISettingsRepository"),
     import("../src/services/user-ai-settings"),
+    import("../src/routes/ai"),
   ]);
   db = schema.getDb();
   closeDb = schema.closeDb;
   repository = repositoryModule.userAISettingsRepository;
   settingsService = serviceModule;
+  aiApp = new Hono();
+  aiApp.route("/ai", aiRoutes.default);
   db.prepare("INSERT INTO users (id, username, passwordHash) VALUES (?, ?, ?)").run("user-a", "user-a", "hash");
   db.prepare("INSERT INTO users (id, username, passwordHash) VALUES (?, ?, ?)").run("user-b", "user-b", "hash");
   db.prepare("INSERT INTO users (id, username, passwordHash) VALUES (?, ?, ?)").run("service-a", "service-a", "hash");
   db.prepare("INSERT INTO users (id, username, passwordHash) VALUES (?, ?, ?)").run("service-b", "service-b", "hash");
+  db.prepare("INSERT INTO users (id, username, passwordHash) VALUES (?, ?, ?)").run("route-a", "route-a", "hash");
+  db.prepare("INSERT INTO users (id, username, passwordHash) VALUES (?, ?, ?)").run("route-b", "route-b", "hash");
 });
 
 test.after(async () => {
@@ -109,4 +116,34 @@ test("guarded writes only respect the target user's manual AI switch", () => {
   assert.equal(settingsService.getUserAISettings("service-b").ai_api_key, "updated-key-b");
   assert.equal(settingsService.isManualAIEnabled("service-a"), false);
   assert.equal(settingsService.isManualAIEnabled("service-b"), true);
+});
+
+test("AI settings endpoints do not leak configuration across users", async () => {
+  const updated = await aiApp.request("/ai/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "X-User-Id": "route-a" },
+    body: JSON.stringify({
+      ai_provider: "deepseek",
+      ai_api_url: "https://route-a.example/v1/",
+      ai_api_key: "route-a-secret",
+      ai_model: "route-a-model",
+    }),
+  });
+  assert.equal(updated.status, 200);
+
+  const userA = await aiApp.request("/ai/settings", {
+    headers: { "X-User-Id": "route-a" },
+  });
+  const userB = await aiApp.request("/ai/settings", {
+    headers: { "X-User-Id": "route-b" },
+  });
+  const missingUser = await aiApp.request("/ai/settings");
+  const userABody = await userA.json() as any;
+  const userBBody = await userB.json() as any;
+
+  assert.equal(userABody.ai_api_url, "https://route-a.example/v1");
+  assert.equal(userABody.ai_api_key_set, true);
+  assert.equal(userBBody.ai_api_url, "https://api.openai.com/v1");
+  assert.equal(userBBody.ai_api_key_set, false);
+  assert.equal(missingUser.status, 401);
 });

@@ -13,8 +13,18 @@ import {
   safeContextPreview,
   type BudgetedContext,
 } from "../services/ai-context";
+import {
+  getUserAISetting,
+  getUserAISettings,
+  isManualAIEnabled as isUserManualAIEnabled,
+  setUserAISettings,
+} from "../services/user-ai-settings";
 
 const app = new Hono();
+app.use("*", async (c, next) => {
+  if (!c.req.header("X-User-Id")) return c.json({ error: "Unauthorized" }, 401);
+  await next();
+});
 const CONTEXT_BUDGET = 48_000;
 const MAX_HISTORY_MESSAGES = 8;
 const MAX_HISTORY_CHARS = 4_000;
@@ -76,111 +86,58 @@ interface DiagnosticHit {
   truncated: boolean;
 }
 
-function readSetting(key: string): string {
-  const row = getDb().prepare("SELECT value FROM system_settings WHERE key = ?").get(key) as
-    | { value: string }
-    | undefined;
-  return row?.value || "";
-}
-
-function writeSetting(key: string, value: string): void {
-  getDb().prepare(`
-    INSERT INTO system_settings (key, value, updatedAt)
-    VALUES (?, ?, datetime('now'))
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updatedAt = datetime('now')
-  `).run(key, value);
-}
-
-function ensureConfigGuard(): void {
-  const keys = GUARDED_AI_KEYS.map((key) => `'${key}'`).join(",");
-  getDb().exec(`
-    CREATE TRIGGER IF NOT EXISTS ai_manual_config_guard_insert
-    BEFORE INSERT ON system_settings
-    WHEN NEW.key IN (${keys})
-      AND COALESCE((SELECT value FROM system_settings WHERE key = 'ai_manual_enabled'), 'true') = 'false'
-    BEGIN
-      SELECT RAISE(IGNORE);
-    END;
-
-    CREATE TRIGGER IF NOT EXISTS ai_manual_config_guard_update
-    BEFORE UPDATE ON system_settings
-    WHEN NEW.key IN (${keys})
-      AND COALESCE((SELECT value FROM system_settings WHERE key = 'ai_manual_enabled'), 'true') = 'false'
-    BEGIN
-      SELECT RAISE(IGNORE);
-    END;
-  `);
-}
-
-function isManualAIEnabled(): boolean {
-  ensureConfigGuard();
-  return readSetting("ai_manual_enabled") !== "false";
-}
-
-function getAISettings(): AISettings {
-  return {
-    ai_provider: readSetting("ai_provider") || "openai",
-    ai_api_url: readSetting("ai_api_url"),
-    ai_api_key: readSetting("ai_api_key"),
-    ai_model: readSetting("ai_model") || "gpt-4o-mini",
-    ai_embedding_url: readSetting("ai_embedding_url"),
-    ai_embedding_key: readSetting("ai_embedding_key"),
-    ai_embedding_model: readSetting("ai_embedding_model"),
-  };
-}
-
 function apiHost(url: string): string | null {
   if (!url) return null;
   try { return new URL(url).host; } catch { return null; }
 }
 
-function restoreActiveProfile(): void {
+function restoreActiveProfile(userId: string): void {
   let restored = false;
   try {
-    const profiles = JSON.parse(readSetting("ai_profiles_v1") || "[]") as Array<Record<string, unknown>>;
-    const activeId = readSetting("ai_active_profile_id");
+    const profiles = JSON.parse(getUserAISetting(userId, "ai_profiles_v1") || "[]") as Array<Record<string, unknown>>;
+    const activeId = getUserAISetting(userId, "ai_active_profile_id");
     const active = profiles.find((profile) => String(profile.id || "") === activeId) || profiles[0];
     if (active) {
-      writeSetting("ai_provider", String(active.provider || "openai"));
-      writeSetting("ai_api_url", String(active.apiUrl || ""));
-      writeSetting("ai_api_key", String(active.apiKey || ""));
-      writeSetting("ai_model", String(active.model || ""));
+      setUserAISettings(userId, [
+        { key: "ai_provider", value: String(active.provider || "openai") },
+        { key: "ai_api_url", value: String(active.apiUrl || "") },
+        { key: "ai_api_key", value: String(active.apiKey || "") },
+        { key: "ai_model", value: String(active.model || "") },
+      ]);
       restored = true;
     }
   } catch {
     /* use backups below */
   }
   if (!restored) {
-    for (const key of ["ai_provider", "ai_api_url", "ai_api_key", "ai_model"]) {
-      writeSetting(key, readSetting(`ai_disabled_backup_${key}`));
-    }
+    setUserAISettings(userId, ["ai_provider", "ai_api_url", "ai_api_key", "ai_model"].map((key) => ({
+      key,
+      value: getUserAISetting(userId, `ai_disabled_backup_${key}`),
+    })));
   }
-  for (const key of ["ai_embedding_url", "ai_embedding_key", "ai_embedding_model"]) {
-    writeSetting(key, readSetting(`ai_disabled_backup_${key}`));
-  }
+  setUserAISettings(userId, ["ai_embedding_url", "ai_embedding_key", "ai_embedding_model"].map((key) => ({
+    key,
+    value: getUserAISetting(userId, `ai_disabled_backup_${key}`),
+  })));
 }
 
-function setManualAIEnabled(enabled: boolean): void {
-  ensureConfigGuard();
-  if (isManualAIEnabled() === enabled) return;
+function setManualAIEnabled(userId: string, enabled: boolean): void {
+  if (isUserManualAIEnabled(userId) === enabled) return;
 
   if (!enabled) {
-    getDb().transaction(() => {
-      for (const key of GUARDED_AI_KEYS) {
-        writeSetting(`ai_disabled_backup_${key}`, readSetting(key));
-      }
-      // Clear effective settings before the guard becomes active. Every existing
-      // AI endpoint then fails locally instead of calling a disabled provider.
-      for (const key of GUARDED_AI_KEYS) writeSetting(key, "");
-      writeSetting("ai_manual_enabled", "false");
-    })();
+    setUserAISettings(userId, [
+      ...GUARDED_AI_KEYS.map((key) => ({
+        key: `ai_disabled_backup_${key}`,
+        value: getUserAISetting(userId, key),
+      })),
+      ...GUARDED_AI_KEYS.map((key) => ({ key, value: "" })),
+      { key: "ai_manual_enabled", value: "false" },
+    ]);
     return;
   }
 
-  getDb().transaction(() => {
-    writeSetting("ai_manual_enabled", "true");
-    restoreActiveProfile();
-  })();
+  setUserAISettings(userId, [{ key: "ai_manual_enabled", value: "true" }]);
+  restoreActiveProfile(userId);
 }
 
 function getDescendantNotebookIds(rootId: string): string[] {
@@ -482,9 +439,9 @@ function getIndexStatus(scope: Scope) {
 }
 
 function publicStatus(scope: Scope) {
-  const settings = getAISettings();
+  const settings = getUserAISettings(scope.userId);
   return {
-    enabled: isManualAIEnabled(),
+    enabled: isUserManualAIEnabled(scope.userId),
     provider: settings.ai_provider || null,
     model: settings.ai_model || null,
     apiHost: apiHost(settings.ai_api_url),
@@ -649,17 +606,18 @@ app.get("/config-enabled", (c) => {
 app.put("/config-enabled", async (c) => {
   const body = await c.req.json().catch(() => ({})) as { enabled?: unknown };
   if (typeof body.enabled !== "boolean") return c.json({ error: "enabled 必须是布尔值" }, 400);
-  setManualAIEnabled(body.enabled);
   const scope = resolveScope(c, {});
   if ("error" in scope) return scope.error;
+  setManualAIEnabled(scope.userId, body.enabled);
   return c.json(publicStatus(scope));
 });
 
 app.post("/ask", async (c) => {
-  if (!isManualAIEnabled()) {
+  const userId = c.req.header("X-User-Id")!;
+  if (!isUserManualAIEnabled(userId)) {
     return c.json({ error: "AI 手动配置已关闭，请先在 AI 设置中开启", code: "AI_CONFIG_DISABLED" }, 409);
   }
-  const settings = getAISettings();
+  const settings = getUserAISettings(userId);
   if (!settings.ai_api_url) return c.json({ error: "未配置 AI 服务" }, 400);
   if (settings.ai_provider !== "ollama" && !settings.ai_api_key) {
     return c.json({ error: "未配置 API Key" }, 400);
