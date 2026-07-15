@@ -220,6 +220,52 @@ async function handleSearchRequest(request: Request): Promise<Response> {
     : response;
 }
 
+async function handleBlocksRequest(request: Request, url: URL): Promise<Response> {
+  await ensureDescendantsHydrated(request);
+  const method = request.method.toUpperCase();
+  const segments = url.pathname.split("/").filter(Boolean);
+  const action = segments[2] || "";
+
+  if (action === "search") {
+    const requestedNotebookId = url.searchParams.get("notebookId");
+    if (requestedNotebookId) policy.assertNotebookAllowed(requestedNotebookId, "搜索块");
+    const response = await originalFetch(request);
+    if (!response.ok) return response;
+    const body = await readJsonResponse(response);
+    return Array.isArray(body)
+      ? replaceJsonResponse(response, body.filter((item: any) => {
+          try { policy.assertNotebookAllowed(item?.notebookId, "读取块"); return true; } catch { return false; }
+        }))
+      : response;
+  }
+  if (action === "resolve") {
+    const response = await originalFetch(request);
+    if (!response.ok) return response;
+    const body = await readJsonResponse(response);
+    policy.assertNotebookAllowed(body?.note?.notebookId, "解析内部链接");
+    return response;
+  }
+  if (action === "graph") {
+    const response = await originalFetch(request);
+    if (!response.ok) return response;
+    const body = await readJsonResponse(response);
+    if (!body || !Array.isArray(body.nodes)) return response;
+    const nodes = body.nodes.filter((node: any) => {
+      try { policy.assertNotebookAllowed(node?.notebookId, "读取关系图"); return true; } catch { return false; }
+    });
+    const ids = new Set(nodes.map((node: any) => node.id));
+    const edges = Array.isArray(body.edges)
+      ? body.edges.filter((edge: any) => ids.has(edge.sourceNoteId) && ids.has(edge.targetNoteId))
+      : [];
+    return replaceJsonResponse(response, { nodes, edges });
+  }
+
+  const noteId = action === "note" ? decodeURIComponent(segments[3] || "") : decodeURIComponent(action);
+  if (!noteId) throw new ScopeDeniedError("块接口缺少 noteId");
+  await assertNoteAllowed(noteId, request, isWriteMethod(method));
+  return originalFetch(request);
+}
+
 async function handleFilesRequest(request: Request, url: URL): Promise<Response> {
   await ensureDescendantsHydrated(request);
   const method = request.method.toUpperCase();
@@ -329,6 +375,9 @@ async function scopedFetch(input: string | URL | Request, init?: RequestInit): P
     }
     if (url.pathname === "/api/search") {
       return await handleSearchRequest(request);
+    }
+    if (url.pathname === "/api/blocks" || url.pathname.startsWith("/api/blocks/")) {
+      return await handleBlocksRequest(request, url);
     }
     if (url.pathname === "/api/files" || url.pathname.startsWith("/api/files/")) {
       return await handleFilesRequest(request, url);

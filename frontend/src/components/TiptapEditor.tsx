@@ -752,8 +752,8 @@ const IndentExtension = Extension.create({
  *   - TipTap JSON 中保存 attrs.blockId
  *
  * 限制：
- *   - 只处理 heading，不处理 paragraph / list / image / table 等
- *   - 不做块引用 UI，不做跳转，不改 note_links
+ *   - 第一版处理 heading / paragraph / listItem / taskItem / blockquote / codeBlock
+ *   - table / image / media 暂不纳入块身份模型
  */
 const BlockIdExtension = Extension.create({
   name: "blockId",
@@ -761,7 +761,7 @@ const BlockIdExtension = Extension.create({
   addGlobalAttributes() {
     return [
       {
-        types: ["heading"],
+        types: ["heading", "paragraph", "listItem", "taskItem", "blockquote", "codeBlock"],
         attributes: {
           blockId: {
             default: null,
@@ -801,9 +801,10 @@ const BlockIdExtension = Extension.create({
             }
           };
 
-          // 扫描所有 heading 节点
+          // 扫描所有受支持块节点
+          const supportedBlockTypes = new Set(["heading", "paragraph", "listItem", "taskItem", "blockquote", "codeBlock"]);
           newState.doc.descendants((node, pos) => {
-            if (node.type.name !== "heading") return;
+            if (!supportedBlockTypes.has(node.type.name)) return;
 
             const currentId = node.attrs.blockId;
 

@@ -9,6 +9,7 @@ import fs from "fs";
 import { verifyLoginToken, getCachedAuthUser, setCachedAuthUser } from "./lib/auth-security";
 import notebooksRouter from "./routes/notebooks";
 import notesRouter from "./routes/notes";
+import blocksRouter from "./routes/blocks";
 import tagsRouter from "./routes/tags";
 import searchRouter from "./routes/search";
 import tasksRouter from "./routes/tasks";
@@ -469,6 +470,7 @@ app.use("/api/*", enforceApiTokenAccess);
 // API 路由（受 JWT 保护）
 app.route("/api/notebooks", notebooksRouter);
 app.route("/api/notes", notesRouter);
+app.route("/api/blocks", blocksRouter);
 app.route("/api/tags", tagsRouter);
 app.route("/api/search", searchRouter);
 app.route("/api/tasks", tasksRouter);

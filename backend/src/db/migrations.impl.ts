@@ -1965,6 +1965,69 @@ export const MIGRATIONS: Migration[] = [
       db.prepare("UPDATE tasks SET completedAt = NULL WHERE isCompleted = 0 AND completedAt IS NOT NULL").run();
     },
   },
+  // v48: 通用块索引、幂等块操作与来源块级双链。
+  {
+    version: 48,
+    name: "knowledge-block-index-and-source-links",
+    up: (db) => {
+      const linkCols = db.prepare("PRAGMA table_info(note_links)").all() as { name: string }[];
+      if (!linkCols.some((column) => column.name === "sourceBlockId")) {
+        db.prepare("ALTER TABLE note_links ADD COLUMN sourceBlockId TEXT").run();
+      }
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS note_blocks_index (
+          noteId TEXT NOT NULL,
+          blockId TEXT NOT NULL,
+          blockType TEXT NOT NULL,
+          parentBlockId TEXT,
+          blockOrder INTEGER NOT NULL DEFAULT 0,
+          plainText TEXT NOT NULL DEFAULT '',
+          contentHash TEXT NOT NULL DEFAULT '',
+          path TEXT NOT NULL DEFAULT '',
+          startOffset INTEGER,
+          endOffset INTEGER,
+          createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+          updatedAt TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (noteId, blockId),
+          FOREIGN KEY (noteId) REFERENCES notes(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_note_blocks_block_id ON note_blocks_index(blockId);
+        CREATE INDEX IF NOT EXISTS idx_note_blocks_note_order ON note_blocks_index(noteId, blockOrder);
+        CREATE INDEX IF NOT EXISTS idx_note_blocks_hash ON note_blocks_index(noteId, blockType, contentHash);
+
+        CREATE TABLE IF NOT EXISTS block_operations (
+          userId TEXT NOT NULL,
+          operationId TEXT NOT NULL,
+          noteId TEXT NOT NULL,
+          resultJson TEXT NOT NULL,
+          createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+          PRIMARY KEY (userId, operationId),
+          FOREIGN KEY (noteId) REFERENCES notes(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_block_operations_note ON block_operations(noteId, createdAt DESC);
+
+        DROP INDEX IF EXISTS idx_note_links_unique_note;
+        DROP INDEX IF EXISTS idx_note_links_unique_block;
+      `);
+      db.exec(`
+        DELETE FROM note_links
+        WHERE rowid NOT IN (
+          SELECT MIN(rowid)
+          FROM note_links
+          GROUP BY sourceNoteId, targetNoteId, IFNULL(sourceBlockId, ''), IFNULL(targetBlockId, '')
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_note_links_unique_note
+          ON note_links(sourceNoteId, targetNoteId, IFNULL(sourceBlockId, ''))
+          WHERE targetBlockId IS NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_note_links_unique_block
+          ON note_links(sourceNoteId, targetNoteId, targetBlockId, IFNULL(sourceBlockId, ''))
+          WHERE targetBlockId IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_note_links_source_block
+          ON note_links(sourceNoteId, sourceBlockId);
+      `);
+    },
+  },
+
 ];
 
 /** 当前代码已知的最高 schema 版本（== MIGRATIONS 里 max(version)）。 */

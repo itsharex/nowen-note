@@ -54,6 +54,8 @@ test.before(async () => {
   db.prepare("INSERT INTO users (id, username, passwordHash) VALUES (?, ?, ?)").run(owner, owner, "hash");
   db.prepare("INSERT INTO users (id, username, passwordHash) VALUES (?, ?, ?)").run(viewer, viewer, "hash");
   db.prepare("INSERT INTO notebooks (id, userId, name) VALUES (?, ?, ?)").run(notebookId, owner, "Knowledge");
+  db.prepare("INSERT INTO notebook_members (id, notebookId, userId, role, status, invitedBy) VALUES (?, ?, ?, ?, 'active', ?)")
+    .run("knowledge-notebook-member", notebookId, viewer, "viewer", owner);
   db.prepare(`INSERT INTO notes (id, userId, notebookId, title, content, contentText, contentFormat)
               VALUES (?, ?, ?, ?, ?, ?, ?)`)
     .run(targetId, owner, notebookId, "Target", tiptap("blk_target", "Target paragraph"), "Target paragraph", "tiptap-json");
@@ -68,7 +70,7 @@ test.before(async () => {
 });
 
 test.after(async () => {
-  closeDb();
+  if (closeDb) closeDb();
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 

@@ -252,13 +252,13 @@ async function performWrite(c: any, action: "create" | "update" | "delete" | "mo
   const required = requireNote(c, noteId, "write");
   if (required instanceof Response) return required;
   const { note, userId } = required;
+  const cached = readIdempotentResult(userId, body.operationId);
+  if (cached) return c.json({ ...cached as any, idempotentReplay: true });
+
   if (note.isLocked) return c.json({ error: "Note is locked", code: "NOTE_LOCKED" }, 403);
   if (note.version !== body.expectedNoteVersion) {
     return c.json({ error: "Version conflict", code: "VERSION_CONFLICT", currentVersion: note.version }, 409);
   }
-
-  const cached = readIdempotentResult(userId, body.operationId);
-  if (cached) return c.json({ ...cached as any, idempotentReplay: true });
 
   if (action !== "create") body.blockId = c.req.param("blockId");
   try {

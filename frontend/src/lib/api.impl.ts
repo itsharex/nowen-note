@@ -1425,10 +1425,12 @@ export const api = {
     request<{
       backlinks: Array<{
         sourceNoteId: string;
+        sourceBlockId: string | null;
+        sourceNotebookId: string;
         title: string;
         updatedAt: string;
         linkText: string | null;
-        linkType: string;
+        linkType: "note" | "block";
         targetBlockId: string | null;
         excerpt: string | null;
       }>

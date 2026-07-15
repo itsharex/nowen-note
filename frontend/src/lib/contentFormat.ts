@@ -50,7 +50,7 @@ const BlockIdAttrs = Extension.create({
   name: "blockId",
   addGlobalAttributes() {
     return [{
-      types: ["heading"],
+      types: ["heading", "paragraph", "listItem", "taskItem", "blockquote", "codeBlock"],
       attributes: {
         blockId: {
           default: null,
@@ -470,6 +470,35 @@ function getTurndown(): TurndownService {
     },
   });
 
+  // Persist universal block identity in Markdown using the compatible `^blk_xxx` suffix.
+  td.addRule("nowenBlockId", {
+    filter: (node) => {
+      if (!(node instanceof Element)) return false;
+      if (!node.getAttribute("data-block-id")) return false;
+      return /^(H[1-6]|P|LI|BLOCKQUOTE|PRE)$/.test(node.nodeName);
+    },
+    replacement: (content, node) => {
+      const el = node as Element;
+      const id = el.getAttribute("data-block-id") || "";
+      const clean = content.replace(/^\n+|\n+$/g, "").trim();
+      if (!id) return content;
+      if (/^H[1-6]$/.test(el.nodeName)) {
+        const level = Number(el.nodeName.slice(1));
+        return `\n\n${"#".repeat(level)} ${clean} ^${id}\n\n`;
+      }
+      if (el.nodeName === "LI") {
+        const task = el.getAttribute("data-type") === "taskItem";
+        const checked = el.getAttribute("data-checked") === "true";
+        const marker = task ? `- [${checked ? "x" : " "}]` : (el.parentElement?.nodeName === "OL" ? "1." : "-");
+        return `\n${marker} ${clean} ^${id}\n`;
+      }
+      if (el.nodeName === "BLOCKQUOTE") return `\n\n> ${clean.replace(/\n/g, "\n> ")} ^${id}\n\n`;
+      if (el.nodeName === "PRE") return `\n\n${clean}\n^${id}\n\n`;
+      if (el.parentElement?.nodeName === "LI") return content;
+      return `\n\n${clean} ^${id}\n\n`;
+    },
+  });
+
   _turndown = td;
   return td;
 }
@@ -575,6 +604,8 @@ export function markdownToPlainText(md: string): string {
   // 全文搜索语义化更合理（脚注内容应该可被搜到，引用标记本身不重要）
   text = text.replace(/^\[\^[A-Za-z0-9_-]+\]:\s?/gm, "");
   text = text.replace(/\[\^[A-Za-z0-9_-]+\]/g, "");
+  // 派生块 ID 是结构元数据，不进入全文索引与摘要。
+  text = text.replace(/(?:\s+|^)\^blk_[A-Za-z0-9_-]{6,}\s*$/gm, "");
   // 合并多余空白
   text = text.replace(/[ \t]+\n/g, "\n");
   text = text.replace(/\n{3,}/g, "\n\n");
@@ -1238,11 +1269,42 @@ function restoreFootnotePlaceholders(
   return out;
 }
 
+
+interface MarkdownBlockIdPlaceholderResult {
+  text: string;
+  ids: string[];
+}
+
+function extractMarkdownBlockIdPlaceholders(md: string): MarkdownBlockIdPlaceholderResult {
+  const ids: string[] = [];
+  const text = md.replace(/(?:\s+|^)\^(blk_[A-Za-z0-9_-]{6,})\s*$/gm, (_match, id) => {
+    const index = ids.push(id) - 1;
+    return ` NOWENBLOCKIDTOKEN${index}END`;
+  });
+  return { text, ids };
+}
+
+function restoreMarkdownBlockIdPlaceholders(html: string, ids: string[]): string {
+  let out = html;
+  ids.forEach((id, index) => {
+    const token = `NOWENBLOCKIDTOKEN${index}END`;
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`<([a-zA-Z0-9]+)([^>]*)>([\\s\\S]*?)${escaped}([\\s\\S]*?)<\\/\\1>`, "i");
+    out = out.replace(pattern, (_match, tag, attrs, before, after) => {
+      const safeId = escapeAttr(id);
+      return `<${tag}${attrs} data-block-id="${safeId}">${before}${after}</${tag}>`;
+    });
+  });
+  return out;
+}
+
 export function markdownToHtml(md: string): string {
   if (!md) return "";
   try {
+    // 第 0 步：把 ^blk_xxx 换成不会被 Markdown parser 吞掉的占位文本。
+    const { text: afterBlockIds, ids: blockIds } = extractMarkdownBlockIdPlaceholders(md);
     // 第 1 步：抽离数学公式
-    const { text: afterMath, blocks, inlines } = extractMathPlaceholders(md);
+    const { text: afterMath, blocks, inlines } = extractMathPlaceholders(afterBlockIds);
     // 第 2 步：抽离脚注（在 math 之后做，避免 `$..$` 内的 `[^x]` 被当成 ref）
     const { text: preprocessed, refs, defs } = extractFootnotePlaceholders(afterMath);
 
@@ -1256,11 +1318,14 @@ export function markdownToHtml(md: string): string {
       c = c.nextSibling;
     }
     const html = out || `<p>${escapeHtml(preprocessed)}</p>`;
-    // 第 3 步：还原 math + footnote 占位
-    return restoreFootnotePlaceholders(
-      restoreMathPlaceholders(html, blocks, inlines),
-      refs,
-      defs
+    // 第 3 步：还原 math + footnote + blockId 占位
+    return restoreMarkdownBlockIdPlaceholders(
+      restoreFootnotePlaceholders(
+        restoreMathPlaceholders(html, blocks, inlines),
+        refs,
+        defs
+      ),
+      blockIds,
     );
   } catch (err) {
     console.warn("[contentFormat] markdownToHtml failed:", err);

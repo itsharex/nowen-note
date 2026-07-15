@@ -170,6 +170,7 @@ function requiredScope(pathname: string, method: string): string | null {
   if (pathname.startsWith("/api/tokens")) return "__login_only__";
   if (pathname.startsWith("/api/notebooks")) return write ? "notebooks:write" : "notebooks:read";
   if (pathname.startsWith("/api/notes")) return write ? "notes:write" : "notes:read";
+  if (pathname.startsWith("/api/blocks")) return write ? "notes:write" : "notes:read";
   if (pathname.startsWith("/api/search")) return "notes:read";
   if (pathname.startsWith("/api/files") || pathname.startsWith("/api/attachments")) {
     return write ? "attachments:write" : "notes:read";
@@ -258,6 +259,20 @@ async function handleSearch(c: Context, next: Next, ctx: TokenAccessContext): Pr
   await replaceFilteredResponse(c, (body) => Array.isArray(body)
     ? body.filter((item) => canRead(ctx, item?.notebookId))
     : body);
+}
+
+async function handleBlocks(c: Context, next: Next, ctx: TokenAccessContext): Promise<void> {
+  const path = c.req.path;
+  const method = c.req.method.toUpperCase();
+  const segments = path.split("/").filter(Boolean);
+  if (["search", "resolve", "graph"].includes(segments[2] || "")) {
+    await next();
+    return;
+  }
+  const noteId = segments[2] === "note" ? decodeURIComponent(segments[3] || "") : decodeURIComponent(segments[2] || "");
+  if (!noteId) throw new ApiTokenAccessError("块接口缺少 noteId");
+  assertNotebook(ctx, resolveNoteNotebookId(noteId), !["GET", "HEAD"].includes(method));
+  await next();
 }
 
 function fileBelongsToScope(ctx: TokenAccessContext, file: any): boolean {
@@ -418,6 +433,7 @@ export async function enforceApiTokenAccess(c: Context, next: Next): Promise<Res
     if (c.req.path.startsWith("/api/notebooks")) await handleNotebooks(c, next, ctx);
     else if (c.req.path.startsWith("/api/notes")) await handleNotes(c, next, ctx);
     else if (c.req.path.startsWith("/api/search")) await handleSearch(c, next, ctx);
+    else if (c.req.path.startsWith("/api/blocks")) await handleBlocks(c, next, ctx);
     else if (c.req.path.startsWith("/api/files")) await handleFiles(c, next, ctx);
     else if (c.req.path.startsWith("/api/attachments")) await handleAttachments(c, next, ctx);
     else if (c.req.path.startsWith("/api/tags")) await handleTags(c, next, ctx);

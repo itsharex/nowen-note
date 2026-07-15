@@ -15,9 +15,14 @@ interface BacklinksPanelProps {
 
 interface BacklinkItem {
   sourceNoteId: string;
+  sourceBlockId: string | null;
+  sourceNotebookId: string;
   title: string;
   updatedAt: string;
   linkText: string | null;
+  linkType: "note" | "block";
+  targetBlockId: string | null;
+  excerpt: string | null;
 }
 
 export default function BacklinksPanel({ noteId, noteTitle, onClose }: BacklinksPanelProps) {
@@ -151,12 +156,20 @@ export default function BacklinksPanel({ noteId, noteTitle, onClose }: Backlinks
                         <span className="text-xs text-tx-tertiary">
                           {formatTime(item.updatedAt)}
                         </span>
-                        {item.linkText && item.linkText !== item.title && (
-                          <span className="text-xs text-tx-tertiary truncate">
-                            引用: {item.linkText}
+                        <span className="text-[10px] rounded bg-app-hover px-1.5 py-0.5 text-tx-tertiary shrink-0">
+                          {item.linkType === "block" ? "块引用" : "笔记引用"}
+                        </span>
+                        {item.sourceBlockId && (
+                          <span className="text-[10px] text-tx-tertiary truncate" title={item.sourceBlockId}>
+                            {item.sourceBlockId}
                           </span>
                         )}
                       </div>
+                      {(item.excerpt || item.linkText) && (
+                        <p className="mt-1.5 text-xs leading-5 text-tx-secondary line-clamp-3">
+                          {item.excerpt || item.linkText}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </motion.button>

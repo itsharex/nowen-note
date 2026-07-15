@@ -15,6 +15,7 @@ import { yFlush, yDestroyDoc, yReplaceContentAsUpdate } from "../services/yjs";
 import { deleteAttachmentFilesByNoteIds, extractInlineBase64Images } from "./attachments";
 import { syncReferences as syncAttachmentReferences } from "../lib/attachmentRefs";
 import { syncNoteLinks, getBacklinks } from "../lib/noteLinks";
+import { syncNoteBlocks } from "../lib/noteBlocks";
 import { noteLinksRepository, noteTagsRepository, noteVersionsRepository, favoritesRepository, noteYsnapshotsRepository, noteYupdatesRepository } from "../repositories";
 import { reclaimSpace } from "../lib/reclaimSpace";
 import { buildFtsSearchTerm } from "../lib/searchQuery";
@@ -465,8 +466,16 @@ app.post("/", async (c) => {
       console.warn("[notes.post] syncNoteLinks failed:", e instanceof Error ? e.message : e);
     }
   }
+  try {
+    const stored = db.prepare("SELECT content, contentFormat FROM notes WHERE id = ?").get(id) as
+      | { content: string; contentFormat: string }
+      | undefined;
+    if (stored) syncNoteBlocks(db, id, stored.content || "", stored.contentFormat || "tiptap-json");
+  } catch (e) {
+    console.warn("[notes.post] syncNoteBlocks failed:", e instanceof Error ? e.message : e);
+  }
 
-  // Y1: SELECT 时 isFavorite 按 per-user 动态计算；新建笔记当前用户尚未收藏，结果必为 0。
+  // Y1: SELECT 时 isFavorite 按当前用户动态计算；新建笔记当前用户尚未收藏，结果必为 0。
   const note = db.prepare(`
     SELECT id, userId, notebookId, workspaceId, title, content, contentText, isPinned,
       CASE WHEN EXISTS(SELECT 1 FROM favorites f WHERE f.noteId = notes.id AND f.userId = ?) THEN 1 ELSE 0 END AS isFavorite,
@@ -806,6 +815,14 @@ app.put("/:id", async (c) => {
       syncNoteLinks(db, userId, id, body.content);
     } catch (e) {
       console.warn("[notes.put] syncNoteLinks failed:", e instanceof Error ? e.message : e);
+    }
+    try {
+      const stored = db.prepare("SELECT content, contentFormat FROM notes WHERE id = ?").get(id) as
+        | { content: string; contentFormat: string }
+        | undefined;
+      if (stored) syncNoteBlocks(db, id, stored.content || "", stored.contentFormat || "tiptap-json");
+    } catch (e) {
+      console.warn("[notes.put] syncNoteBlocks failed:", e instanceof Error ? e.message : e);
     }
   }
 
