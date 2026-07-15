@@ -1,0 +1,57 @@
+name: Apply Issue 165 Knowledge Blocks
+on:
+  push:
+    branches: [main]
+    paths: [.github/issue-165-apply-trigger]
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+            packages/nowen-mcp/package-lock.json
+      - name: Apply and validate
+        shell: bash
+        run: |
+          set +e
+          LOG=/tmp/issue-165.log; : > "$LOG"
+          python3 .github/issue-165-client-fix.py >> "$LOG" 2>&1; FIX_SCRIPT=$?
+          BACKEND_PATCH=99; CLIENT_PATCH=99; BACKEND_INSTALL=99; BACKEND_TYPECHECK=99; BACKEND_TEST=99; MCP_INSTALL=99; MCP_BUILD=99; MCP_TEST=99; FRONTEND_INSTALL=99; FRONTEND_BUILD=99
+          if [ "$FIX_SCRIPT" -eq 0 ]; then python3 .github/issue-165-backend.py >> "$LOG" 2>&1; BACKEND_PATCH=$?; fi
+          if [ "$BACKEND_PATCH" -eq 0 ]; then python3 .github/issue-165-client.py >> "$LOG" 2>&1; CLIENT_PATCH=$?; fi
+          if [ "$CLIENT_PATCH" -eq 0 ]; then
+            cd backend; npm ci >> "$LOG" 2>&1; BACKEND_INSTALL=$?
+            if [ "$BACKEND_INSTALL" -eq 0 ]; then npm run build:tsc >> "$LOG" 2>&1; BACKEND_TYPECHECK=$?; node --import tsx --test tests/knowledge-blocks.test.ts >> "$LOG" 2>&1; BACKEND_TEST=$?; fi
+            cd ../packages/nowen-mcp; npm ci >> "$LOG" 2>&1; MCP_INSTALL=$?
+            if [ "$MCP_INSTALL" -eq 0 ]; then npm run build >> "$LOG" 2>&1; MCP_BUILD=$?; npm test >> "$LOG" 2>&1; MCP_TEST=$?; fi
+            cd ../../frontend; npm ci >> "$LOG" 2>&1; FRONTEND_INSTALL=$?
+            if [ "$FRONTEND_INSTALL" -eq 0 ]; then npm run build >> "$LOG" 2>&1; FRONTEND_BUILD=$?; fi
+            cd ..
+          fi
+          python3 - <<PY
+          import json
+          from pathlib import Path
+          s={"fix_script":int("$FIX_SCRIPT"),"backend_patch":int("$BACKEND_PATCH"),"client_patch":int("$CLIENT_PATCH"),"backend_install":int("$BACKEND_INSTALL"),"backend_typecheck":int("$BACKEND_TYPECHECK"),"backend_test":int("$BACKEND_TEST"),"mcp_install":int("$MCP_INSTALL"),"mcp_build":int("$MCP_BUILD"),"mcp_test":int("$MCP_TEST"),"frontend_install":int("$FRONTEND_INSTALL"),"frontend_build":int("$FRONTEND_BUILD")}
+          log=Path("/tmp/issue-165.log").read_text(encoding="utf-8",errors="replace")
+          Path("/tmp/issue-165-result.json").write_text(json.dumps({"ok":all(v==0 for v in s.values()),"statuses":s,"log":"\n".join(log.splitlines()[-1200:])},ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          PY
+          OK=$(python3 -c "import json; print('1' if json.load(open('/tmp/issue-165-result.json'))['ok'] else '0')")
+          git config user.name github-actions[bot]; git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          if [ "$OK" = "1" ]; then
+            rm -f .github/issue-165-backend.py .github/issue-165-client.py .github/issue-165-client-fix.py .github/issue-165-apply-trigger .github/issue-165-result.json .github/workflows/apply-issue-165.yml
+            git add -A && git commit -m "feat(knowledge): add universal block links and MCP block tools (#165)" -m "Implement the core data, REST, editor and MCP phases of #165." && git push origin HEAD:main
+            exit $?
+          fi
+          git reset --hard HEAD; cp /tmp/issue-165-result.json .github/issue-165-result.json
+          rm -f .github/issue-165-apply-trigger .github/workflows/apply-issue-165.yml
+          git add -A && git commit -m "test(knowledge): update issue 165 implementation diagnostics" && git push origin HEAD:main
+          exit 1
