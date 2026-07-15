@@ -30,14 +30,14 @@ jobs:
             packages/nowen-mcp/package-lock.json
       - name: Load patch scripts from isolated branch
         run: |
-          git fetch origin codex/issue-165-finish
+          git fetch origin codex/issue-165-patch-scripts codex/issue-165-finish-v2
           git rev-parse HEAD > /tmp/issue165-main-parent
           for file in \
             .github/issue-165-phase1-normalize.py \
             .github/issue-165-phase1-backend.py \
             .github/issue-165-phase1-frontend-files.py \
             .github/issue-165-phase1-frontend-existing.py; do
-            git show origin/codex/issue-165-finish:$file > $file
+            git show origin/codex/issue-165-patch-scripts:$file > $file
           done
       - name: Apply deterministic patches
         id: apply
@@ -95,13 +95,13 @@ jobs:
               statuses[key] = int(value)
           Path('/tmp/issue-165-phase1-result.json').write_text(json.dumps({'ok': False, 'statuses': statuses, 'log': Path('/tmp/issue165.log').read_text()[-60000:]}, ensure_ascii=False, indent=2) + '\n')
           PY
-          git reset --hard origin/codex/issue-165-finish
+          git reset --hard origin/codex/issue-165-patch-scripts
           cp /tmp/issue-165-phase1-result.json .github/issue-165-phase1-result.json
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add .github/issue-165-phase1-result.json
           git commit -m 'test(knowledge): record issue 165 remaining-feature diagnostics'
-          git push origin HEAD:codex/issue-165-finish
+          git push origin HEAD:codex/issue-165-patch-scripts
           exit 1
       - name: Create clean feature commit
         if: steps.apply.outputs.ok == 'true' && steps.validate.outputs.ok == 'true'
@@ -122,4 +122,4 @@ jobs:
             'feat(knowledge): complete backlink UX, graph and block embeds (#165)' \
             'Finish one-click note creation, title aliases, all-block selection, previews, precise navigation, graph UI and live read-only block embeds.' \
             | git commit-tree "$TREE" -p "$PARENT")
-          git push --force origin "$NEW":refs/heads/codex/issue-165-finish
+          git push --force origin "$NEW":refs/heads/codex/issue-165-finish-v2
