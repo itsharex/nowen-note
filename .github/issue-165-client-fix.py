@@ -1,16 +1,14 @@
 from pathlib import Path
 
-path = Path('.github/issue-165-client.py')
-source = path.read_text(encoding='utf-8')
-start_marker = '''replace_once(
-    "packages/nowen-mcp/src/index.ts",
-    ''' + "'''server.tool(\n  \"nowen_search\"," 
+path = Path(".github/issue-165-client.py")
+source = path.read_text(encoding="utf-8")
+start_marker = "replace_once(\n    \"packages/nowen-mcp/src/index.ts\",\n    '''server.tool(\n  \"nowen_search\","
 start = source.index(start_marker)
 end_marker = '''    "MCP note/block search",
 )
 '''
 end = source.index(end_marker, start) + len(end_marker)
-replacement = r'''mcp_index_path = Path("packages/nowen-mcp/src/index.ts")
+replacement = r"""mcp_index_path = Path("packages/nowen-mcp/src/index.ts")
 mcp_index_source = mcp_index_path.read_text(encoding="utf-8")
 search_start = mcp_index_source.index('server.tool(\n  "nowen_search",')
 search_end_marker = '\n);\n\n// ==================== 标签工具'
@@ -50,6 +48,6 @@ mcp_index_path.write_text(
     mcp_index_source[:search_start] + new_search_tool + mcp_index_source[search_end:],
     encoding="utf-8",
 )
-'''
-path.write_text(source[:start] + replacement + source[end:], encoding='utf-8')
-print('issue 165 client search patch fixed')
+"""
+path.write_text(source[:start] + replacement + source[end:], encoding="utf-8")
+print("issue 165 client search patch fixed")
