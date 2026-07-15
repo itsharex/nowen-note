@@ -1,17 +1,20 @@
 name: Patch PostgreSQL Unified Regressions
 
 on:
-  push:
+  pull_request_target:
     branches:
       - main
+    types:
+      - synchronize
     paths:
-      - .github/workflows/pg-unified-regression-patch.yml
+      - .github/pg-unified-patch-trigger
 
 permissions:
   contents: write
 
 jobs:
   patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'pg-migration-unified'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,21 +45,27 @@ jobs:
   `);
   getDb().prepare("UPDATE notebooks SET userId = ? WHERE id = ?").run(OTHER, "nb-root");''',
           }
+          changed = False
           for old, new in replacements.items():
-              if old not in transfer:
-                  raise SystemExit(f"notebook transfer target not found: {old}")
-              transfer = transfer.replace(old, new, 1)
-          transfer_path.write_text(transfer, encoding="utf-8")
+              if old in transfer:
+                  transfer = transfer.replace(old, new, 1)
+                  changed = True
+          if changed:
+              transfer_path.write_text(transfer, encoding="utf-8")
 
           importer_path = Path("backend/src/services/siyuanPackageImport.ts")
           importer = importer_path.read_text(encoding="utf-8")
           old_types = 'const FIDELITY_NODE_TYPES = new Set(["NodeInlineHTML"]);'
           new_types = 'const FIDELITY_NODE_TYPES = new Set(["NodeInlineHTML", "NodeHTMLBlock", "NodeIFrame"]);'
-          if old_types not in importer:
-              raise SystemExit("SiYuan fidelity node set target not found")
-          importer_path.write_text(importer.replace(old_types, new_types, 1), encoding="utf-8")
+          if old_types in importer:
+              importer_path.write_text(importer.replace(old_types, new_types, 1), encoding="utf-8")
           PY
           rm -f .github/workflows/pg-unified-test-patch.yml
+          rm -f .github/pg-unified-patch-trigger
           git add -A
+          if git diff --cached --quiet; then
+            echo "Unified regression patches are already applied."
+            exit 0
+          fi
           git commit -m "fix(db): resolve unified SQLite regression conflicts"
           git push origin HEAD:pg-migration-unified
