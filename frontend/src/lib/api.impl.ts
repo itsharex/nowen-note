@@ -2307,15 +2307,36 @@ export const api = {
     remove: (id: string) =>
       request<{ success: boolean }>(`/attachments/${id}`, { method: "DELETE" }),
 
-    /** 远程图片本地化：下载远程图片并上传为本地附件（PASTE-REMOTE-IMAGE-LOCALIZE-01） */
+    /** 远程图片本地化：服务端安全下载并保存为当前笔记的附件。 */
     importRemoteImage: (
       noteId: string,
       url: string,
       source?: string,
-    ): Promise<{ url: string; deduplicated?: boolean }> =>
-      request<{ url: string; deduplicated?: boolean }>("/attachments/import-remote-image", {
+    ): Promise<{
+      id: string;
+      url: string;
+      mimeType: string;
+      size: number;
+      filename: string;
+      category: "image";
+      deduplicated?: boolean;
+      accessUrls?: Record<string, string>;
+    }> =>
+      request<{
+        id: string;
+        url: string;
+        mimeType: string;
+        size: number;
+        filename: string;
+        category: "image";
+        deduplicated?: boolean;
+        accessUrls?: Record<string, string>;
+      }>("/attachments/import-remote-image", {
         method: "POST",
         body: JSON.stringify({ noteId, url, source }),
+      }).then((payload) => {
+        registerAttachmentAccessResponse(payload);
+        return payload;
       }),
   },
 

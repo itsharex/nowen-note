@@ -49,6 +49,12 @@ import {
 import { isVideoFile, toInlineAttachmentUrl, uploadMediaAttachment, type MediaUploadResult } from "@/lib/mediaUploadService";
 import { extractRtfImagesAsync } from "@/lib/rtfImageWorkerClient";
 import { replaceDataUrlImagesWithAttachments } from "@/lib/rtfImageUploader";
+import { shouldLocalizeUrl } from "@/lib/remoteImageLocalizer";
+import {
+  analyzeRiskyForegroundColors,
+  normalizeLegacyFontColors,
+  stripExplicitForegroundColors,
+} from "@/lib/pasteForegroundColor";
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6,
@@ -68,7 +74,7 @@ import { toast } from "@/lib/toast";
 import { copyText } from "@/lib/clipboard";
 import { saveAs } from "file-saver";
 import { findTextAction, type TextAction } from "@/lib/textActions";
-import { prompt as promptDialog } from "@/components/ui/confirm";
+import { choose as chooseDialog, prompt as promptDialog } from "@/components/ui/confirm";
 import { Note, Tag } from "@/types";
 import TagInput from "@/components/TagInput";
 import AIWritingAssistant from "@/components/AIWritingAssistant";
@@ -1553,6 +1559,7 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
   });
   const [imageSizeMenuOpen, setImageSizeMenuOpen] = useState(false);
   const [replacingImage, setReplacingImage] = useState(false);
+  const [localizingSelectedImage, setLocalizingSelectedImage] = useState(false);
   const [imageEditDialog, setImageEditDialog] = useState<{
     open: boolean;
     src: string;
@@ -2102,8 +2109,10 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
           }
 
           const text = event.clipboardData?.getData("text/plain") || "";
-          // SEC-XSS-01-D: 剪贴板 HTML 进入任何处理路径前先清洗
-          const html = sanitizeForPaste(event.clipboardData?.getData("text/html") || "");
+          // 先把旧式 <font color> 转为 span style，再进入统一 XSS 清洗。
+          // 这样既能检测固定前景色，也能在用户选择“保留原颜色”时继续由 TextStyleKit 承载。
+          const rawHtml = event.clipboardData?.getData("text/html") || "";
+          const html = sanitizeForPaste(normalizeLegacyFontColors(rawHtml));
 
           // 2) 若当前光标在代码块内：不管来源是 html 还是 text，始终保留原始文本 + 换行
           const { state: stCode } = view;
@@ -2390,14 +2399,6 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
           //    避免后续块级操作（toggleHeading 等）误把整段转换。
           if (html && html.trim().length > 0) {
             console.log("[paste-diag] PATH=html (normalize + parseSlice)");
-            const { state, dispatch } = view;
-            const parser = ProseMirrorDOMParser.fromSchema(state.schema);
-            const tempDiv = document.createElement("div");
-            // 5a) Word / WPS 粘贴：HTML 里的 <img src> 是 "file:///..." 本地路径，
-            //     浏览器无法加载；但 text/rtf 里以 \pngblip / \jpegblip 内联了
-            //     真正的图像字节。在归一化之前，先从 RTF 提取 data URL，按顺序
-            //     回填到 HTML 的 <img> 占位上，这样后续 rescue / PM DOMParser
-            //     能正常当作合法 data:image 插入（已超 200B，不会被判为占位）。
             let htmlForParse = html;
             try {
               const rtf = event.clipboardData?.getData("text/rtf") || "";
@@ -2405,51 +2406,84 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
                 const rtfImages = extractImagesFromRtf(rtf);
                 if (rtfImages.length > 0) {
                   htmlForParse = mergeRtfImagesIntoHtml(html, rtfImages);
-                  console.log(
-                    "[paste-diag] RTF images extracted=",
-                    rtfImages.length
-                  );
+                  console.log("[paste-diag] RTF images extracted=", rtfImages.length);
                 }
               }
             } catch (err) {
               console.warn("[paste-diag] RTF image extraction failed:", err);
             }
-            const normalized = normalizePastedHtmlForBlocks(htmlForParse);
-            tempDiv.innerHTML = normalized.html;
-            // --- [DIAG] Word 粘贴图片丢失排查 ---
-            try {
-              const rawImgs = (html.match(/<img[^>]*>/gi) || []).length;
-              const normalizedImgs = tempDiv.querySelectorAll("img").length;
-              const firstSrc = tempDiv.querySelector("img")?.getAttribute("src") || "";
-              console.log("[paste-diag] raw html <img>=", rawImgs,
-                " normalized <img>=", normalizedImgs,
-                " isWord=", normalized.isWordSource,
-                " stats=", normalized.imageStats,
-                " firstSrcHead=", firstSrc.slice(0, 80));
-            } catch {}
-            const slice = parser.parseSlice(tempDiv);
-            try {
-              let imgCountInSlice = 0;
-              slice.content.descendants((n) => {
-                if (n.type.name === "image") imgCountInSlice += 1;
+
+            const insertPreparedHtml = (preparedHtml: string) => {
+              if (view.isDestroyed) return;
+              const parser = ProseMirrorDOMParser.fromSchema(view.state.schema);
+              const tempDiv = document.createElement("div");
+              const normalized = normalizePastedHtmlForBlocks(preparedHtml);
+              tempDiv.innerHTML = normalized.html;
+              try {
+                const rawImgs = (preparedHtml.match(/<img[^>]*>/gi) || []).length;
+                const normalizedImgs = tempDiv.querySelectorAll("img").length;
+                const firstSrc = tempDiv.querySelector("img")?.getAttribute("src") || "";
+                console.log("[paste-diag] raw html <img>=", rawImgs,
+                  " normalized <img>=", normalizedImgs,
+                  " isWord=", normalized.isWordSource,
+                  " stats=", normalized.imageStats,
+                  " firstSrcHead=", firstSrc.slice(0, 80));
+              } catch {}
+              const slice = parser.parseSlice(tempDiv);
+              try {
+                let imgCountInSlice = 0;
+                slice.content.descendants((node) => {
+                  if (node.type.name === "image") imgCountInSlice += 1;
+                });
+                console.log("[paste-diag] PM slice image nodes=", imgCountInSlice);
+              } catch {}
+              view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+              if (normalized.imageStats.failed > 0) {
+                const msgKey = normalized.isWordSource
+                  ? "tiptap.wordImagesNotPastable"
+                  : "tiptap.imagesNotLoaded";
+                showPasteToast("error", t(msgKey, { count: normalized.imageStats.failed }), 6000);
+              }
+            };
+
+            const colorRisk = analyzeRiskyForegroundColors(htmlForParse);
+            if (colorRisk.total > 0) {
+              const pasteAnchor = captureAsyncInsertAnchor(view);
+              asyncInsertAnchorsRef.current.add(pasteAnchor);
+              void chooseDialog({
+                title: t("tiptap.pasteColorRiskTitle", { defaultValue: "检测到可能影响主题阅读的文字颜色" }),
+                description: t("tiptap.pasteColorRiskDescription", {
+                  defaultValue: "粘贴内容中有 {{count}} 处固定文字颜色（偏黑 {{dark}} 处、偏白 {{light}} 处）。切换深色或浅色主题后，这些文字可能与背景融为一体。",
+                  count: colorRisk.total,
+                  dark: colorRisk.dark,
+                  light: colorRisk.light,
+                }),
+                cancelText: t("common.cancel"),
+                choices: [
+                  {
+                    value: "keep",
+                    label: t("tiptap.pasteColorKeepAndPaste", { defaultValue: "保留原颜色并粘贴" }),
+                    variant: "outline",
+                  },
+                  {
+                    value: "strip",
+                    label: t("tiptap.pasteColorRemoveAndPaste", { defaultValue: "移除文字颜色并粘贴" }),
+                    variant: "default",
+                  },
+                ],
+              }).then((choice) => {
+                if (!choice || view.isDestroyed) return;
+                if (!restoreAsyncInsertAnchor(view, pasteAnchor)) return;
+                insertPreparedHtml(choice === "strip"
+                  ? stripExplicitForegroundColors(htmlForParse)
+                  : htmlForParse);
+              }).finally(() => {
+                releaseAsyncInsertAnchor(asyncInsertAnchorsRef.current, pasteAnchor);
               });
-              console.log("[paste-diag] PM slice image nodes=", imgCountInSlice);
-            } catch {}
-            const tr = state.tr.replaceSelection(slice);
-            dispatch(tr);
-            // 若存在图片还没加载完（没有任何可用 src 的 <img>），提示用户
-            //   a) Word 粘贴：<img src="file:///..."> 浏览器不可加载 → 引导用户改用"导入 Word 文档"
-            //   b) 懒加载网页：<img> 真实地址没填入 → 提示回原网页滚动加载后再复制
-            if (normalized.imageStats.failed > 0) {
-              const msgKey = normalized.isWordSource
-                ? "tiptap.wordImagesNotPastable"
-                : "tiptap.imagesNotLoaded";
-              showPasteToast(
-                "error",
-                t(msgKey, { count: normalized.imageStats.failed }),
-                6000
-              );
+              return true;
             }
+
+            insertPreparedHtml(htmlForParse);
             return true;
           }
 
@@ -3062,6 +3096,62 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
       toast.error(t("tiptap.imageDownloadFailed", { defaultValue: "图片下载失败" }));
     }
   }, [getSelectedImageAttrs, t]);
+
+  const handleLocalizeSelectedImage = useCallback(async () => {
+    if (!editor || localizingSelectedImage) return;
+    const currentNote = noteRef.current;
+    if (!currentNote?.id) {
+      toast.error(t("tiptap.imageLocalizeFailed", { defaultValue: "网络图片转存失败" }));
+      return;
+    }
+    const selection = editor.state.selection;
+    if (!(selection instanceof NodeSelection) || selection.node.type.name !== "image") return;
+    const originalSrc = String(selection.node.attrs.src || "").trim();
+    if (!shouldLocalizeUrl(originalSrc)) return;
+    const preferredPos = selection.from;
+
+    setLocalizingSelectedImage(true);
+    toast.info(t("tiptap.imageLocalizing", { defaultValue: "正在转存网络图片..." }));
+    try {
+      const result = await api.attachments.importRemoteImage(currentNote.id, originalSrc, "image-action");
+      if (editor.isDestroyed) return;
+      let targetPos: number | null = null;
+      const preferredNode = editor.state.doc.nodeAt(preferredPos);
+      if (isImageReplaceTargetNode(preferredNode) && String(preferredNode.attrs.src || "") === originalSrc) {
+        targetPos = preferredPos;
+      } else {
+        const matches: number[] = [];
+        editor.state.doc.descendants((node, pos) => {
+          if (node.type.name === "image" && String(node.attrs.src || "") === originalSrc) matches.push(pos);
+        });
+        if (matches.length === 1) targetPos = matches[0];
+      }
+      if (targetPos == null) {
+        toast.error(t("tiptap.imageLocalizeTargetChanged", { defaultValue: "原图片位置已变化，请重新选择后转存" }));
+        return;
+      }
+      const targetNode = editor.state.doc.nodeAt(targetPos);
+      if (!isImageReplaceTargetNode(targetNode)) return;
+      let transaction = editor.state.tr.setNodeMarkup(targetPos, undefined, { ...targetNode.attrs, src: result.url });
+      try { transaction = transaction.setSelection(NodeSelection.create(transaction.doc, targetPos)); } catch {}
+      editor.view.dispatch(transaction.scrollIntoView());
+      toast.success(t("tiptap.imageLocalizeSuccess", { defaultValue: "网络图片已转存为本地附件" }));
+    } catch (error) {
+      console.error("Localize selected image failed:", error);
+      const detail = (error as Error)?.message || "";
+      toast.error(detail || t("tiptap.imageLocalizeFailed", { defaultValue: "网络图片转存失败" }));
+    } finally {
+      setLocalizingSelectedImage(false);
+    }
+  }, [editor, localizingSelectedImage, t]);
+
+  const selectedImageCanLocalize = (() => {
+    if (!editor) return false;
+    const selection = editor.state.selection;
+    return selection instanceof NodeSelection
+      && selection.node.type.name === "image"
+      && shouldLocalizeUrl(String(selection.node.attrs.src || ""));
+  })();
 
   const handleCopySelectedImageSrc = useCallback(async () => {
     const attrs = getSelectedImageAttrs();
@@ -4903,6 +4993,15 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
           <ToolbarButton title={t("tiptap.imageDownload")} onClick={() => { void handleDownloadSelectedImage(); }}>
             <Download size={14} />
           </ToolbarButton>
+          {selectedImageCanLocalize && (
+            <ToolbarButton
+              title={t("tiptap.imageLocalize", { defaultValue: "转存为附件" })}
+              disabled={localizingSelectedImage}
+              onClick={() => { void handleLocalizeSelectedImage(); }}
+            >
+              <Paperclip size={14} />
+            </ToolbarButton>
+          )}
           <ToolbarButton
             title={t("tiptap.imageReplace")}
             disabled={replacingImage}
@@ -4977,6 +5076,13 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
             {[
               { key: "view", label: t("tiptap.imageViewLarge"), icon: ExternalLink, action: handlePreviewSelectedImage },
               { key: "download", label: t("tiptap.imageDownload"), icon: Download, action: () => { void handleDownloadSelectedImage(); } },
+              ...(selectedImageCanLocalize ? [{
+                key: "localize",
+                label: t("tiptap.imageLocalize", { defaultValue: "转存为附件" }),
+                icon: Paperclip,
+                action: () => { void handleLocalizeSelectedImage(); },
+                disabled: localizingSelectedImage,
+              }] : []),
               { key: "replace", label: t("tiptap.imageReplace"), icon: Upload, action: handleReplaceSelectedImage, disabled: replacingImage },
               { key: "copy", label: t("tiptap.imageCopyAddress"), icon: Copy, action: () => { void handleCopySelectedImageSrc(); } },
               { key: "delete", label: t("tiptap.imageDelete"), icon: Trash2, action: handleDeleteSelectedImage },
