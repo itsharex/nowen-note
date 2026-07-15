@@ -1,7 +1,8 @@
 from pathlib import Path
 
-# The compatibility migration wrapper already owns v45-v47. Move this feature to v48
-# and make the test cleanup resilient when setup fails early.
+# The compatibility migration wrapper already owns v45-v47. Move this feature to v48,
+# make the test cleanup resilient, use a real notebook collaborator fixture, and make
+# idempotent replays win over the now-stale expected version.
 backend_script_path = Path(".github/issue-165-backend.py")
 backend_script = backend_script_path.read_text(encoding="utf-8")
 backend_script = backend_script.replace(
@@ -15,6 +16,34 @@ backend_script = backend_script.replace(
     1,
 )
 backend_script = backend_script.replace("  closeDb();", "  if (closeDb) closeDb();", 1)
+backend_script = backend_script.replace(
+    '''  const { note, userId } = required;
+  if (note.isLocked) return c.json({ error: "Note is locked", code: "NOTE_LOCKED" }, 403);
+  if (note.version !== body.expectedNoteVersion) {
+    return c.json({ error: "Version conflict", code: "VERSION_CONFLICT", currentVersion: note.version }, 409);
+  }
+
+  const cached = readIdempotentResult(userId, body.operationId);
+  if (cached) return c.json({ ...cached as any, idempotentReplay: true });''',
+    '''  const { note, userId } = required;
+  const cached = readIdempotentResult(userId, body.operationId);
+  if (cached) return c.json({ ...cached as any, idempotentReplay: true });
+
+  if (note.isLocked) return c.json({ error: "Note is locked", code: "NOTE_LOCKED" }, 403);
+  if (note.version !== body.expectedNoteVersion) {
+    return c.json({ error: "Version conflict", code: "VERSION_CONFLICT", currentVersion: note.version }, 409);
+  }''',
+    1,
+)
+backend_script = backend_script.replace(
+    '''  db.prepare("INSERT INTO notebooks (id, userId, name) VALUES (?, ?, ?)").run(notebookId, owner, "Knowledge");
+  db.prepare(`INSERT INTO notes (id, userId, notebookId, title, content, contentText, contentFormat)''',
+    '''  db.prepare("INSERT INTO notebooks (id, userId, name) VALUES (?, ?, ?)").run(notebookId, owner, "Knowledge");
+  db.prepare("INSERT INTO notebook_members (id, notebookId, userId, role, status, invitedBy) VALUES (?, ?, ?, ?, 'active', ?)")
+    .run("knowledge-notebook-member", notebookId, viewer, "viewer", owner);
+  db.prepare(`INSERT INTO notes (id, userId, notebookId, title, content, contentText, contentFormat)''',
+    1,
+)
 backend_script_path.write_text(backend_script, encoding="utf-8")
 
 path = Path(".github/issue-165-client.py")
@@ -70,7 +99,6 @@ mcp_index_path.write_text(
 """
 source = source[:start] + search_replacement + source[end:]
 
-# Normalize the exact indentation used by contentFormat.ts.
 source = source.replace(
     "'''       types: [\"heading\"],'''",
     "'''      types: [\"heading\"],'''",
@@ -82,7 +110,6 @@ source = source.replace(
     1,
 )
 
-# Replace the fragile JSX excerpt patch itself with an exact, readable anchor.
 label_pos = source.index('    "backlink panel excerpt",')
 block_start = source.rfind("replace_once(", 0, label_pos)
 block_end = source.index(")\n", label_pos) + 2
@@ -111,7 +138,6 @@ backlinks_path.write_text(backlinks_source.replace(backlink_anchor, backlink_out
 '''
 source = source[:block_start] + backlink_replacement + source[block_end:]
 
-# Keep the frontend API contract aligned with the expanded backlink payload.
 api_contract_patch = r'''
 api_impl_path = Path("frontend/src/lib/api.impl.ts")
 api_impl_source = api_impl_path.read_text(encoding="utf-8")
@@ -139,4 +165,4 @@ print_pos = source.rfind('print("issue 165 client patch applied")')
 source = source[:print_pos] + api_contract_patch + "\n" + source[print_pos:]
 
 path.write_text(source, encoding="utf-8")
-print("issue 165 migration, API contract and fragile client patches normalized")
+print("issue 165 idempotency, shared fixture and client patches normalized")
