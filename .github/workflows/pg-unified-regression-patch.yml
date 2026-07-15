@@ -1,0 +1,71 @@
+name: Patch PostgreSQL Unified Regressions
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - synchronize
+    paths:
+      - .github/pg-unified-patch-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'pg-migration-unified'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: pg-migration-unified
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Apply exact regression patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python3 <<'PY'
+          from pathlib import Path
+
+          transfer_path = Path("backend/tests/notebook-transfer-copy.test.ts")
+          transfer = transfer_path.read_text(encoding="utf-8")
+          replacements = {
+              '  getDb().prepare("UPDATE notebooks SET workspaceId = ? WHERE id = ?").run(WS, "nb-root");': '''  getDb().exec(`
+    DELETE FROM notes WHERE notebookId IN ('nb-root', 'nb-child');
+    DELETE FROM notebooks WHERE id = 'nb-child';
+  `);
+  getDb().prepare("UPDATE notebooks SET workspaceId = ? WHERE id = ?").run(WS, "nb-root");''',
+              '  getDb().prepare("UPDATE notebooks SET userId = ? WHERE id = ?").run(OTHER, "nb-root");': '''  getDb().exec(`
+    DELETE FROM notes WHERE notebookId IN ('nb-root', 'nb-child');
+    DELETE FROM notebooks WHERE id = 'nb-child';
+  `);
+  getDb().prepare("UPDATE notebooks SET userId = ? WHERE id = ?").run(OTHER, "nb-root");''',
+          }
+          changed = False
+          for old, new in replacements.items():
+              if old in transfer:
+                  transfer = transfer.replace(old, new, 1)
+                  changed = True
+          if changed:
+              transfer_path.write_text(transfer, encoding="utf-8")
+
+          importer_path = Path("backend/src/services/siyuanPackageImport.ts")
+          importer = importer_path.read_text(encoding="utf-8")
+          old_types = 'const FIDELITY_NODE_TYPES = new Set(["NodeInlineHTML"]);'
+          new_types = 'const FIDELITY_NODE_TYPES = new Set(["NodeInlineHTML", "NodeHTMLBlock", "NodeIFrame"]);'
+          if old_types in importer:
+              importer_path.write_text(importer.replace(old_types, new_types, 1), encoding="utf-8")
+          PY
+          rm -f .github/workflows/pg-unified-test-patch.yml
+          rm -f .github/pg-unified-patch-trigger
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Unified regression patches are already applied."
+            exit 0
+          fi
+          git commit -m "fix(db): resolve unified SQLite regression conflicts"
+          git push origin HEAD:pg-migration-unified
