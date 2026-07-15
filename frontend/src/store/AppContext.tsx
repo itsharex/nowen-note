@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useReducer, useMemo } from "react";
+import React, { createContext, useContext, useEffect, useReducer, useMemo } from "react";
 import { Notebook, NoteListItem, Note, Tag, ViewMode } from "@/types";
 import { api } from "@/lib/api";
+import { NOTEBOOKS_INVALIDATED_EVENT } from "@/lib/notebookInvalidation";
 
 export type SyncStatus = "idle" | "saving" | "saved" | "error" | "offline" | "queued";
 export type MobileView = "list" | "editor";
@@ -337,6 +338,40 @@ const AppContext = createContext<{
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  useEffect(() => {
+    let refreshTimer: ReturnType<typeof window.setTimeout> | null = null;
+    let requestVersion = 0;
+
+    const reconcileNotebookTree = () => {
+      const version = ++requestVersion;
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      // Drag-and-drop performs move then sibling reorder as two confirmed requests.
+      // Debounce both invalidations so the final read cannot race the reorder write.
+      refreshTimer = window.setTimeout(async () => {
+        refreshTimer = null;
+        try {
+          const notebooks = await api.getNotebooks();
+          if (version !== requestVersion) return;
+          dispatch({ type: "SET_NOTEBOOKS", payload: notebooks });
+          // The selected notebook query includes descendants. Moving a folder changes
+          // that scope even though no note row changed, so refresh the main list and
+          // every expanded notebook's direct-note cache as one reconciliation step.
+          dispatch({ type: "TRIGGER_REFRESH_NOTES" });
+        } catch (error) {
+          console.error("[AppContext] failed to reconcile notebook tree:", error);
+        }
+      }, 250);
+    };
+
+    window.addEventListener(NOTEBOOKS_INVALIDATED_EVENT, reconcileNotebookTree);
+    return () => {
+      requestVersion++;
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      window.removeEventListener(NOTEBOOKS_INVALIDATED_EVENT, reconcileNotebookTree);
+    };
+  }, []);
+
   return (
     <AppContext.Provider value={{ state, dispatch }}>
       {children}
