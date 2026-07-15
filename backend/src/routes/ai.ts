@@ -500,7 +500,7 @@ ai.post("/ask", async (c) => {
   // ---- 路径 A：向量召回 ----
   if (isVecAvailable()) {
     try {
-      const qvec = await embedQuery(question);
+      const qvec = await embedQuery(userId, question);
       if (qvec) {
         // maxNotes 从 5 提到 8：附件 + 笔记混排时，让两类各自都能出现
         const hits = knnSearch(qvec, userId, workspaceId, notebookIds ? 300 : 30, 8, notebookIds);
@@ -1558,7 +1558,7 @@ ai.get("/embeddings/stats", (c) => {
   if ("error" in scope) return scope.error;
   const { userId, workspaceId } = scope;
   const stats = getEmbeddingStats({
-    userId: workspaceId === null ? userId : undefined,
+    userId,
     workspaceId,
   });
   return c.json(stats);

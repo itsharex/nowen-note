@@ -252,7 +252,7 @@ async function retrieveCandidates(scope: Scope, question: string): Promise<{
 
   if (isVecAvailable()) {
     try {
-      const vector = await embedQuery(question);
+      const vector = await embedQuery(scope.userId, question);
       if (vector) {
         const hits = knnSearch(
           vector,
@@ -398,9 +398,7 @@ async function retrieveCandidates(scope: Scope, question: string): Promise<{
 
 function getIndexStatus(scope: Scope) {
   const db = getDb();
-  const opts = scope.workspaceId === null
-    ? { userId: scope.userId, workspaceId: null as string | null }
-    : { workspaceId: scope.workspaceId };
+  const opts = { userId: scope.userId, workspaceId: scope.workspaceId };
   const stats = getEmbeddingStats(opts);
   const clauses: string[] = [];
   const params: any[] = [];
