@@ -1,0 +1,105 @@
+name: Run Issue 165 Remaining Features
+
+on:
+  push:
+    branches: [main]
+    paths: [.github/issue-165-main-trigger]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: issue-165-main-runner
+  cancel-in-progress: true
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: codex/issue-165-finish
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+            packages/nowen-mcp/package-lock.json
+      - name: Capture main parent
+        run: git rev-parse origin/main > /tmp/issue165-main-parent
+      - name: Apply deterministic patches
+        run: |
+          python .github/issue-165-phase1-normalize.py
+          python .github/issue-165-phase1-backend.py
+          python .github/issue-165-phase1-frontend-files.py
+          python .github/issue-165-phase1-frontend-existing.py
+      - name: Validate all layers
+        id: validate
+        shell: bash
+        run: |
+          set +e
+          : > /tmp/issue165.log
+          : > /tmp/issue165.status
+          run_step() {
+            local name="$1"; shift
+            echo "===== $name =====" | tee -a /tmp/issue165.log
+            "$@" >> /tmp/issue165.log 2>&1
+            local code=$?
+            echo "$name=$code" | tee -a /tmp/issue165.log
+            echo "$name=$code" >> /tmp/issue165.status
+            return 0
+          }
+          run_step backend_install bash -lc 'cd backend && npm ci'
+          run_step backend_typecheck bash -lc 'cd backend && npm run build:tsc'
+          run_step backend_tests bash -lc 'cd backend && node --import tsx --test tests/knowledge-blocks.test.ts'
+          run_step mcp_install bash -lc 'cd packages/nowen-mcp && npm ci'
+          run_step mcp_build bash -lc 'cd packages/nowen-mcp && npm run build'
+          run_step mcp_tests bash -lc 'cd packages/nowen-mcp && npm test'
+          run_step frontend_install bash -lc 'cd frontend && npm ci'
+          run_step frontend_unit bash -lc 'cd frontend && npx vitest run src/lib/__tests__/noteLinkSyntax.test.ts'
+          run_step frontend_build bash -lc 'cd frontend && npm run build'
+          if grep -qE '=[1-9][0-9]*$' /tmp/issue165.status; then echo "ok=false" >> "$GITHUB_OUTPUT"; else echo "ok=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Record diagnostics
+        if: steps.validate.outputs.ok != 'true'
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          statuses = {}
+          for line in Path('/tmp/issue165.status').read_text().splitlines():
+              key, value = line.split('=', 1)
+              statuses[key] = int(value)
+          Path('.github/issue-165-phase1-result.json').write_text(json.dumps({'ok': False, 'statuses': statuses, 'log': Path('/tmp/issue165.log').read_text()[-60000:]}, ensure_ascii=False, indent=2) + '\n')
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/issue-165-phase1-result.json
+          git commit -m 'test(knowledge): record issue 165 remaining-feature diagnostics'
+          git push origin HEAD:codex/issue-165-finish
+          exit 1
+      - name: Create clean feature commit
+        if: steps.validate.outputs.ok == 'true'
+        run: |
+          PARENT=$(cat /tmp/issue165-main-parent)
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          rm -f \
+            .github/issue-165-phase1-trigger \
+            .github/issue-165-phase1-normalize.py \
+            .github/issue-165-phase1-backend.py \
+            .github/issue-165-phase1-frontend-files.py \
+            .github/issue-165-phase1-frontend-existing.py \
+            .github/issue-165-phase1-result.json \
+            .github/workflows/issue-165-phase1.yml \
+            .github/issue-165-main-trigger \
+            .github/workflows/issue-165-run-remaining.yml
+          git add -A
+          TREE=$(git write-tree)
+          NEW=$(printf '%s\n\n%s\n' \
+            'feat(knowledge): complete backlink UX, graph and block embeds (#165)' \
+            'Finish one-click note creation, title aliases, all-block selection, previews, precise navigation, graph UI and live read-only block embeds.' \
+            | git commit-tree "$TREE" -p "$PARENT")
+          git push --force origin "$NEW":refs/heads/codex/issue-165-finish
