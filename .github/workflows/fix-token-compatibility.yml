@@ -1,0 +1,53 @@
+name: Fix Token Compatibility
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/token-compatibility-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Preserve unrestricted token compatibility
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('backend/src/middleware/api-token-resource-scope.ts')
+          text = path.read_text(encoding='utf-8')
+          old = '''    if (required === "__unsupported__") {
+      throw new ApiTokenAccessError(`API Token 未授权访问端点: ${c.req.path}`, "API_TOKEN_ENDPOINT_DENIED");
+    }
+    if (required) requireScope(ctx, required);
+
+    if (ctx.resourceMode !== "restricted") {
+'''
+          new = '''    if (required === "__unsupported__") {
+      if (ctx.resourceMode === "restricted") {
+        throw new ApiTokenAccessError(`restricted Token 未授权访问端点: ${c.req.path}`, "API_TOKEN_ENDPOINT_DENIED");
+      }
+      await next();
+      return;
+    }
+    if (required) requireScope(ctx, required);
+
+    if (ctx.resourceMode !== "restricted") {
+'''
+          if old not in text:
+              raise SystemExit('compatibility target not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          rm -f .github/token-compatibility-trigger
+          rm -f .github/workflows/fix-token-compatibility.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "fix(auth): preserve unrestricted API token endpoints"
+          git push origin HEAD:main
