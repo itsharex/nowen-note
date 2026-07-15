@@ -4,17 +4,40 @@ import { ensureNotebookTreeIntegrityGuards } from "../runtime/notebook-tree-hard
 
 ensureNotebookTreeIntegrityGuards();
 
-export type NotebookRole = "owner" | "editor" | "viewer";
+export type NotebookRole =
+  | "owner"
+  | "admin"
+  | "editor"
+  | "commenter"
+  | "viewer"
+  | "manage"
+  | "write"
+  | "comment"
+  | "read"
+  | "none";
 
-const NOTEBOOK_ROLE_PERMISSIONS: Record<NotebookRole, Permission> = {
+const NOTEBOOK_ROLE_PERMISSIONS: Record<Exclude<NotebookRole, "none">, Permission> = {
   owner: "manage",
+  admin: "manage",
+  manage: "manage",
   editor: "write",
+  write: "write",
+  commenter: "comment",
+  comment: "comment",
   viewer: "read",
+  read: "read",
 };
 
+/**
+ * `none` 是显式拒绝规则。为阻止工作区角色继续兜底，这里返回一个仅在 ACL 内部使用的
+ * truthy 哨兵；hasPermission() 对未知值会稳定返回 false，因此不会授予任何操作。
+ */
+const DENY_PERMISSION = "deny" as Permission;
+
 export function notebookRoleToPermission(role: string | null | undefined): Permission | null {
-  if (role === "owner" || role === "editor" || role === "viewer") {
-    return NOTEBOOK_ROLE_PERMISSIONS[role];
+  if (role === "none") return DENY_PERMISSION;
+  if (role && role in NOTEBOOK_ROLE_PERMISSIONS) {
+    return NOTEBOOK_ROLE_PERMISSIONS[role as Exclude<NotebookRole, "none">];
   }
   return null;
 }
