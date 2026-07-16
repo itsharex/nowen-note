@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Editor } from "@tiptap/react";
 import { Schema, type Node as ProseMirrorNode } from "@tiptap/pm/model";
-import { EditorState } from "@tiptap/pm/state";
+import { EditorState, type Transaction } from "@tiptap/pm/state";
 import {
   canUseCodeBlockToolbarAction,
   isEditorDocumentMutable,
@@ -83,7 +83,7 @@ describe("replaceCodeBlockWithPlainText", () => {
       doc: schema.nodes.doc.create(null, [codeBlock]),
     });
     const focus = vi.fn();
-    const dispatch = vi.fn((transaction) => {
+    const dispatch = vi.fn((transaction: Transaction) => {
       state = state.apply(transaction);
     });
     const view = {
