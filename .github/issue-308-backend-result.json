@@ -2,5 +2,5 @@
   "ok": false,
   "phase": "apply_patch",
   "status": 1,
-  "logTail": "## apply_patch\nTraceback (most recent call last):\n  File \"/home/runner/work/nowen-note/nowen-note/scripts/issue-308-backend.py\", line 480, in <module>\n    raise RuntimeError(\"postgres shares index marker missing\")\nRuntimeError: postgres shares index marker missing\n"
+  "logTail": "## align_patch\nIssue #308 PostgreSQL markers aligned\n## apply_patch\nTraceback (most recent call last):\n  File \"/home/runner/work/nowen-note/nowen-note/scripts/issue-308-backend.py\", line 907, in <module>\n    replace_once(\n  File \"/home/runner/work/nowen-note/nowen-note/scripts/issue-308-backend.py\", line 23, in replace_once\n    raise RuntimeError(f\"{path}: expected one match, got {count}: {old[:100]!r}\")\nRuntimeError: backend/src/runtime/notebook-publication.ts: expected one match, got 0: '    const scope = createPublicationAttachmentScope(publication.id, noteId);'\n"
 }
