@@ -2,7 +2,7 @@ name: PostgreSQL Unified Validation
 
 on:
   pull_request_target:
-    types: [reopened]
+    types: [reopened, edited]
 
 permissions:
   contents: read
