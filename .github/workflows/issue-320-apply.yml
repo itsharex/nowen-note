@@ -5,21 +5,27 @@ on:
     branches: [main]
     paths:
       - .github/issue-320-trigger
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/issue-320-pr-trigger
 
 permissions:
   contents: write
 
 concurrency:
-  group: issue-320-main
+  group: issue-320-${{ github.event.pull_request.number || 'main' }}
   cancel-in-progress: false
 
 jobs:
   apply:
     runs-on: ubuntu-latest
+    env:
+      TARGET_BRANCH: ${{ github.event.pull_request.head.ref || 'main' }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event.pull_request.head.ref || 'main' }}
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
@@ -239,9 +245,9 @@ vi.mock("file-saver", () => ({ saveAs }));
       - name: Commit validated fix and self-clean
         shell: bash
         run: |
-          rm -f .github/workflows/issue-320-apply.yml .github/issue-320-trigger
+          rm -f .github/workflows/issue-320-apply.yml .github/issue-320-trigger .github/issue-320-pr-trigger
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add frontend/src/lib/exportService.ts frontend/src/lib/__tests__/exportService.test.ts .github/workflows/issue-320-apply.yml .github/issue-320-trigger
+          git add frontend/src/lib/exportService.ts frontend/src/lib/__tests__/exportService.test.ts .github/workflows/issue-320-apply.yml .github/issue-320-trigger .github/issue-320-pr-trigger
           git commit -m "fix(export): preserve native Markdown in single-note exports (#320)"
-          git push origin HEAD:main
+          git push origin HEAD:${TARGET_BRANCH}
