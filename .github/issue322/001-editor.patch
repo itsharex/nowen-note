@@ -1,0 +1,167 @@
+diff --git a/frontend/src/components/TiptapEditor.tsx b/frontend/src/components/TiptapEditor.tsx
+--- a/frontend/src/components/TiptapEditor.tsx
++++ b/frontend/src/components/TiptapEditor.tsx
+@@ -124,6 +124,7 @@ import {
+ } from "@/lib/outlineScroll";
+ 
+ import { useTranslation } from "react-i18next";
++import { getActiveListType, type ActiveListType } from "@/lib/activeListType";
+ 
+ const lowlight = createLowlight(common);
+ 
+@@ -918,24 +919,25 @@ function createKeyboardExtension(flushSaveRef: React.MutableRefObject<() => void
+         }
+ 
+-        // 任务列表 / 普通列表：sink / lift
++        // 任务列表 / 普通列表：Tab 只负责列表层级，不退化为块级视觉缩进。
+         if (isInTaskList()) {
+-          const ok = delta === 1
+-            ? editor.chain().focus().sinkListItem("taskItem").run()
+-            : editor.chain().focus().liftListItem("taskItem").run();
+-          if (ok) return true;
+-          // 若无法 sink/lift（例如已是最外层），退化为块级 indent
+-        } else if (isInBulletOrOrdered()) {
+-          const ok = delta === 1
++          if (delta === 1) {
++            editor.chain().focus().sinkListItem("taskItem").run();
++          } else {
++            editor.chain().focus().liftListItem("taskItem").run();
++          }
++          return true;
++        }
++        if (isInBulletOrOrdered()) {
++          const changed = delta === 1
+             ? editor.chain().focus().sinkListItem("listItem").run()
+             : editor.chain().focus().liftListItem("listItem").run();
+-          if (ok) {
+-            normalizeAdjacentLists(editor);
+-            return true;
+-          }
++          if (changed) normalizeAdjacentLists(editor);
++          return true;
+         }
+ 
+-        // 其余：调整块级 indent 属性
++        // 其余块级内容才使用视觉缩进。
+         return editor.chain().focus().changeIndent(delta).run();
+       };
+ 
+@@ -1537,6 +1539,14 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
+   const isTitleComposingRef = useRef(false);
+   const lastEmittedTitleRef = useRef(note.title);
+   const [wordStats, setWordStats] = useState({ chars: 0, charsNoSpace: 0, words: 0 });
++  const [activeListType, setActiveListType] = useState<ActiveListType>(null);
++  const activeListTypeRef = useRef<ActiveListType>(null);
++  const syncActiveListType = useCallback((currentEditor: Editor | null) => {
++    const next = getActiveListType(currentEditor);
++    if (activeListTypeRef.current === next) return;
++    activeListTypeRef.current = next;
++    setActiveListType(next);
++  }, []);
+   const [showAI, setShowAI] = useState(false);
+   const [aiSelectedText, setAiSelectedText] = useState("");
+   const [aiPosition, setAiPosition] = useState<{ top: number; left: number } | undefined>();
+@@ -2630,8 +2640,12 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
+         return true;
+       },
+     },
+-    onTransaction: ({ transaction }) => {
++    onCreate: ({ editor }) => {
++      syncActiveListType(editor);
++    },
++    onTransaction: ({ editor, transaction }) => {
+       mapAsyncInsertAnchors(asyncInsertAnchorsRef.current, transaction);
++      syncActiveListType(editor);
+     },
+     onUpdate: ({ editor }) => {
+       // setContent 触发的 onUpdate 不应该保存（防止死循环）
+@@ -4621,21 +4635,21 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
+ 
+         <ToolbarButton
+           onClick={() => toggleBulletListSmart(editor)}
+-          isActive={editor.isActive("bulletList")}
++          isActive={activeListType === "bulletList"}
+           title={t('tiptap.bulletList')}
+         >
+           <List size={iconSize} />
+         </ToolbarButton>
+         <ToolbarButton
+           onClick={() => toggleOrderedListSmart(editor)}
+-          isActive={editor.isActive("orderedList")}
++          isActive={activeListType === "orderedList"}
+           title={t('tiptap.orderedList')}
+         >
+           <ListOrdered size={iconSize} />
+         </ToolbarButton>
+         <ToolbarButton
+           onClick={() => editor.chain().focus().toggleTaskList().run()}
+-          isActive={editor.isActive("taskList")}
++          isActive={activeListType === "taskList"}
+           title={t('tiptap.taskList')}
+         >
+           <CheckSquare size={iconSize} />
+diff --git a/frontend/src/lib/activeListType.ts b/frontend/src/lib/activeListType.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/lib/activeListType.ts
+@@ -0,0 +1,28 @@
++export type ActiveListType = "bulletList" | "orderedList" | "taskList" | null;
++
++interface EditorSelectionPath {
++  depth: number;
++  node: (depth: number) => { type: { name: string } };
++}
++
++interface EditorLike {
++  state: {
++    selection: {
++      $from: EditorSelectionPath;
++    };
++  };
++}
++
++/** 返回光标最近的列表祖先，避免混合嵌套时多个 isActive 同时为 true。 */
++export function getActiveListType(editor: EditorLike | null): ActiveListType {
++  if (!editor) return null;
++  const { $from } = editor.state.selection;
++  for (let depth = $from.depth; depth > 0; depth -= 1) {
++    const name = $from.node(depth).type.name;
++    if (name === "bulletList" || name === "orderedList" || name === "taskList") {
++      return name;
++    }
++  }
++  return null;
++}
+diff --git a/frontend/src/lib/__tests__/activeListType.test.ts b/frontend/src/lib/__tests__/activeListType.test.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/lib/__tests__/activeListType.test.ts
+@@ -0,0 +1,31 @@
++import { describe, expect, it } from "vitest";
++import { getActiveListType } from "@/lib/activeListType";
++
++function editorWithPath(names: string[]) {
++  return {
++    state: {
++      selection: {
++        $from: {
++          depth: names.length - 1,
++          node: (depth: number) => ({ type: { name: names[depth] } }),
++        },
++      },
++    },
++  };
++}
++
++describe("getActiveListType", () => {
++  it("returns the nearest list in mixed nested lists", () => {
++    const editor = editorWithPath(["doc", "orderedList", "listItem", "bulletList", "listItem", "paragraph"]);
++    expect(getActiveListType(editor)).toBe("bulletList");
++  });
++
++  it("recognizes task lists and non-list selections", () => {
++    expect(getActiveListType(editorWithPath(["doc", "taskList", "taskItem", "paragraph"]))).toBe("taskList");
++    expect(getActiveListType(editorWithPath(["doc", "paragraph"]))).toBeNull();
++    expect(getActiveListType(null)).toBeNull();
++  });
++});
