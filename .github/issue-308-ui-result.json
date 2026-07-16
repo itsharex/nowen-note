@@ -1,0 +1,6 @@
+{
+  "ok": false,
+  "phase": "apply_patch",
+  "status": 1,
+  "logTail": "## prepare_patch\nIssue #308 share-link async repository API preserved\n## apply_patch\nTraceback (most recent call last):\n  File \"/home/runner/work/nowen-note/nowen-note/scripts/issue-308-ui.py\", line 261, in <module>\n    replace_once(\n  File \"/home/runner/work/nowen-note/nowen-note/scripts/issue-308-ui.py\", line 23, in replace_once\n    raise RuntimeError(f\"{path}: expected one match, got {count}: {old[:120]!r}\")\nRuntimeError: frontend/src/types/index.ts: expected one match, got 2: '  expiresAt: string | null;\\n  createdBy: string;'\n"
+}
