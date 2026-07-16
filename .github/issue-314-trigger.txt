@@ -1,2 +1,0 @@
-Apply and validate Issue #314 UTC-aware note image export timestamp fix.
-Retry: 2
