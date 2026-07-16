@@ -1,11 +1,9 @@
 name: Issue 322 main implementation
 
-# Reusable one-shot runner; the final successful commit deletes this workflow.
+# One-shot runner. A successful run deletes this workflow and all staged patches.
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/issue-322-main-implementation.yml
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: write
@@ -17,7 +15,7 @@ concurrency:
 
 jobs:
   implement:
-    if: github.event.head_commit.message == 'chore(ci): apply issue #322 on main'
+    if: github.event.issue.number == 322 && github.event.comment.body == '/run-issue-322'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
