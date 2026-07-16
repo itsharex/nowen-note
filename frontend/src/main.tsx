@@ -37,6 +37,7 @@ import { installShareLightboxRotationGuard } from "./lib/shareLightboxRotationGu
 import { installMobileImageFocusGuard } from "./lib/mobileImageFocusGuard";
 import { installNoteSyncSafety } from "./lib/noteSyncSafety";
 import { installNoteUpdateResponseGuard } from "./lib/noteUpdateResponseGuard";
+import { installNoteUpdateSerialQueue } from "./lib/noteUpdateSerialQueue";
 import { installTaskAttachmentExportFallback } from "./lib/taskAttachmentExportFallback";
 import { installTwoFactorLoginChallengeBridge } from "./lib/twoFactorLoginChallenge";
 import { installTaskUpdateSafetyBridge } from "./lib/taskUpdateSafetyBridge";
@@ -83,6 +84,9 @@ installTwoFactorLoginChallengeBridge();
 // metadata-only writes before it can replace activeNote in React state.
 installNoteSyncSafety();
 installNoteUpdateResponseGuard();
+// Keep the safety/response wrappers underneath one per-note writer. Concurrent debounce calls
+// now coalesce to the latest snapshot and chain from the preceding server ACK version.
+installNoteUpdateSerialQueue();
 installShareLightboxRotationGuard();
 installMobileImageFocusGuard();
 // Keep one stale task-image reference from aborting an otherwise valid full task backup.
