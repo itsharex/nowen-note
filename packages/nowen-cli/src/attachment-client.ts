@@ -189,7 +189,7 @@ export class AttachmentClient {
     pageSize?: number;
     workspaceId?: string;
   } = {}): Promise<AttachmentListResponse> {
-    return this.request("/api/files", { query: params });
+    return this.request("/api/files", { query: params as Record<string, QueryValue> });
   }
 
   async get(id: string): Promise<any> {
