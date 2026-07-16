@@ -587,6 +587,8 @@ function initSchema(db: Database.Database) {
       role TEXT NOT NULL DEFAULT 'viewer',
       enabled INTEGER NOT NULL DEFAULT 1,
       expiresAt TEXT,
+      maxUses INTEGER,
+      useCount INTEGER NOT NULL DEFAULT 0,
       createdBy TEXT NOT NULL,
       createdAt TEXT NOT NULL DEFAULT (datetime('now')),
       updatedAt TEXT NOT NULL DEFAULT (datetime('now')),

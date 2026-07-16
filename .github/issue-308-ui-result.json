@@ -1,6 +1,0 @@
-{
-  "ok": false,
-  "phase": "apply_patch",
-  "status": 1,
-  "logTail": "## prepare_patch\nIssue #308 share-link async repository API preserved\nIssue #308 NotebookShareLink type patch narrowed with literal escapes\n## apply_patch\nTraceback (most recent call last):\n  File \"/home/runner/work/nowen-note/nowen-note/scripts/issue-308-ui.py\", line 1045, in <module>\n    replace_once(\n  File \"/home/runner/work/nowen-note/nowen-note/scripts/issue-308-ui.py\", line 23, in replace_once\n    raise RuntimeError(f\"{path}: expected one match, got {count}: {old[:120]!r}\")\nRuntimeError: frontend/src/components/PublicNotebookView.tsx: expected one match, got 0: '                <textarea\\n                  value={commentText}'\n"
-}

@@ -583,6 +583,27 @@ notebooksRouter.delete("/:id/publication", (c) => {
   return c.json({ success: true, revoked: result.changes > 0, removedMembers });
 });
 
+notebooksRouter.get("/:id/publication/comments", (c) => {
+  const notebookId = c.req.param("id");
+  const access = requireManageNotebook(c, notebookId);
+  if (!access.ok) return access.response;
+  const publication = getDb().prepare("SELECT id FROM notebook_publications WHERE notebookId = ?")
+    .get(notebookId) as { id: string } | undefined;
+  if (!publication) return c.json([]);
+  const limit = Math.min(200, Math.max(1, Number(c.req.query("limit") || 100)));
+  const rows = getDb().prepare(`
+    SELECT sc.id, sc.noteId, n.title AS noteTitle,
+           COALESCE(NULLIF(sc.guestName, ''), u.displayName, u.username, '匿名') AS nickname,
+           sc.content, sc.isResolved, sc.isHidden, sc.createdAt
+    FROM share_comments sc
+    JOIN notes n ON n.id = sc.noteId
+    LEFT JOIN users u ON u.id = sc.userId
+    WHERE sc.sourceType = 'notebook_publication' AND sc.sourceId = ?
+    ORDER BY sc.createdAt DESC LIMIT ?
+  `).all(publication.id, limit);
+  return c.json(rows);
+});
+
 notebooksRouter.patch("/:id/publication/comments/:commentId", async (c) => {
   const notebookId = c.req.param("id");
   const access = requireManageNotebook(c, notebookId);

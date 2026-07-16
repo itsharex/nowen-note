@@ -200,6 +200,8 @@ CREATE TABLE IF NOT EXISTS notebook_share_links (
     role TEXT NOT NULL DEFAULT 'viewer',
     enabled BOOLEAN NOT NULL DEFAULT true,
     "expiresAt" TIMESTAMPTZ,
+    "maxUses" INTEGER,
+    "useCount" INTEGER NOT NULL DEFAULT 0,
     "createdBy" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()

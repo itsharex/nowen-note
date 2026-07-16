@@ -2086,6 +2086,25 @@ export const MIGRATIONS: Migration[] = [
     },
   },
 
+  // v51: 登录邀请链接增加人数限制、使用统计与来源生命周期（Issue #308）。
+  {
+    version: 51,
+    name: "notebook-share-link-lifecycle",
+    up: (db) => {
+      const columns = db.prepare("PRAGMA table_info(notebook_share_links)").all() as { name: string }[];
+      if (!columns.some((column) => column.name === "maxUses")) {
+        db.prepare("ALTER TABLE notebook_share_links ADD COLUMN maxUses INTEGER").run();
+      }
+      if (!columns.some((column) => column.name === "useCount")) {
+        db.prepare("ALTER TABLE notebook_share_links ADD COLUMN useCount INTEGER NOT NULL DEFAULT 0").run();
+      }
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_notebook_share_links_usage
+          ON notebook_share_links(enabled, expiresAt, useCount, maxUses);
+      `);
+    },
+  },
+
 ];
 
 /** 当前代码已知的最高 schema 版本（== MIGRATIONS 里 max(version)）。 */

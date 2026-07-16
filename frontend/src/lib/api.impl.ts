@@ -17,6 +17,7 @@ import {
 } from "@/lib/offlineRead";
 
 import { normalizeServerBaseUrl as _normalizeBase } from "@/lib/serverUrl";
+import { withShareSessionHeader } from "@/lib/shareSession";
 import {
   registerAttachmentAccessUrls,
   resolveAttachmentAccessUrl,
@@ -1311,11 +1312,11 @@ export const api = {
   removeNotebookMember: (id: string, userId: string) =>
     request<{ success: boolean }>(`/notebooks/${id}/members/${userId}`, { method: "DELETE" }),
   getNotebookShareLink: (id: string) => request<NotebookShareLink | null>(`/notebooks/${id}/share-link`),
-  createNotebookShareLink: (id: string, data?: { role?: "editor" | "viewer"; expiresAt?: string | null }) =>
+  createNotebookShareLink: (id: string, data?: { role?: "editor" | "viewer"; expiresAt?: string | null; maxUses?: number | null }) =>
     request<NotebookShareLink>(`/notebooks/${id}/share-link`, { method: "POST", body: JSON.stringify(data || {}) }),
   updateNotebookShareLink: (
     id: string,
-    data: { role?: "editor" | "viewer"; expiresAt?: string | null; enabled?: boolean },
+    data: { role?: "editor" | "viewer"; expiresAt?: string | null; enabled?: boolean; maxUses?: number | null; resetUses?: boolean; rotateToken?: boolean },
   ) => request<NotebookShareLink>(`/notebooks/${id}/share-link`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteNotebookShareLink: (id: string) =>
     request<{ success: boolean }>(`/notebooks/${id}/share-link`, { method: "DELETE" }),
@@ -1327,6 +1328,8 @@ export const api = {
       enabled: number;
       expiresAt: string | null;
       createdAt: string;
+      maxUses: number | null;
+      useCount: number;
       name: string;
       icon: string;
       color: string | null;
@@ -2787,7 +2790,7 @@ export const api = {
   getShares: () => request<Share[]>("/shares"),
   getSharesByNote: (noteId: string) => request<Share[]>(`/shares/note/${noteId}`),
   getShare: (id: string) => request<Share>(`/shares/${id}`),
-  updateShare: (id: string, data: Partial<{ permission: string; password: string; expiresAt: string; maxViews: number; isActive: number }>) =>
+  updateShare: (id: string, data: Partial<{ permission: string; password: string | null; expiresAt: string | null; maxViews: number | null; isActive: number; resetViews: boolean; rotateToken: boolean }>) =>
     request<Share>(`/shares/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deleteShare: (id: string) => request(`/shares/${id}`, { method: "DELETE" }),
 
@@ -2820,7 +2823,10 @@ export const api = {
 
   // Shared (公开访问，无需 JWT)
   getShareInfo: async (token: string): Promise<ShareInfo> => {
-    const res = await fetch(`${getBaseUrl()}/shared/${token}`);
+    const res = await fetch(`${getBaseUrl()}/shared/${token}`, {
+      headers: withShareSessionHeader(),
+      cache: "no-store",
+    });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || `请求失败: ${res.status}`);
@@ -2830,7 +2836,7 @@ export const api = {
   verifySharePassword: async (token: string, password: string): Promise<{ success: boolean; accessToken: string }> => {
     const res = await fetch(`${getBaseUrl()}/shared/${token}/verify`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: withShareSessionHeader({ "Content-Type": "application/json" }),
       body: JSON.stringify({ password }),
     });
     if (!res.ok) {
@@ -2840,9 +2846,8 @@ export const api = {
     return res.json();
   },
   getSharedContent: async (token: string, accessToken?: string): Promise<SharedNoteContent> => {
-    const headers: Record<string, string> = {};
-    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-    const res = await fetch(`${getBaseUrl()}/shared/${token}/content`, { headers });
+    const headers = withShareSessionHeader(accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined);
+    const res = await fetch(`${getBaseUrl()}/shared/${token}/content`, { headers, cache: "no-store" });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || `请求失败: ${res.status}`);
@@ -2850,23 +2855,17 @@ export const api = {
     return res.json();
   },
 
-  /**
-   * 访客更新分享笔记内容（仅当 share.permission === 'edit'）
-   * - guestName 必填，后端用于版本历史 changeSummary 审计
-   * - version 由调用方带上用于乐观锁；冲突时后端返回 409
-   * - accessToken 仅在密码分享时需要
-   */
   updateSharedContent: async (
     token: string,
     data: { title?: string; content: string; contentText: string; contentFormat?: string | null; version?: number; guestName: string },
     accessToken?: string,
   ): Promise<{ success: true; noteId: string; title: string; contentFormat?: string | null; version: number; updatedAt: string; guestName: string }> => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+    const headers = withShareSessionHeader({
+      "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    });
     const res = await fetch(`${getBaseUrl()}/shared/${token}/content`, {
-      method: "PUT",
-      headers,
-      body: JSON.stringify(data),
+      method: "PUT", headers, body: JSON.stringify(data),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -2879,11 +2878,9 @@ export const api = {
     return res.json();
   },
 
-  // Phase 4: 同步轮询
   pollSharedNote: async (token: string, accessToken?: string): Promise<{ version: number; updatedAt: string }> => {
-    const headers: Record<string, string> = {};
-    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-    const res = await fetch(`${getBaseUrl()}/shared/${token}/poll`, { headers });
+    const headers = withShareSessionHeader(accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined);
+    const res = await fetch(`${getBaseUrl()}/shared/${token}/poll`, { headers, cache: "no-store" });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || `请求失败: ${res.status}`);
@@ -2891,17 +2888,17 @@ export const api = {
     return res.json();
   },
 
-  // 公开评论
   getSharedComments: async (token: string, accessToken?: string): Promise<ShareComment[]> => {
-    const headers: Record<string, string> = {};
-    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-    const res = await fetch(`${getBaseUrl()}/shared/${token}/comments`, { headers });
+    const headers = withShareSessionHeader(accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined);
+    const res = await fetch(`${getBaseUrl()}/shared/${token}/comments`, { headers, cache: "no-store" });
     if (!res.ok) return [];
     return res.json();
   },
   addSharedComment: async (token: string, data: { content: string; parentId?: string; guestName?: string }, accessToken?: string): Promise<ShareComment> => {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+    const headers = withShareSessionHeader({
+      "Content-Type": "application/json",
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    });
     const res = await fetch(`${getBaseUrl()}/shared/${token}/comments`, {
       method: "POST", headers, body: JSON.stringify(data),
     });
