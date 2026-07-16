@@ -1,5 +1,6 @@
 name: Issue 322 main implementation
 
+# Second push intentionally triggers this already-registered workflow.
 on:
   push:
     branches: [main]
