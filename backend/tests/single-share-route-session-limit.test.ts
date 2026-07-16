@@ -1,19 +1,4 @@
-from pathlib import Path
-import re
-
-root = Path(__file__).resolve().parents[1]
-route_path = root / "backend/src/routes/shares.ts"
-text = route_path.read_text(encoding="utf-8")
-pattern = re.compile(
-    r'''\n\s*(?:// 检查访问次数(?:限制)?\n\s*)?if \(share\.maxViews && share\.viewCount >= share\.maxViews\) \{\n\s*return c\.json\(\{ error: "分享链接已达到最大访问次数" \}, 410\);\n\s*\}\n'''
-)
-text, count = pattern.subn("\n", text)
-if count != 4:
-    raise RuntimeError(f"expected four legacy max-view checks, removed {count}")
-route_path.write_text(text, encoding="utf-8")
-
-test_path = root / "backend/tests/single-share-route-session-limit.test.ts"
-test_path.write_text(r'''import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import test from "node:test";
 import fs from "node:fs";
 import os from "node:os";
@@ -76,6 +61,3 @@ test.after(() => {
   closeDb?.();
   fs.rmSync(dir, { recursive: true, force: true });
 });
-''', encoding="utf-8")
-
-print("Issue #308 legacy route view-limit checks removed and route regression added")

@@ -314,11 +314,6 @@ sharedRouter.get("/:token", (c) => {
     return c.json({ error: "分享链接已过期" }, 410);
   }
 
-  // 检查访问次数限制
-  if (share.maxViews && share.viewCount >= share.maxViews) {
-    return c.json({ error: "分享链接已达到最大访问次数" }, 410);
-  }
-
   // 检查是否需要密码
   const shareRow = db.prepare("SELECT password FROM shares WHERE shareToken = ?").get(token) as any;
   const needPassword = !!shareRow?.password;
@@ -391,11 +386,6 @@ sharedRouter.get("/:token/content", (c) => {
   // 检查是否过期
   if (share.expiresAt && new Date(share.expiresAt) < new Date()) {
     return c.json({ error: "分享链接已过期" }, 410);
-  }
-
-  // 检查访问次数
-  if (share.maxViews && share.viewCount >= share.maxViews) {
-    return c.json({ error: "分享链接已达到最大访问次数" }, 410);
   }
 
   // 如果有密码保护，检查 accessToken
@@ -480,9 +470,6 @@ sharedRouter.put("/:token/content", async (c) => {
   if (!share || !share.isActive) return c.json({ error: "分享不存在或已失效" }, 404);
   if (share.expiresAt && new Date(share.expiresAt) < new Date()) {
     return c.json({ error: "分享链接已过期" }, 410);
-  }
-  if (share.maxViews && share.viewCount >= share.maxViews) {
-    return c.json({ error: "分享链接已达到最大访问次数" }, 410);
   }
 
   // 2) 权限校验：必须是 edit / edit_auth
@@ -831,10 +818,6 @@ sharedRouter.get("/:token/poll", (c) => {
 
   if (share.expiresAt && new Date(share.expiresAt) < new Date()) {
     return c.json({ error: "分享链接已过期" }, 410);
-  }
-
-  if (share.maxViews && share.viewCount >= share.maxViews) {
-    return c.json({ error: "分享链接已达到最大访问次数" }, 410);
   }
 
   // 如果有密码保护，验证 accessToken
