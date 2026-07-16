@@ -117,6 +117,10 @@ import {
   restoreAsyncInsertAnchor,
   type AsyncInsertAnchor,
 } from "@/lib/asyncEditorInsert";
+import {
+  clearOutlineScrollReserve,
+  scrollOutlineTargetIntoView,
+} from "@/lib/outlineScroll";
 
 import { useTranslation } from "react-i18next";
 
@@ -1695,6 +1699,8 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
   }, []);
 
   const editorScrollRef = useRef<HTMLDivElement | null>(null);
+  const outlineToolbarRef = useRef<HTMLDivElement | null>(null);
+  const outlineScrollRequestRef = useRef(0);
   // 防止 setContent 触发 onUpdate 导致无限循环
   const isSettingContent = useRef(false);
   // 保持最新的 note ref，避免闭包引用过期
@@ -3706,20 +3712,71 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
     };
   }, [editor]);
 
-  // Provide scrollTo callback to parent
+  // Provide a deterministic outline scroll callback to the parent.
+  // Selection updates and scrolling have one owner each: ProseMirror receives a
+  // non-scrolling transaction, then the actual editor container is moved exactly once.
   useEffect(() => {
     if (!editor) return;
     const scrollTo = (pos: number) => {
-      editor.commands.focus();
-      editor.commands.setTextSelection(pos);
-      // Scroll the heading node into view
-      const dom = editor.view.domAtPos(pos + 1);
-      if (dom?.node) {
-        const el = dom.node instanceof HTMLElement ? dom.node : dom.node.parentElement;
-        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (editor.isDestroyed) return;
+      const docSize = editor.state.doc.content.size;
+      const clamped = Math.max(0, Math.min(docSize, pos));
+      const requestId = ++outlineScrollRequestRef.current;
+
+      try {
+        const selection = TextSelection.near(editor.state.doc.resolve(clamped), 1);
+        editor.view.dispatch(editor.state.tr.setSelection(selection));
+      } catch {
+        // A stale outline position can briefly exist while the heading list updates.
+        return;
       }
+
+      // Focusing through Tiptap commands may invoke ProseMirror's nearest-edge scrolling.
+      // Focus the DOM directly and explicitly prevent that implicit first scroll.
+      try {
+        editor.view.dom.focus({ preventScroll: true });
+      } catch {
+        editor.view.focus();
+      }
+
+      requestAnimationFrame(() => {
+        if (editor.isDestroyed || requestId !== outlineScrollRequestRef.current) return;
+        const container = scrollContainerRef.current || editorScrollRef.current;
+        if (!container) return;
+
+        const nodeDom = editor.view.nodeDOM(clamped);
+        const nodeElement = nodeDom instanceof HTMLElement
+          ? nodeDom
+          : nodeDom?.parentElement ?? null;
+        let target = nodeElement?.matches("h1, h2, h3, h4, h5, h6")
+          ? nodeElement
+          : nodeElement?.closest<HTMLElement>("h1, h2, h3, h4, h5, h6") ?? null;
+
+        if (!target) {
+          const fallbackPos = Math.min(docSize, clamped + 1);
+          const dom = editor.view.domAtPos(fallbackPos);
+          const fallbackElement = dom.node instanceof HTMLElement
+            ? dom.node
+            : dom.node.parentElement;
+          target = fallbackElement?.matches("h1, h2, h3, h4, h5, h6")
+            ? fallbackElement
+            : fallbackElement?.closest<HTMLElement>("h1, h2, h3, h4, h5, h6") ?? null;
+        }
+        if (!target) return;
+
+        scrollOutlineTargetIntoView({
+          container,
+          target,
+          topOverlay: outlineToolbarRef.current,
+          gap: 24,
+          behavior: "smooth",
+        });
+      });
     };
     onEditorReady?.(scrollTo);
+    return () => {
+      outlineScrollRequestRef.current += 1;
+    };
   }, [editor, onEditorReady]);
 
   // SEARCH-NOTE-BODY-HIGHLIGHT-01: 外部搜索关键词 → 高亮 + 定位
@@ -4351,6 +4408,12 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
+    clearOutlineScrollReserve(el);
+    return () => clearOutlineScrollReserve(el);
+  }, [note.id]);
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
     const onScroll = () => {
       const top = el.scrollTop;
       setShowBackToTop(top > 240);
@@ -4447,6 +4510,7 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
             - z 索引压在选区/链接气泡之下（z-50），保留气泡的覆盖能力。 */}
       {!presentationMode && (
       <div
+        ref={outlineToolbarRef}
         className={cn(
           "editor-toolbar-scroll-fade hide-scrollbar sticky top-0 z-20 flex flex-nowrap items-center gap-0.5 overflow-x-auto touch-pan-x border-b border-app-border bg-app-surface/95 px-4 py-2 backdrop-blur transition-shadow duration-200 supports-[backdrop-filter]:bg-app-surface/70 md:flex-wrap md:overflow-visible md:touch-auto",
           // 滚动离顶后加底部阴影，表达「工具栏浮于内容之上」
@@ -5401,7 +5465,7 @@ export default forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEd
       <div
         ref={scrollContainerRef}
         className="flex-1 overflow-auto px-4 md:px-8 pb-12"
-        style={{ paddingBottom: "calc(3rem + var(--keyboard-height, 0px))" }}
+        style={{ paddingBottom: "calc(3rem + var(--keyboard-height, 0px) + var(--outline-scroll-reserve, 0px))" }}
       >
         <EditorContent editor={editor} />
       <NoteLinkHoverPreview root={editor.view.dom} />
