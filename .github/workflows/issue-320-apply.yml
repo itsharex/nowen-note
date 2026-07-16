@@ -1,0 +1,247 @@
+name: Issue 320 apply and validate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/issue-320-trigger
+
+permissions:
+  contents: write
+
+concurrency:
+  group: issue-320-main
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Apply issue 320 fix and tests
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          export_path = Path('frontend/src/lib/exportService.ts')
+          source = export_path.read_text()
+          old = '''    const td = createTurndown();
+
+    // 解析 content → HTML（Tiptap JSON 会被渲染成真正的 <pre><code>）
+    let html = noteContentToHtml(note.content, note.contentText);
+
+    // 抽图（仅在非 inline 且含 data:image 时）
+    const registry = new Map<string, string>();
+    let extractedImages: ExtractedImage[] = [];
+    if (!inlineImages && html) {
+      const r = await extractDataImages(html, registry);
+      html = r.html;
+      extractedImages = r.images;
+    } else if (inlineImages && html) {
+      // inline 模式：把附件内嵌成 data URI，让二次导入时后端自动重建附件
+      const stats: ImgStats = { ok: 0, failed: 0, failures: [] };
+      html = await inlineRemoteImages(html, stats, { noteId: note.id, noteTitle: note.title });
+      if (stats.failed > 0) {
+        console.warn(`[exportSingleNote] ${stats.failed} image(s) failed to inline; src normalized to relative path.`);
+      }
+    }
+
+    const markdown = html ? postProcessMarkdown(td.turndown(html)) : "";
+'''
+          new = '''    const td = createTurndown();
+    const registry = new Map<string, string>();
+    const stats: ImgStats = { ok: 0, failed: 0, failures: [] };
+    let markdown: string;
+    let extractedImages: ExtractedImage[] = [];
+
+    if (note.contentFormat === "markdown") {
+      // 原生 Markdown 必须保持源码结构，不能经过 Markdown → HTML → Turndown 往返转换。
+      markdown = note.content || note.contentText || "";
+      if (!inlineImages && markdown) {
+        const result = await processMarkdownAttachments(
+          markdown,
+          registry,
+          stats,
+          { noteId: note.id, noteTitle: note.title },
+        );
+        markdown = result.content;
+        extractedImages = result.images;
+      }
+    } else {
+      // 富文本仍按 Tiptap JSON / HTML → Markdown 转换。
+      let html = noteContentToHtml(note.content, note.contentText);
+      if (!inlineImages && html) {
+        const result = await extractDataImages(html, registry);
+        html = result.html;
+        extractedImages = result.images;
+      } else if (inlineImages && html) {
+        html = await inlineRemoteImages(html, stats, { noteId: note.id, noteTitle: note.title });
+      }
+      markdown = html ? postProcessMarkdown(td.turndown(html)) : "";
+    }
+
+    if (stats.failed > 0) {
+      console.warn(`[exportSingleNote] ${stats.failed} attachment(s) failed to process; source URL normalized when possible.`);
+    }
+'''
+          if source.count(old) != 1:
+              raise SystemExit(f'export patch target count={source.count(old)}')
+          export_path.write_text(source.replace(old, new))
+
+          test_path = Path('frontend/src/lib/__tests__/exportService.test.ts')
+          test = test_path.read_text()
+          old_top = '''import { afterEach, describe, expect, it, vi } from "vitest";
+const { requestNotePrint } = vi.hoisted(() => ({ requestNotePrint: vi.fn() }));
+
+vi.mock("@/lib/notePrintBridge", () => ({ requestNotePrint }));
+'''
+          new_top = '''import { afterEach, describe, expect, it, vi } from "vitest";
+const { requestNotePrint, saveAs } = vi.hoisted(() => ({
+  requestNotePrint: vi.fn(),
+  saveAs: vi.fn(),
+}));
+
+vi.mock("@/lib/notePrintBridge", () => ({ requestNotePrint }));
+vi.mock("file-saver", () => ({ saveAs }));
+'''
+          if test.count(old_top) != 1:
+              raise SystemExit(f'test header target count={test.count(old_top)}')
+          test = test.replace(old_top, new_top)
+          old_after = '''afterEach(() => {
+  vi.restoreAllMocks();
+});
+'''
+          new_after = '''afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  saveAs.mockReset();
+});
+'''
+          if test.count(old_after) != 1:
+              raise SystemExit(f'test afterEach target count={test.count(old_after)}')
+          test = test.replace(old_after, new_after)
+
+          anchor = '''describe("exportSingleNote", () => {
+  it("routes a note with attachments through the flat server ZIP job", async () => {
+'''
+          addition = '''describe("exportSingleNote", () => {
+  it("preserves native Markdown block boundaries without Turndown escaping", async () => {
+    const markdown = [
+      "### 基础代数与几何",
+      "",
+      "- 勾股定理：$a^2 + b^2 = c^2$",
+      "- 等差数列求和：$\\\\sum_{i=1}^{n} i = \\\\frac{n(n+1)}{2}$",
+      "",
+      "### 微积分",
+      "",
+      "$$",
+      "\\\\int_{-\\\\infty}^{\\\\infty} e^{-x^2}\\\\,dx = \\\\sqrt{\\\\pi}",
+      "$$",
+    ].join("\\n");
+    vi.spyOn(api, "getNote").mockResolvedValue({
+      id: "note-md",
+      title: "公式笔记",
+      content: markdown,
+      contentText: markdown,
+      contentFormat: "markdown",
+      createdAt: "2026-07-13 08:18:37",
+      updatedAt: "2026-07-13 08:24:57",
+    } as Awaited<ReturnType<typeof api.getNote>>);
+
+    await expect(exportSingleNote("note-md")).resolves.toBe(true);
+
+    expect(saveAs).toHaveBeenCalledTimes(1);
+    const exported = await (saveAs.mock.calls[0][0] as Blob).text();
+    expect(exported.endsWith(markdown)).toBe(true);
+    expect(exported).toContain("---\\n### 基础代数与几何");
+    expect(exported).not.toContain("\\\\### 基础代数与几何");
+  });
+
+  it("keeps native Markdown newlines when packaging attachment exports", async () => {
+    const markdown = [
+      "正文",
+      "",
+      "![图片](/api/attachments/att-1)",
+      "",
+      "### 下一节",
+    ].join("\\n");
+    vi.spyOn(api, "getNote").mockResolvedValue({
+      id: "note-md-asset",
+      title: "附件笔记",
+      content: markdown,
+      contentText: markdown,
+      contentFormat: "markdown",
+      createdAt: "2026-07-13 08:18:37",
+      updatedAt: "2026-07-13 08:24:57",
+    } as Awaited<ReturnType<typeof api.getNote>>);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), {
+      status: 200,
+      headers: { "Content-Type": "image/png" },
+    })));
+    const createJob = vi.spyOn(api, "createMarkdownExportJob").mockResolvedValue({
+      job: {
+        id: "job-md",
+        state: "ready",
+        current: 1,
+        total: 1,
+        message: "导出完成",
+        filename: "附件笔记.zip",
+        downloadToken: "token-md",
+        warnings: 0,
+      },
+    });
+    vi.spyOn(api, "downloadMarkdownExport").mockImplementation(() => {});
+
+    await expect(exportSingleNote("note-md-asset")).resolves.toBe(true);
+
+    const prepared = createJob.mock.calls[0][0][0];
+    expect(prepared.markdown).toBe([
+      "正文",
+      "",
+      "![图片](./assets/att-att-1.png)",
+      "",
+      "### 下一节",
+    ].join("\\n"));
+    expect(prepared.markdown).not.toContain("\\\\### 下一节");
+    expect(prepared.inlineAssets).toHaveLength(1);
+  });
+
+  it("routes a note with attachments through the flat server ZIP job", async () => {
+'''
+          if test.count(anchor) != 1:
+              raise SystemExit(f'test insertion anchor count={test.count(anchor)}')
+          test_path.write_text(test.replace(anchor, addition))
+          PY
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run export regression tests
+        working-directory: frontend
+        run: npm run test:run -- src/lib/__tests__/exportService.test.ts
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Commit validated fix and self-clean
+        shell: bash
+        run: |
+          rm -f .github/workflows/issue-320-apply.yml .github/issue-320-trigger
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/src/lib/exportService.ts frontend/src/lib/__tests__/exportService.test.ts .github/workflows/issue-320-apply.yml .github/issue-320-trigger
+          git commit -m "fix(export): preserve native Markdown in single-note exports (#320)"
+          git push origin HEAD:main
