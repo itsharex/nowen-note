@@ -1,0 +1,65 @@
+name: Diagnose issue 311 fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/issue-311-diagnose.yml
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Inspect patch preconditions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('frontend/src/components/TiptapEditor.tsx')
+          s = p.read_text(encoding='utf-8')
+          patterns = {
+            'state import': 'import { TextSelection, NodeSelection } from "@tiptap/pm/state";\n',
+            'utils import': 'import { cn } from "@/lib/utils";\n',
+            'focus guard': '''      if (!view.hasFocus()) {
+        setBubble(b => b.open ? { ...b, open: false } : b);
+        setImageBubble(b => b.open ? { ...b, open: false } : b);
+        setLinkBubble(b => b.open ? { ...b, open: false } : b);
+        setTableBubble(b => b.open ? { ...b, open: false } : b);
+        return;
+      }
+
+''',
+            'empty table condition': '        if (editor.isActive("table")) {',
+            'empty link condition': '        if (editor.isActive("link")) {\n',
+            'selected table start': '''      // Keep table bubble open when cells are selected
+      if (editor.isActive("table")) {
+        const rect = posToDOMRect(view, from, to);
+''',
+            'selected table end': '''        setTableBubble({ open: true, top, left, cellText });
+      } else {
+''',
+            'image branch': '''      const isImage = editor.isActive("image");
+
+      if (isImage) {
+''',
+            'text extraction': '        const text = state.doc.textBetween(from, to, " ");\n',
+          }
+          lines = [f'{name}: {s.count(pattern)}' for name, pattern in patterns.items()]
+          pkg = Path('frontend/node_modules/@tiptap/pm/tables')
+          lines.append(f'node_modules present before npm ci: {pkg.exists()}')
+          Path('.github/issue-311-fix-result.txt').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
+      - name: Commit diagnostic
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/issue-311-fix-result.txt
+          git commit -m "chore(issue-311): record fix precondition diagnostics"
+          git push origin HEAD:main
