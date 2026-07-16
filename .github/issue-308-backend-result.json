@@ -1,0 +1,6 @@
+{
+  "ok": false,
+  "phase": "apply_patch",
+  "status": 1,
+  "logTail": "## apply_patch\nTraceback (most recent call last):\n  File \"/home/runner/work/nowen-note/nowen-note/scripts/issue-308-backend.py\", line 480, in <module>\n    raise RuntimeError(\"postgres shares index marker missing\")\nRuntimeError: postgres shares index marker missing\n"
+}
