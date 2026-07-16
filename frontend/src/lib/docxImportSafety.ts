@@ -113,7 +113,7 @@ interface ImportedNoteSnapshot {
 }
 
 function normalizePlainText(value: string | undefined): string {
-  return (value || "").replace(/\s+/g, " ").trim();
+  return (value || "").replace(/\s+/g, "");
 }
 
 export interface ImportedNoteSemanticInput {
@@ -126,9 +126,9 @@ export interface ImportedNoteSemanticInput {
 }
 
 /**
- * First response validation. The backend may legitimately add blockId attributes to Tiptap JSON,
- * so this check validates user-visible text and every attachment reference instead of requiring
- * byte-for-byte equality with the pre-save client JSON.
+ * First response validation. The backend may legitimately add blockId attributes and block
+ * separators, so this check validates user-visible text characters and every attachment
+ * reference instead of requiring byte-for-byte equality with the pre-save client JSON.
  */
 export function getImportedNoteSemanticError(input: ImportedNoteSemanticInput): string | null {
   const { actual } = input;
