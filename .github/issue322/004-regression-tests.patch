@@ -1,0 +1,35 @@
+diff --git a/frontend/src/lib/__tests__/listMarkerRegression.test.ts b/frontend/src/lib/__tests__/listMarkerRegression.test.ts
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/lib/__tests__/listMarkerRegression.test.ts
+@@ -0,0 +1,29 @@
++import { readFileSync } from "node:fs";
++import { describe, expect, it } from "vitest";
++
++const read = (path: string) => readFileSync(path, "utf-8");
++
++describe("list marker regressions", () => {
++  it("excludes both Tiptap and GFM task items from custom markers", () => {
++    for (const path of [
++      "src/index.css",
++      "src/lib/exportServiceCore.ts",
++      "src/lib/noteImageExportCore.ts",
++    ]) {
++      const source = read(path);
++      expect(source).toContain(':not([data-type="taskItem"]):not(.task-list-item)::before');
++      expect(source).toContain("ul.contains-task-list > li.task-list-item::before");
++    }
++  });
++
++  it("keeps ordered markers scoped to direct children", () => {
++    const css = read("src/index.css");
++    expect(css).toContain(".ProseMirror ol > li");
++    expect(css).not.toContain(".ProseMirror ol li {");
++  });
++
++  it("updates toolbar state without an unconditional selection tick", () => {
++    const editor = read("src/components/TiptapEditor.tsx");
++    expect(editor).not.toContain("selectionTick");
++    expect(editor).toContain("activeListTypeRef.current === next");
++  });
++});
