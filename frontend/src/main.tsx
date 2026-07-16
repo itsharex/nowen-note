@@ -23,6 +23,7 @@ import SystemFullDataTransferBridge from "./components/SystemFullDataTransferBri
 import AndroidShareImportCenter from "./components/AndroidShareImportCenter";
 import ServerConnectionCenter from "./components/ServerConnectionCenter";
 import NoteImageExportCenter from "./components/NoteImageExportCenter";
+import DocxImportCenter from "./components/DocxImportCenter";
 import "./index.css";
 import "./code-block-wrap.css";
 import "./overlay-layers.css";
@@ -137,6 +138,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <AndroidShareImportCenter />
         <ServerConnectionCenter />
         <NoteImageExportCenter />
+        <DocxImportCenter />
         <PublicSpaceLauncher />
         <App />
       </>
