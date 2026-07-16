@@ -1,0 +1,97 @@
+name: PostgreSQL Unified Validation
+
+on:
+  pull_request_target:
+    types: [reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.event.pull_request.number == 299 && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'pg-migration-unified'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nowen
+          POSTGRES_PASSWORD: nowen_ci_password
+          POSTGRES_DB: nowen_note_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nowen -d nowen_note_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      TEST_PG_DATABASE_URL: postgres://nowen:nowen_ci_password@127.0.0.1:5432/nowen_note_test
+      DATABASE_URL: postgres://nowen:nowen_ci_password@127.0.0.1:5432/nowen_note_test
+
+    steps:
+      - name: Checkout unified branch
+        uses: actions/checkout@v4
+        with:
+          ref: pg-migration-unified
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci --no-audit --no-fund
+
+      - name: TypeScript check
+        working-directory: backend
+        run: npm run build:tsc -- --noEmit
+
+      - name: Database boundary and schema parity gates
+        working-directory: backend
+        run: |
+          npm run audit:sqlite-boundaries
+          npm run audit:pg-schema-parity
+
+      - name: Runtime and dialect tests
+        working-directory: backend
+        run: >-
+          node --import tsx --test --test-concurrency=1
+          tests/database-runtime.test.ts
+          tests/repository-runtime-provider.test.ts
+          tests/sql-dialect.test.ts
+
+      - name: Full SQLite regression suite
+        working-directory: backend
+        env:
+          DB_DRIVER: sqlite
+          DATABASE_URL: ""
+          TEST_PG_DATABASE_URL: ""
+        run: npm run test:serial
+
+      - name: Real PostgreSQL tests
+        working-directory: backend
+        run: >-
+          node --import tsx --test --test-concurrency=1
+          tests/postgres-adapter.test.ts
+          tests/postgres-migrations.test.ts
+          tests/repository-batch-a-pg.test.ts
+          tests/system-settings-repository-pg.test.ts
+          tests/custom-fonts-repository-pg.test.ts
+          tests/favorites-repository-pg.test.ts
+          tests/note-tags-repository-pg.test.ts
+
+      - name: Production bundle and runtime resources
+        working-directory: backend
+        run: |
+          npm run build
+          test -f dist/postgres/schema.sql
+          test -f dist/postgres/schema.base.sql
+          test -f dist/postgres/migrations/0001_migration_state.sql
+          test -f dist/postgres/migrations/0002_api_tokens_parity.sql
