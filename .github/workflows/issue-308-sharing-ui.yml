@@ -6,6 +6,7 @@ on:
     paths:
       - scripts/issue-308-ui.py
       - scripts/issue-308-ui-post1.py
+      - scripts/issue-308-ui-post2.py
       - .github/workflows/issue-308-sharing-ui.yml
   workflow_dispatch:
 
@@ -49,6 +50,9 @@ jobs:
 
           echo "## $phase" | tee -a "$LOG"
           python scripts/issue-308-ui-post1.py >>"$LOG" 2>&1 || status=$?
+          if [ "$status" -eq 0 ]; then
+            python scripts/issue-308-ui-post2.py >>"$LOG" 2>&1 || status=$?
+          fi
 
           if [ "$status" -eq 0 ]; then
             phase="apply_patch"
@@ -134,7 +138,7 @@ jobs:
           fi
 
           rm -f .github/issue-308-ui-result.json
-          rm -f scripts/issue-308-ui.py scripts/issue-308-ui-post1.py .github/workflows/issue-308-sharing-ui.yml
+          rm -f scripts/issue-308-ui.py scripts/issue-308-ui-post1.py scripts/issue-308-ui-post2.py .github/workflows/issue-308-sharing-ui.yml
           git add -A
           if git diff --cached --quiet; then
             echo "No changes to commit"
