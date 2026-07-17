@@ -726,6 +726,42 @@ run_argv() {
     fi
 }
 
+# 严格发版预检只读取本机配置和远端状态，不修改仓库或发布任何产物。
+RELEASE_REMOTE_BASELINE=""
+preflight_release_environment() {
+    step "发布环境与登录状态检查"
+    git push --dry-run origin HEAD >/dev/null 2>&1 \
+        || die "GitHub 推送权限或远端分支状态异常。请先执行 git fetch origin 并确认 SSH/PAT 登录后重试"
+    ok "GitHub 推送权限正常"
+
+    if [ "$HAS_DOCKER" = "1" ]; then
+        docker info >/dev/null 2>&1 || die "Docker daemon 不可用"
+        [ -f "${DOCKER_CONFIG:-$HOME/.docker}/config.json" ] \
+            || die "未检测到 Docker 登录配置。请先执行 docker login"
+        ok "Docker 登录配置已检测到"
+    fi
+
+    if [ "$DO_GITHUB_RELEASE" = "1" ]; then
+        command -v gh >/dev/null 2>&1 || die "未安装 gh CLI。请先安装并执行 gh auth login"
+        gh auth status >/dev/null 2>&1 || [ -n "${GH_TOKEN:-}" ] \
+            || die "gh 未登录且未设置 GH_TOKEN。请执行 gh auth login 后重试"
+        ok "GitHub Release 登录状态正常"
+    fi
+
+    git fetch origin "$CURRENT_BRANCH"
+    RELEASE_REMOTE_BASELINE="$(git rev-parse "origin/$CURRENT_BRANCH")"
+    info "发布远端基线：${RELEASE_REMOTE_BASELINE:0:12}"
+}
+
+verify_release_remote_baseline() {
+    git fetch origin "$CURRENT_BRANCH"
+    local current_remote
+    current_remote="$(git rev-parse "origin/$CURRENT_BRANCH")"
+    [ "$current_remote" = "$RELEASE_REMOTE_BASELINE" ] \
+        || die "构建期间 origin/$CURRENT_BRANCH 已更新（${RELEASE_REMOTE_BASELINE:0:12} -> ${current_remote:0:12}）。已停止发布；请重新同步后再次执行，未创建 tag、未推送本阶段产物"
+    ok "远端分支未变化，可以开始外部发布"
+}
+
 # -------------------- 前置检查 --------------------
 # 定位到仓库根目录（脚本可能被从任意目录调用）
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -1481,6 +1517,10 @@ if [ "$ASSUME_YES" != "1" ]; then
     case "$ans" in [yY]|[yY][eE][sS]) ;; *) die "已取消" ;; esac
 fi
 
+if [ "$BUILD_ONLY" != "1" ]; then
+    preflight_release_environment
+fi
+
 # -------------------- 构建 tags 与 labels --------------------
 START_TS=$(date +%s)
 
@@ -1643,6 +1683,9 @@ if [ "$BUILD_ONLY" = "1" ]; then
 fi
 
 # -------------------- 发布模式：docker push（arm64 / amd64） --------------------
+if [ "$BUILD_ONLY" != "1" ] && [ "$SHOULD_BUILD_DOCKER" = "1" ] && [ "$ATOMIC_RELEASE" != "1" ]; then
+    verify_release_remote_baseline
+fi
 # 原子发布模式下，这一步整体延迟到"统一推送阶段"，等 PC/Android 全部成功后再做。
 # 非原子发布模式保持原行为：Docker 构建后立即 push（旧版用户习惯）。
 PUSH_DURATION=0
@@ -2522,6 +2565,7 @@ fi
 # 现在才是真正"把东西发出去"的时候：先 docker push，再 git tag push，再 gh release。
 # 任何一步失败 set -e 会立即 die，后续不再继续。
 if [ "$SHOULD_BUILD_DOCKER" = "1" ] && [ "$ATOMIC_RELEASE" = "1" ]; then
+    verify_release_remote_baseline
     step "统一推送 Docker 镜像（原子发布：所有构建已完成）"
     PUSH_START=$(date +%s)
 
@@ -2566,6 +2610,7 @@ fi
 
 # -------------------- git tag --------------------
 if [ "$DO_GIT_TAG" = "1" ]; then
+    verify_release_remote_baseline
     step "打 git tag 并推送到 GitHub"
 
     # 若前面 sync_root_pkg_version / sync_backend_pkg_version / sync_android_version
