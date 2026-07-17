@@ -417,7 +417,9 @@ function initSchema(db: Database.Database) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_share_comments_note ON share_comments(noteId);
-    CREATE INDEX IF NOT EXISTS idx_share_comments_source ON share_comments(sourceType, sourceId, noteId, createdAt);
+    -- 注意：idx_share_comments_source 不在这里建。
+    -- 老库的 share_comments 表缺少 sourceType/sourceId，索引必须由 v50 迁移
+    -- 在补齐字段后创建，否则 initSchema 会先于 runMigrations 抛错。
     -- 注意：idx_share_comments_guest_ip 不在这里建。
     -- 原因：老库（v12 之前）已经有 share_comments 表但没有 guestIpHash 列，
     --       CREATE TABLE IF NOT EXISTS 会跳过重建，紧接着对不存在的列建索引会让
