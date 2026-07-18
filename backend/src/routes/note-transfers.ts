@@ -1,17 +1,28 @@
 import { Hono } from "hono";
 import {
-  executeNoteTransfer,
   NoteTransferError,
   previewNoteTransfer,
   type NoteTransferMode,
   type NoteTransferRequest,
 } from "../services/noteTransfer.js";
+import { executeNoteTransferSafe } from "../services/noteTransferSafety.js";
 
 const app = new Hono();
 
 function normalizeWorkspaceId(value: unknown): string | null {
   if (value == null || value === "" || value === "personal") return null;
   return String(value);
+}
+
+function rejectNonInteractiveCredential(c: any) {
+  if (c.req.header("X-Auth-Mode") !== "api-token") return null;
+  return c.json(
+    {
+      error: "跨空间复制和移动涉及权限边界与数据归属变更，请使用已登录的交互式会话操作",
+      code: "INTERACTIVE_LOGIN_REQUIRED",
+    },
+    403,
+  );
 }
 
 function parseRequest(c: any, body: any): NoteTransferRequest {
@@ -59,6 +70,8 @@ function errorResponse(c: any, error: unknown) {
 
 app.post("/preview", async (c) => {
   c.header("Cache-Control", "private, no-store");
+  const credentialError = rejectNonInteractiveCredential(c);
+  if (credentialError) return credentialError;
   try {
     const body = await c.req.json().catch(() => ({}));
     return c.json(await previewNoteTransfer(parseRequest(c, body)));
@@ -69,19 +82,11 @@ app.post("/preview", async (c) => {
 
 app.post("/", async (c) => {
   c.header("Cache-Control", "private, no-store");
+  const credentialError = rejectNonInteractiveCredential(c);
+  if (credentialError) return credentialError;
   try {
     const body = await c.req.json().catch(() => ({}));
-    const request = parseRequest(c, body);
-    if (request.mode === "move" && !request.expectedVersions) {
-      return c.json(
-        {
-          error: "移动前必须先调用预检接口并提交 sourceVersions",
-          code: "TRANSFER_PREVIEW_REQUIRED",
-        },
-        409,
-      );
-    }
-    const result = await executeNoteTransfer(request);
+    const result = await executeNoteTransferSafe(parseRequest(c, body));
     return c.json(result, 201);
   } catch (error) {
     return errorResponse(c, error);
