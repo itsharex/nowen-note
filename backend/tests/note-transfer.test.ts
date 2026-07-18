@@ -10,6 +10,7 @@ process.env.ELECTRON_USER_DATA = tempDir;
 process.env.JWT_SECRET = "note-transfer-test-secret";
 
 const { closeDb, getDb } = await import("../src/db/schema.js");
+const { initAuditTables } = await import("../src/services/audit.js");
 const {
   executeNoteTransfer,
   NoteTransferError,
@@ -18,6 +19,11 @@ const {
 const { getAttachmentsDir } = await import("../src/services/attachment-storage.js");
 
 const db = getDb();
+initAuditTables();
+
+const NOTE_ONE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const NOTE_TWO = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const ATTACHMENT = "11111111-1111-4111-8111-111111111111";
 
 function resetDb() {
   db.pragma("foreign_keys = OFF");
@@ -93,7 +99,6 @@ function seedAttachment(noteId: string, userId: string, workspaceId: string | nu
       id, noteId, userId, workspaceId, filename, mimeType, size, path, uploadSource
     ) VALUES (?, ?, ?, ?, ?, 'text/plain', ?, ?, 'test')
   `).run(id, noteId, userId, workspaceId, `${id}.txt`, Buffer.byteLength(body), rel);
-  return rel;
 }
 
 beforeEach(resetDb);
@@ -129,21 +134,21 @@ test("copies a personal batch to a team with new ids, attachments, tags and inte
   seedNotebook("personal", "u1", null);
   seedNotebook("target", "u1", "w1");
   seedNote({
-    id: "n1",
+    id: NOTE_ONE,
     userId: "u1",
     workspaceId: null,
     notebookId: "personal",
     title: "One",
-    content: "note://n2 /api/attachments/11111111-1111-4111-8111-111111111111",
+    content: `note://${NOTE_TWO} /api/attachments/${ATTACHMENT}`,
   });
-  seedNote({ id: "n2", userId: "u1", workspaceId: null, notebookId: "personal", title: "Two" });
-  seedAttachment("n1", "u1", null, "11111111-1111-4111-8111-111111111111", "hello");
+  seedNote({ id: NOTE_TWO, userId: "u1", workspaceId: null, notebookId: "personal", title: "Two" });
+  seedAttachment(NOTE_ONE, "u1", null, ATTACHMENT, "hello");
   db.prepare("INSERT INTO tags (id, userId, workspaceId, name, color) VALUES ('tag-1', 'u1', NULL, '迁移', '#123456')").run();
-  db.prepare("INSERT INTO note_tags (noteId, tagId) VALUES ('n1', 'tag-1')").run();
+  db.prepare("INSERT INTO note_tags (noteId, tagId) VALUES (?, 'tag-1')").run(NOTE_ONE);
 
   const preview = previewNoteTransfer({
     actorUserId: "u1",
-    sourceNoteIds: ["n1", "n2"],
+    sourceNoteIds: [NOTE_ONE, NOTE_TWO],
     targetWorkspaceId: "w1",
     targetNotebookId: "target",
     mode: "copy",
@@ -154,7 +159,7 @@ test("copies a personal batch to a team with new ids, attachments, tags and inte
 
   const result = executeNoteTransfer({
     actorUserId: "u1",
-    sourceNoteIds: ["n1", "n2"],
+    sourceNoteIds: [NOTE_ONE, NOTE_TWO],
     targetWorkspaceId: "w1",
     targetNotebookId: "target",
     mode: "copy",
@@ -163,21 +168,21 @@ test("copies a personal batch to a team with new ids, attachments, tags and inte
 
   assert.equal(result.copiedNoteCount, 2);
   assert.equal(result.copiedAttachmentCount, 1);
-  const one = result.items.find((item) => item.sourceNoteId === "n1")!;
-  const two = result.items.find((item) => item.sourceNoteId === "n2")!;
-  assert.notEqual(one.targetNoteId, "n1");
+  const one = result.items.find((item) => item.sourceNoteId === NOTE_ONE)!;
+  const two = result.items.find((item) => item.sourceNoteId === NOTE_TWO)!;
+  assert.notEqual(one.targetNoteId, NOTE_ONE);
   const copiedOne = db.prepare("SELECT * FROM notes WHERE id = ?").get(one.targetNoteId) as any;
   assert.equal(copiedOne.workspaceId, "w1");
   assert.equal(copiedOne.notebookId, "target");
   assert.match(copiedOne.content, new RegExp(`note://${two.targetNoteId}`));
-  assert.doesNotMatch(copiedOne.content, /11111111-1111-4111-8111-111111111111/);
+  assert.doesNotMatch(copiedOne.content, new RegExp(ATTACHMENT));
 
   const copiedAttachment = db.prepare("SELECT * FROM attachments WHERE noteId = ?").get(one.targetNoteId) as any;
   assert.ok(copiedAttachment);
   assert.equal(copiedAttachment.workspaceId, "w1");
   assert.equal(fs.readFileSync(path.join(getAttachmentsDir(), copiedAttachment.path), "utf8"), "hello");
   assert.equal((db.prepare("SELECT COUNT(*) AS c FROM note_tags WHERE noteId = ?").get(one.targetNoteId) as any).c, 1);
-  assert.equal((db.prepare("SELECT isTrashed FROM notes WHERE id = 'n1'").get() as any).isTrashed, 0);
+  assert.equal((db.prepare("SELECT isTrashed FROM notes WHERE id = ?").get(NOTE_ONE) as any).isTrashed, 0);
 });
 
 test("moves a team note to personal only after the target copy verifies", () => {
