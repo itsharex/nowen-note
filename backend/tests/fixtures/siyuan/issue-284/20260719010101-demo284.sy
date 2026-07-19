@@ -10,11 +10,11 @@
   },
   "Children": [
     {
-      "ID": "20260719010102-heading1",
+      "ID": "20260719010102-head001",
       "Type": "NodeHeading",
       "HeadingLevel": 2,
       "Properties": {
-        "id": "20260719010102-heading1",
+        "id": "20260719010102-head001",
         "updated": "20260719010102"
       },
       "Children": [
@@ -51,11 +51,11 @@
       "Data": "{: id=\"20260719010103-callout\" custom-issue=\"284\"}"
     },
     {
-      "ID": "20260719010105-iframe",
+      "ID": "20260719010105-iframe1",
       "Type": "NodeIFrame",
       "Data": "<iframe src=\"https://example.com/embed/unlock?password=issue284-secret\"></iframe>",
       "Properties": {
-        "id": "20260719010105-iframe",
+        "id": "20260719010105-iframe1",
         "updated": "20260719010105"
       }
     },
