@@ -127,8 +127,8 @@ export function useNetworkStatus() {
 
     const request = (async () => {
       try {
-        await syncNow();
-        return true;
+        const result = await syncNow();
+        return result.ok;
       } catch (error) {
         console.warn("[useNetworkStatus] sync failed:", error);
         return false;
