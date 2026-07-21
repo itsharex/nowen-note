@@ -14,7 +14,8 @@ const MAX_SAFE_LENGTH = Number.MAX_SAFE_INTEGER;
 
 function toSafeLength(value: unknown): number {
   const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  if (Number.isNaN(numeric) || numeric <= 0) return 0;
+  if (numeric === Number.POSITIVE_INFINITY) return MAX_SAFE_LENGTH;
   return Math.min(Math.floor(numeric), MAX_SAFE_LENGTH);
 }
 
