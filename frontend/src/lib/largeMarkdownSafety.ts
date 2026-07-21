@@ -1,18 +1,19 @@
 import type { NoteEditorHeading } from "@/components/editors/types";
+import {
+  EDITOR_RUNTIME_THRESHOLDS,
+  resolveEditorRuntimeDecision,
+} from "@/lib/editorRuntimePolicy";
 
 /**
  * The full Markdown editor enables language parsing, syntax highlighting, live preview,
- * outline extraction and several whole-document transforms. Those features are useful
- * for normal notes, but become unsafe when a note is large enough to monopolize the
- * renderer thread.
- *
- * These thresholds intentionally trigger before CodeMirror/ReactMarkdown reach the
- * pathological range represented by issue #368 (2.4 MB / 45,939 lines / 20k-char lines).
+ * outline extraction and several whole-document transforms. The progressive runtime policy
+ * keeps medium documents in CodeMirror viewport mode and only routes pathological Markdown to
+ * the lightweight textarea editor.
  */
 export const LARGE_MARKDOWN_THRESHOLDS = {
-  characters: 750_000,
-  lines: 20_000,
-  longestLine: 8_000,
+  characters: EDITOR_RUNTIME_THRESHOLDS.markdown.lightweight.characters,
+  lines: EDITOR_RUNTIME_THRESHOLDS.markdown.lightweight.lines,
+  longestLine: EDITOR_RUNTIME_THRESHOLDS.markdown.lightweight.longestLine,
 } as const;
 
 export const LARGE_MARKDOWN_SEARCH_TEXT_LIMIT = 1_000_000;
@@ -22,25 +23,10 @@ export function shouldUseLargeMarkdownSafeMode(
   content: string | null | undefined,
 ): boolean {
   if (!content) return false;
-  if (content.length >= LARGE_MARKDOWN_THRESHOLDS.characters) return true;
-
-  let lineCount = 1;
-  let currentLineLength = 0;
-
-  for (let index = 0; index < content.length; index += 1) {
-    const code = content.charCodeAt(index);
-    if (code === 10) {
-      lineCount += 1;
-      currentLineLength = 0;
-      if (lineCount >= LARGE_MARKDOWN_THRESHOLDS.lines) return true;
-      continue;
-    }
-
-    currentLineLength += 1;
-    if (currentLineLength >= LARGE_MARKDOWN_THRESHOLDS.longestLine) return true;
-  }
-
-  return false;
+  return resolveEditorRuntimeDecision({
+    content,
+    contentFormat: "markdown",
+  }).mode === "lightweight-edit";
 }
 
 /**
