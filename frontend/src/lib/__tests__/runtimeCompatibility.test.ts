@@ -9,6 +9,17 @@ type ArrayPrototypeCompat = {
   findLast?: unknown;
 };
 
+type NumberFindLast = (
+  this: number[],
+  predicate: (
+    this: unknown,
+    value: number,
+    index: number,
+    array: ArrayLike<number>,
+  ) => unknown,
+  thisArg?: unknown,
+) => number | undefined;
+
 const originalFindLastDescriptor = Object.getOwnPropertyDescriptor(
   Array.prototype,
   "findLast",
@@ -41,16 +52,21 @@ describe("installRuntimeCompatibility", () => {
     removeFindLast();
     installRuntimeCompatibility();
 
-    const findLast = Reflect.get(Array.prototype, "findLast") as (
-      predicate: (value: number, index: number, array: number[]) => boolean,
-      thisArg?: unknown,
-    ) => number | undefined;
+    const findLast = Reflect.get(
+      Array.prototype,
+      "findLast",
+    ) as NumberFindLast;
 
     const context = { minimum: 3 };
     const values = [1, 2, 3, 4];
-    expect(findLast.call(values, function (value) {
+    const predicate = function (
+      this: typeof context,
+      value: number,
+    ): boolean {
       return value < this.minimum;
-    }, context)).toBe(2);
+    };
+
+    expect(findLast.call(values, predicate, context)).toBe(2);
     expect(findLast.call(values, (value) => value > 10)).toBeUndefined();
 
     const descriptor = Object.getOwnPropertyDescriptor(
@@ -98,7 +114,7 @@ describe("installRuntimeCompatibility", () => {
     editors.push(editor);
 
     expect(() => {
-      editor.commands.focus("end");
+      editor.commands.setTextSelection("end");
       editor.commands.insertContent("通过");
       editor.view.dispatch(editor.state.tr.setMeta("focus", true));
       editor.view.dispatch(editor.state.tr.setMeta("blur", true));
