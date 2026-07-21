@@ -13,25 +13,29 @@ export interface SidebarSearchPendingEventDetail {
 let currentSidebarSearchValue = "";
 let currentSidebarSearchPending = false;
 
-const SIDEBAR_SEARCH_SPINNER_STYLE_ID = "nowen-sidebar-search-spinner-style";
+export const SEARCH_SPINNER_STYLE_ID = "nowen-sidebar-search-spinner-style";
 
 /**
- * The sidebar spinner is absolutely centered with translateY(-50%). Tailwind's animate-spin also
- * animates the transform property, so placing both utilities on the same SVG can leave the glyph
- * visually static in some generated CSS orders. Keep translation and rotation in one dedicated
- * keyframe so neither transform overwrites the other.
+ * Search spinners need an explicit animation fallback. Some production CSS orders leave the
+ * Tailwind animate-spin utility ineffective, and the sidebar icon additionally needs to retain
+ * translateY(-50%) while rotating. Keep both variants in one small runtime style sheet.
  */
-function ensureSidebarSearchSpinnerStyle(): void {
-  if (typeof document === "undefined" || document.getElementById(SIDEBAR_SEARCH_SPINNER_STYLE_ID)) {
+export function ensureSearchSpinnerStyle(): void {
+  if (typeof document === "undefined" || document.getElementById(SEARCH_SPINNER_STYLE_ID)) {
     return;
   }
 
   const style = document.createElement("style");
-  style.id = SIDEBAR_SEARCH_SPINNER_STYLE_ID;
+  style.id = SEARCH_SPINNER_STYLE_ID;
   style.textContent = `
 @keyframes nowen-sidebar-search-spin {
   from { transform: translateY(-50%) rotate(0deg); }
   to { transform: translateY(-50%) rotate(360deg); }
+}
+
+@keyframes nowen-search-center-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 [data-sidebar-search-loading] {
@@ -39,9 +43,19 @@ function ensureSidebarSearchSpinnerStyle(): void {
   transform-origin: center;
   will-change: transform;
 }
+
+[data-swipe-blocker="search-center"] .animate-spin {
+  animation: nowen-search-center-spin 0.8s linear infinite !important;
+  transform-origin: center;
+  will-change: transform;
+}
 `;
   document.head.appendChild(style);
 }
+
+// Install at module load so the full-text page also works when it is opened and edited directly,
+// without first passing through the buffered sidebar search input.
+ensureSearchSpinnerStyle();
 
 export function getCurrentSidebarSearchValue(): string {
   return currentSidebarSearchValue;
@@ -81,7 +95,7 @@ export function emitSidebarSearchSync(value: string): void {
 
 export function emitSidebarSearchPending(pending: boolean): void {
   currentSidebarSearchPending = pending;
-  if (pending) ensureSidebarSearchSpinnerStyle();
+  if (pending) ensureSearchSpinnerStyle();
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent<SidebarSearchPendingEventDetail>(SIDEBAR_SEARCH_PENDING_EVENT, {
     detail: { pending },
