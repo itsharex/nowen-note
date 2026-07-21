@@ -1,0 +1,65 @@
+name: Editor Runtime CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/src/lib/editorComplexityProfile.ts"
+      - "frontend/src/lib/editorRuntimePolicy.ts"
+      - "frontend/src/lib/editorRuntimeStore.ts"
+      - "frontend/src/lib/largeMarkdownSafety.ts"
+      - "frontend/src/lib/largeRichTextSafeMode.ts"
+      - "frontend/src/lib/phaseAPerfDiagnostics.ts"
+      - "frontend/src/hooks/useLazyNodeView.ts"
+      - "frontend/src/hooks/useNoteLoader.ts"
+      - "frontend/src/components/ResizableImageView.tsx"
+      - "frontend/src/components/LargeRichTextSafeViewer.tsx"
+      - "frontend/src/**/__tests__/*editorRuntime*.test.*"
+      - "frontend/src/**/__tests__/largeRichTextSafeMode.test.ts"
+      - "frontend/src/hooks/__tests__/useLazyNodeView.test.tsx"
+      - ".github/workflows/editor-runtime-ci.yml"
+  pull_request:
+    paths:
+      - "frontend/src/lib/editorComplexityProfile.ts"
+      - "frontend/src/lib/editorRuntimePolicy.ts"
+      - "frontend/src/lib/editorRuntimeStore.ts"
+      - "frontend/src/lib/largeMarkdownSafety.ts"
+      - "frontend/src/lib/largeRichTextSafeMode.ts"
+      - "frontend/src/lib/phaseAPerfDiagnostics.ts"
+      - "frontend/src/hooks/useLazyNodeView.ts"
+      - "frontend/src/hooks/useNoteLoader.ts"
+      - "frontend/src/components/ResizableImageView.tsx"
+      - "frontend/src/components/LargeRichTextSafeViewer.tsx"
+      - "frontend/src/**/__tests__/*editorRuntime*.test.*"
+      - "frontend/src/**/__tests__/largeRichTextSafeMode.test.ts"
+      - "frontend/src/hooks/__tests__/useLazyNodeView.test.tsx"
+      - ".github/workflows/editor-runtime-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Focused runtime tests
+        run: >-
+          npm run test:run --
+          src/lib/__tests__/editorRuntimePolicy.test.ts
+          src/lib/__tests__/editorRuntimeStore.test.ts
+          src/lib/__tests__/largeRichTextSafeMode.test.ts
+          src/hooks/__tests__/useLazyNodeView.test.tsx
+      - name: Frontend typecheck
+        run: npx tsc -b
