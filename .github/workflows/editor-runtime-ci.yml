@@ -10,12 +10,14 @@ on:
       - "frontend/src/lib/largeMarkdownSafety.ts"
       - "frontend/src/lib/largeRichTextSafeMode.ts"
       - "frontend/src/lib/phaseAPerfDiagnostics.ts"
+      - "frontend/src/lib/codeBlockHighlightPlugin.ts"
       - "frontend/src/hooks/useLazyNodeView.ts"
       - "frontend/src/hooks/useNoteLoader.ts"
       - "frontend/src/components/ResizableImageView.tsx"
       - "frontend/src/components/LargeRichTextSafeViewer.tsx"
       - "frontend/src/**/__tests__/*editorRuntime*.test.*"
       - "frontend/src/**/__tests__/largeRichTextSafeMode.test.ts"
+      - "frontend/src/lib/__tests__/codeBlockHighlightPlugin.test.ts"
       - "frontend/src/hooks/__tests__/useLazyNodeView.test.tsx"
       - ".github/workflows/editor-runtime-ci.yml"
   pull_request:
@@ -26,12 +28,14 @@ on:
       - "frontend/src/lib/largeMarkdownSafety.ts"
       - "frontend/src/lib/largeRichTextSafeMode.ts"
       - "frontend/src/lib/phaseAPerfDiagnostics.ts"
+      - "frontend/src/lib/codeBlockHighlightPlugin.ts"
       - "frontend/src/hooks/useLazyNodeView.ts"
       - "frontend/src/hooks/useNoteLoader.ts"
       - "frontend/src/components/ResizableImageView.tsx"
       - "frontend/src/components/LargeRichTextSafeViewer.tsx"
       - "frontend/src/**/__tests__/*editorRuntime*.test.*"
       - "frontend/src/**/__tests__/largeRichTextSafeMode.test.ts"
+      - "frontend/src/lib/__tests__/codeBlockHighlightPlugin.test.ts"
       - "frontend/src/hooks/__tests__/useLazyNodeView.test.tsx"
       - ".github/workflows/editor-runtime-ci.yml"
 
@@ -60,6 +64,7 @@ jobs:
           src/lib/__tests__/editorRuntimePolicy.test.ts
           src/lib/__tests__/editorRuntimeStore.test.ts
           src/lib/__tests__/largeRichTextSafeMode.test.ts
+          src/lib/__tests__/codeBlockHighlightPlugin.test.ts
           src/hooks/__tests__/useLazyNodeView.test.tsx
       - name: Frontend typecheck
         run: npx tsc -b
