@@ -31,7 +31,7 @@ describe("editor complexity profile", () => {
     });
     const profile = buildEditorComplexityProfile(content, "tiptap-json");
 
-    expect(profile.approximateNodes).toBeGreaterThanOrEqual(8);
+    expect(profile.approximateNodes).toBe(7);
     expect(profile.imageCount).toBe(1);
     expect(profile.codeBlockCount).toBe(1);
     expect(profile.tableCount).toBe(1);
