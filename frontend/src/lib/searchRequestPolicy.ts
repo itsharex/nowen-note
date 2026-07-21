@@ -1,6 +1,9 @@
 const HAN_TEXT_RE = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/u;
 const SIMPLE_TOKEN_RE = /^[\p{L}\p{N}_]+$/u;
 
+/** SearchCenter already waits 180 ms; this raises progressive short input to ~600 ms total. */
+export const PROGRESSIVE_SHORT_QUERY_EXTRA_DELAY_MS = 420;
+
 export function normalizeProgressiveSearchQuery(value: string): string {
   return value.normalize("NFKC").trim().toLocaleLowerCase();
 }
@@ -19,4 +22,10 @@ export function isIncrementalShortLatinQuery(value: string): boolean {
     && normalized.length < 3
     && !HAN_TEXT_RE.test(normalized)
     && SIMPLE_TOKEN_RE.test(normalized);
+}
+
+export function getProgressiveSearchExtraDelayMs(value: string): number {
+  return isIncrementalShortLatinQuery(value)
+    ? PROGRESSIVE_SHORT_QUERY_EXTRA_DELAY_MS
+    : 0;
 }
