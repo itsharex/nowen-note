@@ -4,6 +4,7 @@ import {
   getLargeDocumentOriginalFormat,
   isLargeDocumentCollaborationBlocked,
   isLargeRichTextSafeNote,
+  LARGE_RICH_TEXT_THRESHOLDS,
   prepareLargeRichTextNoteForDisplay,
 } from "@/lib/largeRichTextSafeMode";
 
@@ -32,9 +33,23 @@ function makeNote(overrides: Partial<Note> = {}): Note {
 }
 
 describe("large rich-text runtime safety", () => {
-  it("routes pathological Tiptap content to the safe viewer without modifying raw content", () => {
+  it("keeps an ordinary compact 18 KB Tiptap document editable", () => {
     const rawContent =
-      `{"type":"doc","content":[{"type":"text","text":"${"x".repeat(8_100)}"}]}`;
+      `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"${"x".repeat(18_000)}"}]}]}`;
+    const original = makeNote({ content: rawContent });
+
+    const prepared = prepareLargeRichTextNoteForDisplay(original);
+
+    expect(rawContent.length).toBeGreaterThan(17 * 1024);
+    expect(rawContent.length).toBeLessThan(20 * 1024);
+    expect(prepared).toBe(original);
+    expect(isLargeRichTextSafeNote(prepared)).toBe(false);
+    expect(isLargeDocumentCollaborationBlocked(original.id)).toBe(false);
+  });
+
+  it("routes genuinely large Tiptap content to the safe viewer without modifying raw content", () => {
+    const rawContent =
+      `{"type":"doc","content":[{"type":"text","text":"${"x".repeat(LARGE_RICH_TEXT_THRESHOLDS.serializedCharacters)}"}]}`;
     const original = makeNote({ content: rawContent });
 
     const prepared = prepareLargeRichTextNoteForDisplay(original);
@@ -46,6 +61,31 @@ describe("large rich-text runtime safety", () => {
     expect(isLargeRichTextSafeNote(prepared)).toBe(true);
     expect(getLargeDocumentOriginalFormat(prepared)).toBe("tiptap-json");
     expect(isLargeDocumentCollaborationBlocked(original.id)).toBe(true);
+  });
+
+  it("protects structurally extreme Tiptap JSON even below the size threshold", () => {
+    const nodes = Array.from(
+      { length: LARGE_RICH_TEXT_THRESHOLDS.approximateNodes },
+      () => '{"type":"x"}',
+    ).join(",");
+    const rawContent = `{"type":"doc","content":[${nodes}]}`;
+    const original = makeNote({ id: "note-node-heavy", content: rawContent });
+
+    expect(rawContent.length).toBeLessThan(LARGE_RICH_TEXT_THRESHOLDS.serializedCharacters);
+    expect(isLargeRichTextSafeNote(prepareLargeRichTextNoteForDisplay(original))).toBe(true);
+    expect(isLargeDocumentCollaborationBlocked(original.id)).toBe(true);
+  });
+
+  it("does not apply compact-JSON line heuristics to legacy HTML", () => {
+    const html = `<p>${"x".repeat(18_000)}</p>`;
+    const original = makeNote({
+      id: "note-html",
+      content: html,
+      contentFormat: "html",
+    });
+
+    expect(prepareLargeRichTextNoteForDisplay(original)).toBe(original);
+    expect(isLargeDocumentCollaborationBlocked(original.id)).toBe(false);
   });
 
   it("leaves native Markdown on the existing editable large-document path", () => {
@@ -66,7 +106,7 @@ describe("large rich-text runtime safety", () => {
   it("removes a stale collaboration block after the note becomes small again", () => {
     const large = makeNote({
       id: "note-resized",
-      content: `{"type":"doc","text":"${"x".repeat(8_100)}"}`,
+      content: `{"type":"doc","text":"${"x".repeat(LARGE_RICH_TEXT_THRESHOLDS.serializedCharacters)}"}`,
     });
     prepareLargeRichTextNoteForDisplay(large);
     expect(isLargeDocumentCollaborationBlocked(large.id)).toBe(true);
