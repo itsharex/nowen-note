@@ -3,6 +3,7 @@ export * from "./api.impl";
 import { api as baseApi, getBaseUrl, getCurrentWorkspace, getServerUrl } from "./api.impl";
 import { invalidateNotebooks } from "./notebookInvalidation";
 import { registerAttachmentAccessUrls } from "./noteAttachmentAccessBridge";
+import { isIncrementalShortLatinQuery } from "./searchRequestPolicy";
 import {
   fetchJsonWithUploadDeadline,
   IMAGE_HOSTING_UPLOAD_TIMEOUT_MS,
@@ -10,7 +11,7 @@ import {
   LOCAL_ATTACHMENT_UPLOAD_TIMEOUT_MS,
   UploadRequestError,
 } from "./uploadRequest";
-import type { Note, Task } from "@/types";
+import type { Note, SearchResult, Task } from "@/types";
 
 export type TaskActivityEvent = {
   id: string;
@@ -30,7 +31,13 @@ type TaskActivityQuery = {
   limit?: number;
 };
 
+type SearchRequestOptions = {
+  signal?: AbortSignal;
+  allowShortLatinQuery?: boolean;
+};
+
 type EnhancedApi = typeof baseApi & {
+  search: (q: string, options?: SearchRequestOptions) => Promise<SearchResult[]>;
   getTaskActivityEvents: (params?: TaskActivityQuery) => Promise<TaskActivityEvent[]>;
   restoreTaskCompletedAt: (taskId: string, completedAt: string) => Promise<Task>;
   /**
@@ -114,6 +121,58 @@ function offlineUploadError(message: string): UploadRequestError {
 }
 
 const api = baseApi as EnhancedApi;
+let activeSearchController: AbortController | null = null;
+let activeSearchSequence = 0;
+
+/**
+ * SearchCenter already debounces input, but a request that has crossed the debounce boundary
+ * used to keep running after the user typed the next character. On better-sqlite3 this can leave
+ * the final indexed query waiting behind an obsolete synchronous literal scan.
+ *
+ * The enhanced API keeps exactly one renderer search alive. One/two-character Latin fragments
+ * are treated as progressive input and never sent to the expensive full-text endpoint; callers
+ * that intentionally need those exact queries can opt in with allowShortLatinQuery.
+ */
+api.search = ((q: string, options: SearchRequestOptions = {}) => {
+  const normalized = q.trim();
+  const sequence = ++activeSearchSequence;
+  activeSearchController?.abort();
+  activeSearchController = null;
+
+  if (!normalized) return Promise.resolve([]);
+  if (!options.allowShortLatinQuery && isIncrementalShortLatinQuery(normalized)) {
+    return Promise.resolve([]);
+  }
+
+  const controller = new AbortController();
+  activeSearchController = controller;
+  const abortFromCaller = () => controller.abort();
+  if (options.signal) {
+    if (options.signal.aborted) controller.abort();
+    else options.signal.addEventListener("abort", abortFromCaller, { once: true });
+  }
+
+  const params = new URLSearchParams();
+  params.set("q", normalized);
+  const workspace = getCurrentWorkspace();
+  if (workspace && workspace !== "personal") params.set("workspaceId", workspace);
+
+  const path = `/search?${params.toString()}`;
+  return authenticatedJson<SearchResult[]>(path, {
+    signal: controller.signal,
+  }).catch((error) => {
+    if ((error as { name?: string })?.name === "AbortError") throw error;
+    // Keep Android/native compatibility: api.impl's request wrapper can fall back to
+    // CapacitorHttp when WebView fetch is unavailable. This path is only used after the
+    // cancellable fetch itself has failed, never for an intentionally aborted stale request.
+    return baseApi.search(normalized);
+  }).finally(() => {
+    options.signal?.removeEventListener("abort", abortFromCaller);
+    if (sequence === activeSearchSequence && activeSearchController === controller) {
+      activeSearchController = null;
+    }
+  });
+}) as EnhancedApi["search"];
 
 // Multipart uploads intentionally bypass api.impl's JSON request() wrapper. Give both image
 // targets a hard deadline and a real AbortController so an unreachable NAS or image host can no
