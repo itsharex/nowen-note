@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const css = readFileSync("src/editor-list-markers.css", "utf8");
+const main = readFileSync("src/main.tsx", "utf8");
 
 describe("editor list marker compatibility CSS", () => {
   it("suppresses ordinary bullets for Tiptap task NodeViews", () => {
@@ -19,5 +20,10 @@ describe("editor list marker compatibility CSS", () => {
     expect(css).toContain("text-align: center");
     expect(css).toContain("--nowen-ul-marker-top: 0.3em");
     expect(css).toContain("--nowen-ul-marker-top: 0.25em");
+  });
+
+  it("does not mutate ProseMirror task NodeViews from a global observer", () => {
+    expect(main).not.toContain("taskListNodeViewIdentity");
+    expect(main).not.toContain("installTaskListNodeViewIdentity");
   });
 });
