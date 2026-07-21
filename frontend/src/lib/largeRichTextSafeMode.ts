@@ -1,48 +1,28 @@
 import type { Note } from "@/types";
+import {
+  resolveEditorRuntimeDecision,
+  type EditorRuntimeDecision,
+} from "@/lib/editorRuntimePolicy";
+import { setActiveEditorRuntimeDecision } from "@/lib/editorRuntimeStore";
 
 /**
- * Rich-text payloads are usually serialized as compact, single-line Tiptap JSON or HTML.
- * Markdown's line-count / longest-line thresholds therefore cannot be reused here: an ordinary
- * 18 KB Tiptap document would look like one 18,000-character line and be incorrectly forced into
- * read-only mode.
+ * Runtime-only metadata attached to non-normal editor sessions.
  *
- * This mode is an emergency guard for genuinely pathological payloads, not a normal large-note
- * UX. Trigger on serialized size or extreme Tiptap structure instead.
+ * The fields are never persisted. They let the editor, diagnostics and emergency viewer consume
+ * the same policy decision without recalculating or mutating the server payload.
  */
-export const LARGE_RICH_TEXT_THRESHOLDS = {
-  serializedCharacters: 1_000_000,
-  approximateNodes: 20_000,
-} as const;
-
-export function shouldUseLargeRichTextSafeMode(
-  content: string | null | undefined,
-  contentFormat: string | null | undefined,
-): boolean {
-  if (!content) return false;
-  if (content.length >= LARGE_RICH_TEXT_THRESHOLDS.serializedCharacters) return true;
-
-  // HTML and unknown legacy formats use only the size guard. For Tiptap JSON, cheaply count
-  // structural `type` fields without parsing/mounting ProseMirror. Stop as soon as the limit is hit.
-  if ((contentFormat || "tiptap-json") !== "tiptap-json") return false;
-
-  const typeFieldPattern = /"type"\s*:/g;
-  let approximateNodes = 0;
-  while (typeFieldPattern.exec(content)) {
-    approximateNodes += 1;
-    if (approximateNodes >= LARGE_RICH_TEXT_THRESHOLDS.approximateNodes) return true;
-  }
-
-  return false;
+export interface RuntimeEditorPolicyNote extends Note {
+  __nowenEditorRuntimeDecision: EditorRuntimeDecision;
 }
 
 /**
- * Runtime-only marker used when a large non-Markdown note must not enter Tiptap.
+ * Runtime-only marker used when a pathological non-Markdown note must not enter Tiptap.
  *
  * The original content is kept untouched in memory. Only contentFormat is overridden so
  * EditorPane selects the Markdown adapter, which then renders LargeRichTextSafeViewer.
  * Nothing here is persisted to the server.
  */
-export interface RuntimeLargeRichTextSafeNote extends Note {
+export interface RuntimeLargeRichTextSafeNote extends RuntimeEditorPolicyNote {
   __nowenLargeRichTextSafeMode: true;
   __nowenOriginalContentFormat: string;
 }
@@ -55,20 +35,51 @@ export function isLargeRichTextSafeNote(
   return !!note && (note as RuntimeLargeRichTextSafeNote).__nowenLargeRichTextSafeMode === true;
 }
 
+export function getEditorRuntimeDecisionForNote(
+  note: Note | null | undefined,
+): EditorRuntimeDecision | null {
+  if (!note) return null;
+  const runtime = (note as RuntimeEditorPolicyNote).__nowenEditorRuntimeDecision;
+  if (runtime) return runtime;
+  return resolveEditorRuntimeDecision({
+    content: note.content,
+    contentText: note.contentText,
+    contentFormat: note.contentFormat,
+  });
+}
+
 export function prepareLargeRichTextNoteForDisplay(note: Note): Note {
-  if (isLargeRichTextSafeNote(note)) {
-    collaborationBlockedNoteIds.add(note.id);
-    return note;
-  }
+  const originalFormat = isLargeRichTextSafeNote(note)
+    ? note.__nowenOriginalContentFormat
+    : (note.contentFormat || "tiptap-json");
 
-  const originalFormat = note.contentFormat || "tiptap-json";
-  const shouldProtect =
-    originalFormat !== "markdown"
-    && shouldUseLargeRichTextSafeMode(note.content || note.contentText, originalFormat);
+  const decision = resolveEditorRuntimeDecision({
+    content: note.content,
+    contentText: note.contentText,
+    contentFormat: originalFormat,
+  });
+  setActiveEditorRuntimeDecision(note.id, decision);
 
+  const shouldProtect = originalFormat !== "markdown" && decision.mode === "emergency-readonly";
   if (!shouldProtect) {
     collaborationBlockedNoteIds.delete(note.id);
-    return note;
+
+    // Remove stale emergency routing when a previously pathological note becomes smaller again.
+    if (isLargeRichTextSafeNote(note)) {
+      return {
+        ...note,
+        contentFormat: originalFormat,
+        __nowenLargeRichTextSafeMode: undefined,
+        __nowenOriginalContentFormat: undefined,
+        __nowenEditorRuntimeDecision: decision,
+      } as unknown as RuntimeEditorPolicyNote;
+    }
+
+    if (decision.mode === "normal") return note;
+    return {
+      ...note,
+      __nowenEditorRuntimeDecision: decision,
+    } satisfies RuntimeEditorPolicyNote;
   }
 
   collaborationBlockedNoteIds.add(note.id);
@@ -78,6 +89,7 @@ export function prepareLargeRichTextNoteForDisplay(note: Note): Note {
     contentFormat: "markdown",
     __nowenLargeRichTextSafeMode: true,
     __nowenOriginalContentFormat: originalFormat,
+    __nowenEditorRuntimeDecision: decision,
   } satisfies RuntimeLargeRichTextSafeNote;
 }
 
