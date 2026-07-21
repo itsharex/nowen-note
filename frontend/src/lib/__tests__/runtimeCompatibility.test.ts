@@ -12,7 +12,7 @@ type ArrayPrototypeCompat = {
 type NumberFindLast = (
   this: number[],
   predicate: (
-    this: unknown,
+    this: any,
     value: number,
     index: number,
     array: ArrayLike<number>,
