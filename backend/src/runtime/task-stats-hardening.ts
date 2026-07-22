@@ -8,6 +8,7 @@ import {
   requireWorkspaceFeature,
 } from "../middleware/acl.js";
 import noteTransfersRouter from "../routes/note-transfers.js";
+import { installNoteSplitRoutes } from "./note-split.js";
 
 const ROUTE_PATCH_FLAG = Symbol.for("nowen.taskStatsHardening.routePatch");
 const ROUTER_INSTALLED_FLAG = Symbol.for("nowen.taskStatsHardening.routerInstalled");
@@ -269,6 +270,7 @@ if (!globals[ROUTE_PATCH_FLAG]) {
   const nativeRoute = prototype.route as (this: Hono<any>, path: string, subApp: Hono<any>) => Hono<any>;
   prototype.route = function patchedRoute(this: Hono<any>, path: string, subApp: Hono<any>) {
     if (path === "/api/tasks") installTaskStatsRoutes(subApp);
+    if (path === "/api/notes") installNoteSplitRoutes(subApp);
     if (path === "/api/notebooks") {
       const taggedApp = this as Hono<any> & Record<symbol, boolean>;
       if (!taggedApp[NOTE_TRANSFER_INSTALLED_FLAG]) {
