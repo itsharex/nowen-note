@@ -32,7 +32,7 @@ export default defineConfig({
         find: /^@\/components\/AISettingsPanel$/,
         replacement: path.resolve(__dirname, "./src/components/AISettingsReliabilityShell.tsx"),
       },
-      // Issue #369：保留原 schema / serializer，仅替换高成本媒体 NodeView 与 Mermaid 渲染壳。
+      // Issue #369：保留原 schema / serializer，仅替换高成本媒体 NodeView、公式与全文搜索壳。
       // Runtime 壳内部使用相对路径导入原组件，避免精确别名递归。
       {
         find: /^@\/components\/VideoExtension$/,
@@ -41,6 +41,14 @@ export default defineConfig({
       {
         find: /^@\/components\/MermaidView$/,
         replacement: path.resolve(__dirname, "./src/components/MermaidViewRuntime.tsx"),
+      },
+      {
+        find: /^@\/components\/MathExtensions$/,
+        replacement: path.resolve(__dirname, "./src/components/MathExtensionsRuntime.tsx"),
+      },
+      {
+        find: /^@\/components\/SearchReplacePanel$/,
+        replacement: path.resolve(__dirname, "./src/components/SearchReplacePanelRuntime.tsx"),
       },
       // Issue #369：大 Markdown 使用 CodeMirror transaction ↔ Y.Text delta 增量同步。
       // 原组件和纯策略通过相对路径保留，Runtime 壳只接管协作热路径。
