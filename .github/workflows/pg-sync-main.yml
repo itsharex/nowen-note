@@ -103,8 +103,33 @@ jobs:
         run: exit 1
 
       - name: SQLite direct-access audit
+        id: sqlite_audit
+        continue-on-error: true
         working-directory: backend
-        run: npm run audit:sqlite-boundaries
+        shell: bash
+        run: |
+          set +e
+          npm run audit:sqlite-boundaries 2>&1 | tee /tmp/sqlite-audit.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Publish SQLite audit diagnostics
+        if: steps.sqlite_audit.outcome == 'failure'
+        shell: bash
+        run: |
+          {
+            echo '## ❌ main synchronization SQLite boundary audit failed'
+            echo
+            echo "Run: \`${{ github.run_id }}\`"
+            echo
+            echo '```text'
+            tail -n 240 /tmp/sqlite-audit.log
+            echo '```'
+          } > /tmp/status.md
+          gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${STATUS_COMMENT_ID}" -X PATCH -f body="$(cat /tmp/status.md)"
+
+      - name: Stop after SQLite audit failure
+        if: steps.sqlite_audit.outcome == 'failure'
+        run: exit 1
 
       - name: PostgreSQL schema parity
         working-directory: backend
@@ -164,12 +189,12 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${STATUS_COMMENT_ID}" -X PATCH -f body="$(cat /tmp/status.md)"
 
       - name: Publish generic failure
-        if: failure() && steps.typecheck.outcome != 'failure'
+        if: failure() && steps.typecheck.outcome != 'failure' && steps.sqlite_audit.outcome != 'failure'
         shell: bash
         run: |
           {
             echo '## ❌ main synchronization failed'
             echo
-            echo "A post-typecheck validation stage failed. The branch was not pushed. Run: \`${{ github.run_id }}\`."
+            echo "A later validation stage failed. The branch was not pushed. Run: \`${{ github.run_id }}\`."
           } > /tmp/status.md
           gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${STATUS_COMMENT_ID}" -X PATCH -f body="$(cat /tmp/status.md)"
