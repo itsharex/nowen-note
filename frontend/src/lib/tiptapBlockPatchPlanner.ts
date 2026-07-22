@@ -113,7 +113,11 @@ function uniqueBlocks(nodes: JsonNode[]): SimpleBlock[] | null {
 function planTopLevelStructural(baseDoc: JsonNode, nextDoc: JsonNode): TiptapBlockPatchPlan | null {
   const base = uniqueBlocks(baseDoc.content || []);
   const next = uniqueBlocks(nextDoc.content || []);
-  if (!base || !next) return null;
+  // The backend repairs an empty document by generating a new paragraph Block ID. Until the
+  // protocol returns and reconciles that server-generated replacement as an explicit operation,
+  // keep delete-all on the established whole-document save path so local/server identities cannot
+  // diverge.
+  if (!base || !next || next.length === 0) return null;
 
   const baseById = new Map(base.map((item) => [item.id, item]));
   const nextById = new Map(next.map((item) => [item.id, item]));
