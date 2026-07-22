@@ -50,6 +50,15 @@ export default defineConfig({
         find: /^@\/components\/SearchReplacePanel$/,
         replacement: path.resolve(__dirname, "./src/components/SearchReplacePanelRuntime.tsx"),
       },
+      // Issue #369：Tiptap 派生数据只扫描一次；优化模式暂停实时全文大纲。
+      {
+        find: /^@\/components\/TiptapEditor$/,
+        replacement: path.resolve(__dirname, "./src/components/TiptapEditorRuntime.tsx"),
+      },
+      {
+        find: /^@\/lib\/proseMirrorPlainText$/,
+        replacement: path.resolve(__dirname, "./src/lib/proseMirrorPlainTextRuntime.ts"),
+      },
       // Issue #369：大 Markdown 使用 CodeMirror transaction ↔ Y.Text delta 增量同步。
       // 原组件和纯策略通过相对路径保留，Runtime 壳只接管协作热路径。
       {
