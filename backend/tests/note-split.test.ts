@@ -5,11 +5,13 @@ import { Hono } from "hono";
 
 import { getDb } from "../src/db/schema.ts";
 import {
+  buildMarkdownPartialSplitSource,
   buildMarkdownSplitDirectory,
   planMarkdownNoteSplit,
   validateMarkdownSplitPlan,
 } from "../src/lib/noteSplit.ts";
 import { installNoteSplitRoutes } from "../src/runtime/note-split.ts";
+import { installPartialNoteSplitRoutes } from "../src/runtime/note-split-selection.ts";
 
 function stripRuntimeBlockIds(markdown: string): string {
   return markdown
@@ -17,6 +19,11 @@ function stripRuntimeBlockIds(markdown: string): string {
     .replace(/^\^blk_[A-Za-z0-9_-]{6,}[ \t]*$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function installSplitRoutes(app: Hono): void {
+  installPartialNoteSplitRoutes(app);
+  installNoteSplitRoutes(app);
 }
 
 test("splits exact H1 boundaries and preserves the preamble", () => {
@@ -82,6 +89,34 @@ test("builds a directory with stable note ids and escaped aliases", () => {
   assert.match(directory, /\[\[note-b\|Beta ］ B\]\]/);
 });
 
+test("partial source keeps exact unselected ranges and uses a lower directory heading", () => {
+  const source = [
+    "# Book",
+    "intro",
+    "## Alpha",
+    "A",
+    "## Beta",
+    "B",
+    "## Gamma",
+    "G",
+  ].join("\n");
+  const plan = planMarkdownNoteSplit(source, 2);
+  const partial = buildMarkdownPartialSplitSource({
+    sourceMarkdown: source,
+    sourceTitle: "Book",
+    operationId: "op-partial",
+    plan,
+    preservePreamble: true,
+    sections: [{ index: 1, id: "note-beta", title: "Beta" }],
+  });
+  assert.match(partial, /### 目录/);
+  assert.doesNotMatch(partial, /^## 目录$/m);
+  assert.match(partial, /\[\[note-beta\|Beta\]\]/);
+  assert.match(partial, /## Alpha\nA/);
+  assert.match(partial, /## Gamma\nG/);
+  assert.doesNotMatch(partial, /^## Beta$/m);
+});
+
 test("requires at least two sections", () => {
   const plan = planMarkdownNoteSplit("# Only\nbody", 1);
   assert.equal(validateMarkdownSplitPlan(plan), "至少需要两个同级标题才能拆分");
@@ -122,7 +157,8 @@ test("transactionally splits, shares attachment bytes, inherits tags and restore
   `).run(attachmentId, noteId, userId);
 
   const app = new Hono();
-  installNoteSplitRoutes(app);
+  installSplitRoutes(app);
+  // No sectionIndexes: this verifies the selected-section route passes legacy clients through.
   const splitResponse = await app.request(`/${noteId}/split`, {
     method: "POST",
     headers: {
@@ -185,4 +221,108 @@ test("transactionally splits, shares attachment bytes, inherits tags and restore
     "SELECT COUNT(*) AS count FROM attachments WHERE path = 'shared-test.png'",
   ).get() as { count: number };
   assert.equal(attachmentCount.count, 1);
+});
+
+test("selected chapter split retains unselected content and keeps shared original attachment on source", async () => {
+  const db = getDb();
+  const userId = crypto.randomUUID();
+  const notebookId = crypto.randomUUID();
+  const noteId = crypto.randomUUID();
+  const attachmentId = crypto.randomUUID();
+  const sharedPath = `partial-${attachmentId}.png`;
+  const source = [
+    "Preface",
+    "",
+    "# Alpha",
+    `![shared](/api/attachments/${attachmentId})`,
+    "Alpha body",
+    "# Beta",
+    `![still needed](/api/attachments/${attachmentId})`,
+    "Beta body",
+    "# Gamma",
+    "Gamma body",
+  ].join("\n");
+
+  db.prepare("INSERT INTO users (id, username, passwordHash) VALUES (?, ?, ?)")
+    .run(userId, `partial-${userId}`, "test");
+  db.prepare("INSERT INTO notebooks (id, userId, name) VALUES (?, ?, ?)")
+    .run(notebookId, userId, "Partial Split Test");
+  db.prepare(`
+    INSERT INTO notes (id, userId, notebookId, title, content, contentText, contentFormat)
+    VALUES (?, ?, ?, ?, ?, ?, 'markdown')
+  `).run(noteId, userId, notebookId, "Partial Book", source, source);
+  db.prepare(`
+    INSERT INTO attachments (id, noteId, userId, filename, mimeType, size, path)
+    VALUES (?, ?, ?, 'partial.png', 'image/png', 20, ?)
+  `).run(attachmentId, noteId, userId, sharedPath);
+
+  const app = new Hono();
+  installSplitRoutes(app);
+  const splitResponse = await app.request(`/${noteId}/split`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-User-Id": userId,
+    },
+    body: JSON.stringify({
+      version: 1,
+      headingLevel: 1,
+      sectionIndexes: [0],
+      preservePreamble: true,
+    }),
+  });
+  assert.equal(splitResponse.status, 201);
+  const splitResult = await splitResponse.json() as {
+    operationId: string;
+    sourceNote: { content: string; version: number };
+    createdNotes: Array<{ id: string; title: string; content: string }>;
+    selectedSectionIndexes: number[];
+    retainedSectionCount: number;
+    totalSectionCount: number;
+  };
+  assert.deepEqual(splitResult.selectedSectionIndexes, [0]);
+  assert.equal(splitResult.createdNotes.length, 1);
+  assert.equal(splitResult.createdNotes[0].title, "Alpha");
+  assert.equal(splitResult.retainedSectionCount, 2);
+  assert.equal(splitResult.totalSectionCount, 3);
+  assert.match(splitResult.sourceNote.content, /# Beta/);
+  assert.match(splitResult.sourceNote.content, /# Gamma/);
+  assert.doesNotMatch(splitResult.sourceNote.content, /^# Alpha(?:\s|$)/m);
+
+  const childId = splitResult.createdNotes[0].id;
+  const attachmentRows = db.prepare(`
+    SELECT id, noteId, path, uploadSource FROM attachments
+    WHERE path = ? ORDER BY id
+  `).all(sharedPath) as Array<{
+    id: string;
+    noteId: string;
+    path: string;
+    uploadSource: string | null;
+  }>;
+  assert.equal(attachmentRows.length, 2);
+  const original = attachmentRows.find((row) => row.id === attachmentId);
+  const copy = attachmentRows.find((row) => row.id !== attachmentId);
+  assert.equal(original?.noteId, noteId);
+  assert.equal(copy?.noteId, childId);
+  assert.equal(copy?.uploadSource, "note-split");
+  assert.match(splitResult.sourceNote.content, new RegExp(attachmentId));
+  assert.ok(copy);
+  assert.match(splitResult.createdNotes[0].content, new RegExp(copy.id));
+  assert.doesNotMatch(splitResult.createdNotes[0].content, new RegExp(attachmentId));
+
+  const undoResponse = await app.request(
+    `/${noteId}/split/${splitResult.operationId}/undo`,
+    { method: "POST", headers: { "X-User-Id": userId } },
+  );
+  assert.equal(undoResponse.status, 200);
+  const undoResult = await undoResponse.json() as {
+    sourceNote: { content: string; version: number };
+    removedNoteIds: string[];
+  };
+  assert.equal(stripRuntimeBlockIds(undoResult.sourceNote.content), source);
+  assert.deepEqual(undoResult.removedNoteIds, [childId]);
+  const remainingAttachmentRows = db.prepare(
+    "SELECT id, noteId, path FROM attachments WHERE path = ?",
+  ).all(sharedPath) as Array<{ id: string; noteId: string; path: string }>;
+  assert.deepEqual(remainingAttachmentRows, [{ id: attachmentId, noteId, path: sharedPath }]);
 });
