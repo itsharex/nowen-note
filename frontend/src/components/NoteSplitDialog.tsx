@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, FileText, Loader2, RotateCcw, Scissors, X } from "lucide-react";
+import { AlertTriangle, CheckSquare, FileText, Loader2, RotateCcw, Scissors, Square, X } from "lucide-react";
 
 import { api } from "@/lib/api";
 import {
@@ -48,6 +48,7 @@ export default function NoteSplitDialog({
   const [headingLevel, setHeadingLevel] = useState<NoteSplitHeadingLevel>(preferredLevel);
   const [preservePreamble, setPreservePreamble] = useState(true);
   const [targetNotebookId, setTargetNotebookId] = useState(note.notebookId);
+  const [selectedSectionIndexes, setSelectedSectionIndexes] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [undoing, setUndoing] = useState(false);
@@ -60,9 +61,11 @@ export default function NoteSplitDialog({
     setLoading(true);
     setError(null);
     setResult(null);
+    setFreshNote(null);
     setHeadingLevel(preferredLevel);
     setPreservePreamble(true);
     setTargetNotebookId(note.notebookId);
+    setSelectedSectionIndexes([]);
 
     // EditorPane already listens to this event and flushes the active editor immediately.
     window.dispatchEvent(new CustomEvent("nowen:before-note-switch"));
@@ -93,6 +96,17 @@ export default function NoteSplitDialog({
   }, [freshNote?.content]);
   const preview = previews[headingLevel];
 
+  // A heading-level switch means a different coordinate system. Select all valid sections again
+  // instead of carrying stale H1 indexes into an H2 request.
+  useEffect(() => {
+    setSelectedSectionIndexes(preview.sections.map((section) => section.index));
+  }, [freshNote?.content, headingLevel]);
+
+  const selectedSet = useMemo(() => new Set(selectedSectionIndexes), [selectedSectionIndexes]);
+  const selectedCount = selectedSectionIndexes.length;
+  const retainedCount = Math.max(0, preview.sections.length - selectedCount);
+  const allSelected = preview.sections.length > 0 && selectedCount === preview.sections.length;
+
   const targetNotebooks = useMemo(
     () => flattenNotebooks(notebooks).filter((item) => {
       if ((item.workspaceId || null) !== (note.workspaceId || null)) return false;
@@ -103,14 +117,33 @@ export default function NoteSplitDialog({
 
   if (!open) return null;
 
+  const toggleSection = (index: number) => {
+    setSelectedSectionIndexes((current) => current.includes(index)
+      ? current.filter((value) => value !== index)
+      : [...current, index].sort((a, b) => a - b));
+  };
+
+  const selectAllSections = () => {
+    setSelectedSectionIndexes(preview.sections.map((section) => section.index));
+  };
+
+  const invertSelection = () => {
+    setSelectedSectionIndexes(
+      preview.sections
+        .filter((section) => !selectedSet.has(section.index))
+        .map((section) => section.index),
+    );
+  };
+
   const handleSplit = async () => {
-    if (!freshNote || preview.sections.length < 2 || submitting) return;
+    if (!freshNote || preview.sections.length < 2 || selectedCount === 0 || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
       const splitResult = await splitMarkdownNote(freshNote.id, {
         version: freshNote.version,
         headingLevel,
+        sectionIndexes: [...selectedSectionIndexes].sort((a, b) => a - b),
         targetNotebookId: targetNotebookId || freshNote.notebookId,
         preservePreamble,
       });
@@ -153,7 +186,7 @@ export default function NoteSplitDialog({
           </div>
           <div className="min-w-0 flex-1">
             <h2 id="note-split-title" className="truncate text-base font-semibold text-tx-primary">按标题拆分笔记</h2>
-            <p className="mt-0.5 text-xs text-tx-tertiary">先预览，确认后在一个事务中创建章节并把原笔记转换为目录页。</p>
+            <p className="mt-0.5 text-xs text-tx-tertiary">勾选要独立成篇的章节；未选择章节继续保留在原笔记中。</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-2 text-tx-tertiary hover:bg-app-hover" aria-label="关闭">
             <X size={17} />
@@ -170,7 +203,12 @@ export default function NoteSplitDialog({
             <div className="space-y-4">
               <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-emerald-700 dark:text-emerald-300">
                 <div className="font-semibold">拆分完成</div>
-                <div className="mt-1 text-sm">已创建 {result.createdNotes.length} 篇章节笔记，原笔记已转换为目录页。</div>
+                <div className="mt-1 text-sm">
+                  已创建 {result.createdNotes.length} 篇章节笔记。
+                  {result.retainedSectionCount > 0
+                    ? `另有 ${result.retainedSectionCount} 个章节继续保留在原笔记中。`
+                    : "原笔记已转换为目录页。"}
+                </div>
               </div>
               <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl border border-app-border bg-app-bg/40 p-3">
                 {result.createdNotes.map((created, index) => (
@@ -182,7 +220,7 @@ export default function NoteSplitDialog({
                 ))}
               </div>
               <div className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs leading-5 text-amber-800 dark:text-amber-200">
-                只有目录页和新章节都未继续编辑、且章节没有新增附件时，才能自动撤销。原始正文始终保存在版本历史和拆分记录中。
+                只有原笔记和新章节都未继续编辑、且章节没有新增附件时，才能自动撤销。原始正文始终保存在版本历史和拆分记录中。
               </div>
             </div>
           ) : (
@@ -230,7 +268,7 @@ export default function NoteSplitDialog({
                   className="mt-0.5"
                 />
                 <span>
-                  <span className="block text-sm font-medium text-tx-secondary">在目录页保留首个标题前的前言</span>
+                  <span className="block text-sm font-medium text-tx-secondary">在原笔记中保留首个标题前的前言</span>
                   <span className="mt-0.5 block text-xs text-tx-tertiary">前言不会复制到章节笔记，避免内容重复。</span>
                 </span>
               </label>
@@ -242,20 +280,63 @@ export default function NoteSplitDialog({
                 </div>
               ) : (
                 <div>
-                  <div className="mb-2 flex items-center justify-between text-xs text-tx-tertiary">
-                    <span>将创建 {preview.sections.length} 篇章节笔记</span>
-                    <span>{preview.sourceCharacters.toLocaleString()} 字符</span>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-tx-tertiary">
+                    <span>
+                      已选择 {selectedCount}/{preview.sections.length} 篇
+                      {retainedCount > 0 ? `，保留 ${retainedCount} 篇在原笔记` : "，全部拆分"}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={selectAllSections}
+                        disabled={allSelected}
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 hover:bg-app-hover disabled:opacity-40"
+                      >
+                        <CheckSquare size={13} />
+                        全选
+                      </button>
+                      <button
+                        type="button"
+                        onClick={invertSelection}
+                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 hover:bg-app-hover"
+                      >
+                        <Square size={13} />
+                        反选
+                      </button>
+                    </div>
                   </div>
                   <div className="max-h-72 space-y-1.5 overflow-y-auto rounded-xl border border-app-border bg-app-bg/40 p-2">
-                    {preview.sections.map((section) => (
-                      <div key={`${section.index}-${section.sourceStart}`} className="flex items-center gap-2 rounded-lg px-2.5 py-2 hover:bg-app-hover">
-                        <span className="w-7 shrink-0 text-right text-xs text-tx-tertiary">{section.index + 1}</span>
-                        <FileText size={14} className="shrink-0 text-accent-primary" />
-                        <span className="min-w-0 flex-1 truncate text-sm text-tx-secondary">{section.title}</span>
-                        <span className="shrink-0 text-[11px] text-tx-tertiary">{section.content.length.toLocaleString()} 字符</span>
-                      </div>
-                    ))}
+                    {preview.sections.map((section) => {
+                      const selected = selectedSet.has(section.index);
+                      return (
+                        <label
+                          key={`${section.index}-${section.sourceStart}`}
+                          className={cn(
+                            "flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors hover:bg-app-hover",
+                            selected && "bg-accent-primary/5",
+                          )}
+                        >
+                          <input
+                            data-testid={`note-split-section-${section.index}`}
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => toggleSection(section.index)}
+                            className="shrink-0"
+                          />
+                          <span className="w-7 shrink-0 text-right text-xs text-tx-tertiary">{section.index + 1}</span>
+                          <FileText size={14} className="shrink-0 text-accent-primary" />
+                          <span className="min-w-0 flex-1 truncate text-sm text-tx-secondary">{section.title}</span>
+                          <span className="shrink-0 text-[11px] text-tx-tertiary">{section.content.length.toLocaleString()} 字符</span>
+                        </label>
+                      );
+                    })}
                   </div>
+                  {selectedCount === 0 && (
+                    <div className="mt-2 flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                      <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                      请至少选择一个要拆分的章节。
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -289,11 +370,11 @@ export default function NoteSplitDialog({
               <button
                 type="button"
                 onClick={handleSplit}
-                disabled={loading || submitting || !freshNote || preview.sections.length < 2}
+                disabled={loading || submitting || !freshNote || preview.sections.length < 2 || selectedCount === 0}
                 className="inline-flex items-center gap-2 rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {submitting ? <Loader2 size={15} className="animate-spin" /> : <Scissors size={15} />}
-                确认拆分
+                拆分所选 {selectedCount > 0 ? selectedCount : ""} 篇
               </button>
             </>
           )}
