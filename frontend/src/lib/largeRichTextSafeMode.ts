@@ -86,7 +86,7 @@ export function prepareLargeRichTextNoteForDisplay(note: Note): Note {
     return {
       ...note,
       __nowenEditorRuntimeDecision: decision,
-    } satisfies RuntimeEditorPolicyNote;
+    } as RuntimeEditorPolicyNote;
   }
 
   collaborationBlockedNoteIds.add(note.id);
@@ -97,7 +97,7 @@ export function prepareLargeRichTextNoteForDisplay(note: Note): Note {
     __nowenLargeRichTextSafeMode: true,
     __nowenOriginalContentFormat: originalFormat,
     __nowenEditorRuntimeDecision: decision,
-  } satisfies RuntimeLargeRichTextSafeNote;
+  } as RuntimeLargeRichTextSafeNote;
 }
 
 export function isLargeDocumentCollaborationBlocked(
