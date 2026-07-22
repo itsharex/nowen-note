@@ -5,8 +5,36 @@ import React, {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
 } from "react";
-import { AlertTriangle, FileText, ShieldCheck } from "lucide-react";
+import { Compartment, EditorState } from "@codemirror/state";
+import {
+  EditorView,
+  drawSelection,
+  dropCursor,
+  highlightActiveLine,
+  keymap,
+  lineNumbers,
+  placeholder,
+} from "@codemirror/view";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+} from "@codemirror/commands";
+import {
+  highlightSelectionMatches,
+  searchKeymap,
+} from "@codemirror/search";
+import {
+  bracketMatching,
+  defaultHighlightStyle,
+  syntaxHighlighting,
+} from "@codemirror/language";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { AlertTriangle, FileText, Gauge, ShieldCheck } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import * as Y from "yjs";
 
@@ -19,44 +47,85 @@ import { normalizeToMarkdown } from "@/lib/contentFormat";
 import {
   buildLargeMarkdownSearchText,
   computeSingleTextChange,
-  extractLargeMarkdownHeadings,
   formatLargeMarkdownSize,
 } from "@/lib/largeMarkdownSafety";
+import {
+  createMarkdownAnalysisController,
+  type MarkdownAnalysisController,
+} from "@/lib/markdownAnalysisClient";
+import type {
+  MarkdownAnalysisResult,
+  MarkdownAnalysisStats,
+} from "@/lib/markdownAnalysis";
+import {
+  resolveEditorRuntimeDecision,
+  type EditorRuntimeMode,
+} from "@/lib/editorRuntimePolicy";
 import { cn } from "@/lib/utils";
 
 interface LargeMarkdownSafeEditorProps extends NoteEditorProps {
   onAIAssistant?: () => void;
 }
 
-type CancelIdleWork = () => void;
+const EMPTY_STATS: MarkdownAnalysisStats = {
+  chars: 0,
+  charsNoSpace: 0,
+  words: 0,
+};
 
-function scheduleIdleWork(callback: () => void): CancelIdleWork {
-  if (typeof window !== "undefined") {
-    const idleWindow = window as Window & {
-      requestIdleCallback?: (
-        cb: () => void,
-        options?: { timeout: number },
-      ) => number;
-      cancelIdleCallback?: (id: number) => void;
-    };
+const baseTheme = EditorView.theme({
+  "&": {
+    height: "100%",
+    backgroundColor: "transparent",
+    fontSize: "14px",
+  },
+  ".cm-scroller": {
+    overflow: "auto",
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    lineHeight: "1.65",
+  },
+  ".cm-content": {
+    minHeight: "100%",
+    padding: "14px 0 40px",
+    caretColor: "var(--color-accent-primary, #3b82f6)",
+  },
+  ".cm-line": {
+    padding: "0 14px",
+  },
+  ".cm-gutters": {
+    border: "none",
+    background: "transparent",
+    color: "var(--color-tx-tertiary, #94a3b8)",
+  },
+  "&.cm-focused": {
+    outline: "none",
+  },
+  ".cm-activeLine, .cm-activeLineGutter": {
+    backgroundColor: "rgba(128, 128, 128, 0.05)",
+  },
+});
 
-    if (typeof idleWindow.requestIdleCallback === "function") {
-      const id = idleWindow.requestIdleCallback(callback, { timeout: 800 });
-      return () => idleWindow.cancelIdleCallback?.(id);
-    }
-  }
+function isDarkMode(): boolean {
+  return typeof document !== "undefined"
+    && document.documentElement.classList.contains("dark");
+}
 
-  const id = globalThis.setTimeout(callback, 48);
-  return () => globalThis.clearTimeout(id);
+function performanceExtensions(mode: EditorRuntimeMode) {
+  if (mode === "lightweight-edit") return [];
+  return [
+    markdown({ base: markdownLanguage }),
+    syntaxHighlighting(defaultHighlightStyle),
+    EditorView.lineWrapping,
+  ];
 }
 
 /**
- * A deliberately small editor for documents that are unsafe for the full CodeMirror +
- * ReactMarkdown pipeline.
+ * CodeMirror viewport editor for medium and large Markdown documents.
  *
- * Important implementation detail: the textarea is uncontrolled. Keeping a 2–10 MB
- * string in React state would make every keystroke compare/copy the full document again.
- * The DOM owns the current value; React only coordinates save, title, tags and outline.
+ * CodeMirror owns the document and only paints the visible viewport. React never stores the full
+ * Markdown string. Whole-document outline/statistics/search-text work is debounced and delegated
+ * to a Worker. Emergency save/snapshot paths retain a bounded synchronous fallback so Worker
+ * failures cannot lose user data.
  */
 const LargeMarkdownSafeEditor = forwardRef<
   NoteEditorHandle,
@@ -76,17 +145,31 @@ const LargeMarkdownSafeEditor = forwardRef<
   forwardedRef,
 ) {
   const { t } = useTranslation();
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const hostRef = useRef<HTMLDivElement | null>(null);
   const titleRef = useRef<HTMLInputElement | null>(null);
-  const sizeRef = useRef<HTMLSpanElement | null>(null);
-  const saveTimerRef = useRef<number | null>(null);
-  const outlineTimerRef = useRef<number | null>(null);
-  const cancelOutlineIdleRef = useRef<CancelIdleWork | null>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const analysisTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const analysisControllerRef = useRef<MarkdownAnalysisController | null>(null);
+  const analysisRequestRef = useRef<{ requestId: number; version: number } | null>(null);
+  const latestAnalysisRef = useRef<MarkdownAnalysisResult | null>(null);
+  const latestAnalysisVersionRef = useRef(-1);
+  const contentVersionRef = useRef(0);
   const dirtyRef = useRef(false);
+  const isSettingContentRef = useRef(false);
   const lastNoteIdRef = useRef(note.id);
+  const lastSyncedContentRef = useRef("");
   const localYOriginRef = useRef<object>({});
   const onUpdateRef = useRef(onUpdate);
   const onHeadingsChangeRef = useRef(onHeadingsChange);
+  const emitSaveRef = useRef<() => void>(() => {});
+  const themeCompartmentRef = useRef(new Compartment());
+  const editableCompartmentRef = useRef(new Compartment());
+  const performanceCompartmentRef = useRef(new Compartment());
+
+  const [sourceCharacters, setSourceCharacters] = useState(0);
+  const [stats, setStats] = useState<MarkdownAnalysisStats>(EMPTY_STATS);
+  const [analysisPending, setAnalysisPending] = useState(true);
 
   onUpdateRef.current = onUpdate;
   onHeadingsChangeRef.current = onHeadingsChange;
@@ -102,175 +185,340 @@ const LargeMarkdownSafeEditor = forwardRef<
     return collaborativeText || normalizedNoteContent;
   }, [normalizedNoteContent, yDoc]);
 
-  const lastSyncedContentRef = useRef(initialMarkdown);
+  const runtimeDecision = useMemo(() => resolveEditorRuntimeDecision({
+    content: initialMarkdown,
+    contentFormat: "markdown",
+  }), [initialMarkdown]);
 
-  const updateSizeLabel = useCallback((length: number) => {
-    if (sizeRef.current) {
-      sizeRef.current.textContent = `${length.toLocaleString()} ${t("tiptap.chars", { defaultValue: "字符" })}`;
-    }
-  }, [t]);
-
-  const publishOutline = useCallback((markdown: string) => {
-    cancelOutlineIdleRef.current?.();
-    cancelOutlineIdleRef.current = scheduleIdleWork(() => {
-      cancelOutlineIdleRef.current = null;
-      onHeadingsChangeRef.current?.(extractLargeMarkdownHeadings(markdown));
-    });
+  const scheduleAnalysis = useCallback((delay = 450) => {
+    if (analysisTimerRef.current) globalThis.clearTimeout(analysisTimerRef.current);
+    setAnalysisPending(true);
+    analysisTimerRef.current = globalThis.setTimeout(() => {
+      analysisTimerRef.current = null;
+      const view = viewRef.current;
+      const controller = analysisControllerRef.current;
+      if (!view || !controller) return;
+      const version = contentVersionRef.current;
+      const requestId = controller.analyze(view.state.doc.toString());
+      analysisRequestRef.current = { requestId, version };
+    }, delay);
   }, []);
 
-  const scheduleOutline = useCallback(() => {
-    if (!onHeadingsChangeRef.current) return;
-    if (outlineTimerRef.current) window.clearTimeout(outlineTimerRef.current);
-    outlineTimerRef.current = window.setTimeout(() => {
-      outlineTimerRef.current = null;
-      const markdown = textareaRef.current?.value || "";
-      publishOutline(markdown);
-    }, 1_600);
-  }, [publishOutline]);
+  useEffect(() => {
+    const controller = createMarkdownAnalysisController({
+      onResult: ({ requestId, result }) => {
+        const request = analysisRequestRef.current;
+        if (!request || request.requestId !== requestId) return;
+        if (request.version !== contentVersionRef.current) return;
+        latestAnalysisRef.current = result;
+        latestAnalysisVersionRef.current = request.version;
+        setStats(result.stats);
+        setAnalysisPending(false);
+        onHeadingsChangeRef.current?.(result.headings);
+      },
+      onError: (error) => {
+        console.warn("[LargeMarkdownSafeEditor] background analysis failed; fallback scheduled", error);
+      },
+    });
+    analysisControllerRef.current = controller;
+    return () => {
+      controller.destroy();
+      if (analysisControllerRef.current === controller) analysisControllerRef.current = null;
+    };
+  }, []);
+
+  const currentSearchText = useCallback((markdownText: string): string => {
+    if (
+      latestAnalysisVersionRef.current === contentVersionRef.current
+      && latestAnalysisRef.current
+    ) {
+      return latestAnalysisRef.current.plainText;
+    }
+    return buildLargeMarkdownSearchText(markdownText);
+  }, []);
 
   const emitSave = useCallback(() => {
     if (!dirtyRef.current) return;
-    const textarea = textareaRef.current;
-    if (!textarea) return;
+    const view = viewRef.current;
+    if (!view) return;
 
-    const markdown = textarea.value;
+    const markdownText = view.state.doc.toString();
     const title = titleRef.current?.value || note.title;
 
     if (yDoc) {
       const yText = yDoc.getText("content");
       const previous = lastSyncedContentRef.current;
-      const change = computeSingleTextChange(previous, markdown);
+      const change = computeSingleTextChange(previous, markdownText);
       if (change) {
         yDoc.transact(() => {
           if (change.deleteCount > 0) yText.delete(change.from, change.deleteCount);
           if (change.insert) yText.insert(change.from, change.insert);
         }, localYOriginRef.current);
       }
-      lastSyncedContentRef.current = markdown;
+      lastSyncedContentRef.current = markdownText;
     } else {
       onUpdateRef.current({
         title,
-        content: markdown,
-        contentText: buildLargeMarkdownSearchText(markdown),
+        content: markdownText,
+        contentText: currentSearchText(markdownText),
         _noteId: note.id,
       });
     }
 
     dirtyRef.current = false;
-  }, [note.id, note.title, yDoc]);
+  }, [currentSearchText, note.id, note.title, yDoc]);
+  emitSaveRef.current = emitSave;
 
   const scheduleSave = useCallback(() => {
-    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = window.setTimeout(() => {
+    if (saveTimerRef.current) globalThis.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = globalThis.setTimeout(() => {
       saveTimerRef.current = null;
-      emitSave();
+      emitSaveRef.current();
     }, 1_200);
-  }, [emitSave]);
+  }, []);
 
   useImperativeHandle(forwardedRef, () => ({
     flushSave: () => {
       if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current);
+        globalThis.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
-      emitSave();
+      emitSaveRef.current();
     },
     discardPending: () => {
       if (saveTimerRef.current) {
-        window.clearTimeout(saveTimerRef.current);
+        globalThis.clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
       dirtyRef.current = false;
     },
     getSnapshot: () => {
-      const markdown = textareaRef.current?.value;
-      if (markdown == null) return null;
+      const view = viewRef.current;
+      if (!view) return null;
+      const markdownText = view.state.doc.toString();
       return {
-        content: markdown,
-        contentText: buildLargeMarkdownSearchText(markdown),
+        content: markdownText,
+        contentText: currentSearchText(markdownText),
       };
     },
-    isReady: () => !!textareaRef.current,
-    appendMarkdown: (markdown: string) => {
-      const textarea = textareaRef.current;
-      if (!textarea || !editable) return false;
-      textarea.value += markdown;
-      dirtyRef.current = true;
-      updateSizeLabel(textarea.value.length);
-      scheduleSave();
-      scheduleOutline();
+    isReady: () => !!viewRef.current,
+    appendMarkdown: (markdownText: string) => {
+      const view = viewRef.current;
+      if (!view || !editable) return false;
+      view.dispatch({
+        changes: { from: view.state.doc.length, insert: markdownText },
+        selection: { anchor: view.state.doc.length + markdownText.length },
+      });
       return true;
     },
-  }), [editable, emitSave, scheduleOutline, scheduleSave, updateSizeLabel]);
+  }), [currentSearchText, editable]);
 
   useEffect(() => {
-    const textarea = textareaRef.current;
+    if (!hostRef.current || viewRef.current) return;
+
+    lastSyncedContentRef.current = initialMarkdown;
+    setSourceCharacters(initialMarkdown.length);
+
+    const updateListener = EditorView.updateListener.of((update) => {
+      if (!update.docChanged || isSettingContentRef.current) return;
+      contentVersionRef.current += 1;
+      dirtyRef.current = true;
+      latestAnalysisVersionRef.current = -1;
+      setSourceCharacters(update.state.doc.length);
+      scheduleSave();
+      scheduleAnalysis();
+    });
+
+    const state = EditorState.create({
+      doc: initialMarkdown,
+      extensions: [
+        lineNumbers(),
+        history(),
+        drawSelection(),
+        dropCursor(),
+        highlightActiveLine(),
+        bracketMatching(),
+        highlightSelectionMatches(),
+        baseTheme,
+        themeCompartmentRef.current.of(isDarkMode() ? oneDark : []),
+        editableCompartmentRef.current.of([
+          EditorView.editable.of(editable),
+          EditorState.readOnly.of(!editable),
+        ]),
+        performanceCompartmentRef.current.of(performanceExtensions(runtimeDecision.mode)),
+        EditorView.contentAttributes.of({
+          spellcheck: "false",
+          autocapitalize: "off",
+          autocorrect: "off",
+          "aria-label": t("markdown.largeDocument.editorLabel", {
+            defaultValue: "大文档 CodeMirror 视口编辑器",
+          }),
+        }),
+        placeholder(t("tiptap.placeholder", { defaultValue: "开始写点什么..." })),
+        keymap.of([
+          {
+            key: "Mod-s",
+            preventDefault: true,
+            run: () => {
+              if (saveTimerRef.current) globalThis.clearTimeout(saveTimerRef.current);
+              saveTimerRef.current = null;
+              emitSaveRef.current();
+              return true;
+            },
+          },
+          ...defaultKeymap,
+          ...searchKeymap,
+          ...historyKeymap,
+          indentWithTab,
+        ]),
+        EditorView.domEventHandlers({
+          blur: () => {
+            if (dirtyRef.current) {
+              if (saveTimerRef.current) globalThis.clearTimeout(saveTimerRef.current);
+              saveTimerRef.current = null;
+              emitSaveRef.current();
+            }
+            return false;
+          },
+        }),
+        updateListener,
+      ],
+    });
+
+    const view = new EditorView({ state, parent: hostRef.current });
+    viewRef.current = view;
+    scheduleAnalysis(0);
+
+    return () => {
+      view.destroy();
+      if (viewRef.current === view) viewRef.current = null;
+    };
+    // The editor is mounted once; note/runtime changes are applied through compartments and effects.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: editableCompartmentRef.current.reconfigure([
+        EditorView.editable.of(editable),
+        EditorState.readOnly.of(!editable),
+      ]),
+    });
+  }, [editable]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: performanceCompartmentRef.current.reconfigure(
+        performanceExtensions(runtimeDecision.mode),
+      ),
+    });
+  }, [runtimeDecision.mode]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const applyTheme = () => {
+      const view = viewRef.current;
+      if (!view) return;
+      view.dispatch({
+        effects: themeCompartmentRef.current.reconfigure(isDarkMode() ? oneDark : []),
+      });
+    };
+    const observer = new MutationObserver(applyTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
     const noteChanged = lastNoteIdRef.current !== note.id;
 
     if (noteChanged) {
-      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+      if (saveTimerRef.current) globalThis.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
       dirtyRef.current = false;
       lastNoteIdRef.current = note.id;
     }
 
-    if (textarea && (noteChanged || !dirtyRef.current)) {
-      textarea.value = initialMarkdown;
+    if (noteChanged || !dirtyRef.current) {
+      const current = view.state.doc.toString();
+      if (current !== initialMarkdown) {
+        isSettingContentRef.current = true;
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: initialMarkdown },
+          selection: { anchor: 0 },
+        });
+        isSettingContentRef.current = false;
+      }
+      contentVersionRef.current += 1;
+      latestAnalysisVersionRef.current = -1;
       lastSyncedContentRef.current = initialMarkdown;
-      updateSizeLabel(initialMarkdown.length);
-      publishOutline(initialMarkdown);
+      setSourceCharacters(initialMarkdown.length);
+      scheduleAnalysis(0);
     }
 
     if (titleRef.current && (noteChanged || document.activeElement !== titleRef.current)) {
       titleRef.current.value = note.title;
     }
-  }, [initialMarkdown, note.id, note.title, publishOutline, updateSizeLabel]);
+  }, [initialMarkdown, note.id, note.title, scheduleAnalysis]);
 
   useEffect(() => {
     if (!yDoc) return;
     const yText = yDoc.getText("content");
-
     const handleRemoteUpdate = (event: Y.YTextEvent) => {
-      if (event.transaction.origin === localYOriginRef.current) return;
-      const markdown = yText.toString();
-      lastSyncedContentRef.current = markdown;
-      if (dirtyRef.current) return;
-      if (textareaRef.current) {
-        textareaRef.current.value = markdown;
-        updateSizeLabel(markdown.length);
-        publishOutline(markdown);
-      }
+      if (event.transaction.origin === localYOriginRef.current || dirtyRef.current) return;
+      const view = viewRef.current;
+      if (!view) return;
+      const markdownText = yText.toString();
+      lastSyncedContentRef.current = markdownText;
+      isSettingContentRef.current = true;
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: markdownText },
+      });
+      isSettingContentRef.current = false;
+      contentVersionRef.current += 1;
+      latestAnalysisVersionRef.current = -1;
+      setSourceCharacters(markdownText.length);
+      scheduleAnalysis(0);
     };
-
     yText.observe(handleRemoteUpdate);
     return () => yText.unobserve(handleRemoteUpdate);
-  }, [publishOutline, updateSizeLabel, yDoc]);
+  }, [scheduleAnalysis, yDoc]);
 
   useEffect(() => {
     onEditorReady?.((position: number) => {
-      const textarea = textareaRef.current;
-      if (!textarea) return;
-      const clamped = Math.max(0, Math.min(textarea.value.length, position));
-      textarea.focus();
-      textarea.setSelectionRange(clamped, clamped);
+      const view = viewRef.current;
+      if (!view) return;
+      const clamped = Math.max(0, Math.min(view.state.doc.length, position));
+      view.dispatch({
+        selection: { anchor: clamped },
+        effects: EditorView.scrollIntoView(clamped, { y: "start", yMargin: 40 }),
+      });
+      view.focus();
     });
   }, [onEditorReady]);
 
   useEffect(() => {
     const query = searchQuery?.trim();
-    const textarea = textareaRef.current;
-    if (!query || !textarea) return;
-
-    const index = textarea.value.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
+    const view = viewRef.current;
+    if (!query || !view) return;
+    const documentText = view.state.doc.toString();
+    const index = documentText.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
     if (index < 0) return;
-    textarea.focus();
-    textarea.setSelectionRange(index, index + query.length);
+    view.dispatch({
+      selection: { anchor: index, head: index + query.length },
+      effects: EditorView.scrollIntoView(index, { y: "center" }),
+    });
+    view.focus();
   }, [note.id, searchQuery]);
 
   useEffect(() => () => {
-    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-    if (outlineTimerRef.current) window.clearTimeout(outlineTimerRef.current);
-    cancelOutlineIdleRef.current?.();
+    if (saveTimerRef.current) globalThis.clearTimeout(saveTimerRef.current);
+    if (analysisTimerRef.current) globalThis.clearTimeout(analysisTimerRef.current);
   }, []);
 
   const handleTitleBlur = useCallback(() => {
@@ -279,51 +527,38 @@ const LargeMarkdownSafeEditor = forwardRef<
     onUpdateRef.current({ title, _noteId: note.id });
   }, [note.id, note.title]);
 
-  const handleInput = useCallback(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    dirtyRef.current = true;
-    updateSizeLabel(textarea.value.length);
-    scheduleSave();
-    scheduleOutline();
-  }, [scheduleOutline, scheduleSave, updateSizeLabel]);
-
-  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "s") {
-      event.preventDefault();
-      if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-      emitSave();
-      return;
-    }
-
-    if (event.key === "Tab" && editable) {
-      event.preventDefault();
-      const textarea = event.currentTarget;
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      textarea.setRangeText("  ", start, end, "end");
-      handleInput();
-    }
-  }, [editable, emitSave, handleInput]);
+  const lightweight = runtimeDecision.mode === "lightweight-edit";
+  const modeTitle = lightweight
+    ? t("markdown.largeDocument.lightweightMode", { defaultValue: "大文档轻量编辑模式" })
+    : t("markdown.largeDocument.viewportMode", { defaultValue: "大文档视口优化模式" });
+  const modeDescription = lightweight
+    ? t("markdown.largeDocument.lightweightModeDesc", {
+        defaultValue: "已关闭语法高亮和实时预览；目录、字数和搜索文本在后台线程计算。正文仍可编辑并自动保存。",
+      })
+    : t("markdown.largeDocument.viewportModeDesc", {
+        defaultValue: "CodeMirror 仅绘制可见区域，目录、字数和搜索文本在后台线程计算。",
+      });
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-app-bg">
-      <div className="border-b border-amber-300/60 bg-amber-500/10 px-4 py-3 text-amber-800 dark:border-amber-500/30 dark:text-amber-200 md:px-8">
+      <div className={cn(
+        "border-b px-4 py-3 md:px-8",
+        lightweight
+          ? "border-amber-300/60 bg-amber-500/10 text-amber-800 dark:border-amber-500/30 dark:text-amber-200"
+          : "border-blue-300/60 bg-blue-500/8 text-blue-800 dark:border-blue-500/30 dark:text-blue-200",
+      )}>
         <div className="flex items-start gap-2.5">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          {lightweight
+            ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            : <Gauge className="mt-0.5 h-4 w-4 shrink-0" />}
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold">
-              <span>{t("markdown.largeDocument.safeMode", { defaultValue: "大文档安全模式" })}</span>
-              <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium">
-                {formatLargeMarkdownSize(initialMarkdown.length)}
+              <span>{modeTitle}</span>
+              <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-medium opacity-80">
+                {formatLargeMarkdownSize(sourceCharacters || initialMarkdown.length)}
               </span>
             </div>
-            <p className="mt-1 text-xs leading-5 opacity-90">
-              {t("markdown.largeDocument.safeModeDesc", {
-                defaultValue: "已关闭实时预览、语法高亮、自动换行和高频全文分析，避免超大笔记卡死。内容仍会自动保存。",
-              })}
-            </p>
+            <p className="mt-1 text-xs leading-5 opacity-90">{modeDescription}</p>
           </div>
         </div>
       </div>
@@ -336,7 +571,7 @@ const LargeMarkdownSafeEditor = forwardRef<
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
-              textareaRef.current?.focus();
+              viewRef.current?.focus();
             }
           }}
           readOnly={!editable}
@@ -363,41 +598,32 @@ const LargeMarkdownSafeEditor = forwardRef<
           </span>
           <span className="inline-flex items-center gap-1 rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-emerald-700 dark:text-emerald-300">
             <ShieldCheck size={12} />
-            {t("markdown.largeDocument.protected", { defaultValue: "轻量渲染" })}
+            {t("markdown.largeDocument.viewportRendering", { defaultValue: "CodeMirror 视口渲染" })}
           </span>
+          {analysisPending && (
+            <span className="ml-auto animate-pulse">
+              {t("markdown.largeDocument.analyzing", { defaultValue: "后台分析中…" })}
+            </span>
+          )}
         </div>
 
-        <textarea
-          ref={textareaRef}
-          defaultValue={initialMarkdown}
-          readOnly={!editable}
-          wrap="off"
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          onChange={handleInput}
-          onBlur={() => {
-            if (dirtyRef.current) {
-              if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
-              saveTimerRef.current = null;
-              emitSave();
-            }
-          }}
-          onKeyDown={handleKeyDown}
+        <div
+          ref={hostRef}
           className={cn(
-            "min-h-0 flex-1 resize-none overflow-auto rounded-xl border border-app-border bg-app-surface p-4 font-mono text-[13px] leading-6 text-tx-primary outline-none",
-            "focus:border-accent-primary/60 focus:ring-2 focus:ring-accent-primary/15",
-            !editable && "cursor-default opacity-90",
+            "min-h-0 flex-1 overflow-hidden rounded-xl border border-app-border bg-app-surface text-tx-primary",
+            "focus-within:border-accent-primary/60 focus-within:ring-2 focus-within:ring-accent-primary/15",
+            !editable && "opacity-90",
           )}
-          aria-label={t("markdown.largeDocument.editorLabel", {
-            defaultValue: "大文档轻量源码编辑器",
-          })}
         />
       </div>
 
       <div className="flex items-center gap-3 border-t border-app-border/60 px-4 py-1.5 text-[11px] text-tx-tertiary md:px-8">
-        <span ref={sizeRef}>
-          {initialMarkdown.length.toLocaleString()} {t("tiptap.chars", { defaultValue: "字符" })}
+        <span>
+          {sourceCharacters.toLocaleString()} {t("tiptap.chars", { defaultValue: "字符" })}
+        </span>
+        <span className="opacity-60">·</span>
+        <span>
+          {stats.words.toLocaleString()} {t("tiptap.words", { defaultValue: "字词" })}
         </span>
         <span className="opacity-60">·</span>
         <span>{t("markdown.largeDocument.previewDisabled", { defaultValue: "完整预览已停用" })}</span>
