@@ -7,6 +7,11 @@ import {
 export interface LazyNodeViewOptions {
   forceMount?: boolean;
   rootMargin?: string;
+  /**
+   * In lightweight mode, keep the expensive inner view behind an explicit user action instead of
+   * mounting it automatically near the viewport. The ProseMirror wrapper remains mounted.
+   */
+  manualInLightweight?: boolean;
 }
 
 /**
@@ -17,6 +22,7 @@ export interface LazyNodeViewOptions {
 export function useLazyNodeView<T extends Element>({
   forceMount = false,
   rootMargin = "900px 0px",
+  manualInLightweight = false,
 }: LazyNodeViewOptions = {}) {
   const decision = useSyncExternalStore(
     subscribeEditorRuntime,
@@ -26,14 +32,29 @@ export function useLazyNodeView<T extends Element>({
   const lazyEnabled = !decision.capabilities.eagerHeavyNodes;
   const [element, setElement] = useState<T | null>(null);
   const [nearViewport, setNearViewport] = useState(() => !lazyEnabled);
+  const [manualRequested, setManualRequested] = useState(false);
 
   const observeRef = useCallback((next: T | null) => {
     setElement(next);
   }, []);
+  const requestRender = useCallback(() => {
+    setManualRequested(true);
+  }, []);
+
+  const requiresInteraction =
+    lazyEnabled
+    && manualInLightweight
+    && decision.mode === "lightweight-edit"
+    && !forceMount
+    && !manualRequested;
 
   useEffect(() => {
-    if (!lazyEnabled || forceMount) {
+    if (!lazyEnabled || forceMount || manualRequested) {
       setNearViewport(true);
+      return;
+    }
+    if (requiresInteraction) {
+      setNearViewport(false);
       return;
     }
     if (!element || typeof IntersectionObserver === "undefined") {
@@ -47,12 +68,15 @@ export function useLazyNodeView<T extends Element>({
     }, { rootMargin });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [element, forceMount, lazyEnabled, rootMargin]);
+  }, [element, forceMount, lazyEnabled, manualRequested, requiresInteraction, rootMargin]);
 
   return {
     decision,
     lazyEnabled,
-    shouldRenderHeavyContent: !lazyEnabled || forceMount || nearViewport,
+    requiresInteraction,
+    shouldRenderHeavyContent:
+      !lazyEnabled || forceMount || manualRequested || (!requiresInteraction && nearViewport),
     observeRef,
+    requestRender,
   };
 }
