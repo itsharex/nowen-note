@@ -193,9 +193,12 @@ function resolveSingleHop(
     }
     for (const assignment of assignments) {
       if (!assignment.section.blockIds.has(sourceBlockId)) continue;
-      const targetBlockId = assignment.targetBlockIds.has(sourceBlockId)
-        ? sourceBlockId
-        : null;
+      // Section headings are intentionally not copied into child documents, so their old anchors
+      // resolve to the chapter top. Every other stable block id is preserved even when that child was
+      // split again; the next resolver hop can then follow the same id into the grandchild note.
+      const targetBlockId = assignment.section.headingBlockId === sourceBlockId
+        ? null
+        : sourceBlockId;
       return {
         noteId: assignment.item.noteId,
         blockId: targetBlockId,
