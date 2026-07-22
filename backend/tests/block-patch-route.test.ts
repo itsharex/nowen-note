@@ -198,6 +198,34 @@ test("returns a version conflict without touching the document", async () => {
   assert.equal(stored.version, 3);
 });
 
+test("rejects reuse of one user-level operation ID on another note", async () => {
+  const firstNoteId = "55555555-5555-4555-8555-555555555555";
+  const secondNoteId = "66666666-6666-4666-8666-666666666666";
+  insertNote({ id: firstNoteId, content: tiptap(paragraph("blk_first555", "First")) });
+  insertNote({ id: secondNoteId, content: tiptap(paragraph("blk_second66", "Second")) });
+  const operationId = "block-patch-shared-operation-id";
+
+  const first = await patch(firstNoteId, {
+    expectedNoteVersion: 1,
+    operationId,
+    operations: [{ type: "update", blockId: "blk_first555", text: "Updated first" }],
+  });
+  assert.equal(first.status, 200);
+
+  const second = await patch(secondNoteId, {
+    expectedNoteVersion: 1,
+    operationId,
+    operations: [{ type: "update", blockId: "blk_second66", text: "Must not apply" }],
+  });
+  assert.equal(second.status, 409);
+  const payload = await second.json() as any;
+  assert.equal(payload.code, "OPERATION_ID_CONFLICT");
+
+  const stored = db.prepare("SELECT content, version FROM notes WHERE id = ?").get(secondNoteId) as any;
+  assert.equal(stored.version, 1);
+  assert.equal(JSON.parse(stored.content).content[0].content[0].text, "Second");
+});
+
 test("rejects Markdown notes until their block patch protocol is format-aware", async () => {
   const noteId = "44444444-4444-4444-8444-444444444444";
   insertNote({
