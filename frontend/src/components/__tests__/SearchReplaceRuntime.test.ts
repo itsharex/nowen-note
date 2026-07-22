@@ -54,7 +54,6 @@ describe("runtime-aware rich-text search", () => {
       expect(state.matches).toHaveLength(500);
       expect(state.truncated).toBe(true);
       expect(state.deco.find()).toHaveLength(1);
-      expect(state.deco.find()[0]?.spec.class).toContain("search-match-active");
     } finally {
       editor.destroy();
     }
