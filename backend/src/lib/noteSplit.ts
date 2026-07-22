@@ -23,6 +23,15 @@ interface HeadingBoundary {
   bodyStart: number;
 }
 
+interface SplitDirectorySection {
+  id: string;
+  title: string;
+}
+
+interface SelectedSplitDirectorySection extends SplitDirectorySection {
+  index: number;
+}
+
 function cleanHeadingTitle(raw: string, fallbackIndex: number): string {
   const cleaned = raw
     .replace(/\s+#+\s*$/, "")
@@ -108,13 +117,25 @@ function escapeWikiAlias(value: string): string {
   return value.replace(/\|/g, "｜").replace(/\]/g, "］").trim();
 }
 
+function buildDirectoryList(sections: SplitDirectorySection[]): string {
+  return sections
+    .map((section, index) => `${index + 1}. [[${section.id}|${escapeWikiAlias(section.title)}]]`)
+    .join("\n");
+}
+
+function directoryHeading(headingLevel: NoteSplitHeadingLevel): string {
+  // Keep the generated directory below the split level. Otherwise H2 splitting would create a
+  // synthetic peer H2 named “目录”, and the next preview could treat it as user content.
+  return `${"#".repeat(Math.min(6, headingLevel + 1))} 目录`;
+}
+
 export function buildMarkdownSplitDirectory(options: {
   sourceTitle: string;
   operationId: string;
   headingLevel: NoteSplitHeadingLevel;
   preamble: string;
   preservePreamble: boolean;
-  sections: Array<{ id: string; title: string }>;
+  sections: SplitDirectorySection[];
 }): string {
   const chunks: string[] = [];
   if (options.preservePreamble && options.preamble.trim()) chunks.push(options.preamble.trim());
@@ -122,11 +143,56 @@ export function buildMarkdownSplitDirectory(options: {
   chunks.push(
     `> 已按 H${options.headingLevel} 拆分为 ${options.sections.length} 篇章节笔记。原始正文已保存在版本历史中，可在本次拆分未被继续编辑前撤销。`,
   );
-  chunks.push("## 目录");
+  chunks.push(directoryHeading(options.headingLevel));
+  chunks.push(buildDirectoryList(options.sections));
+  return `${chunks.filter(Boolean).join("\n\n").trim()}\n`;
+}
+
+/**
+ * Build the source note after only a subset of peer headings is extracted.
+ *
+ * Selected sections are replaced with wiki links. Unselected sections are copied from their exact
+ * source ranges, including their original heading lines, whitespace and nested content. This keeps
+ * partial splitting deterministic and prevents the server from reconstructing or reformatting the
+ * remaining document from a lossy preview payload.
+ */
+export function buildMarkdownPartialSplitSource(options: {
+  sourceMarkdown: string;
+  sourceTitle: string;
+  operationId: string;
+  plan: MarkdownSplitPlan;
+  preservePreamble: boolean;
+  sections: SelectedSplitDirectorySection[];
+}): string {
+  const selectedIndexes = new Set(options.sections.map((section) => section.index));
+  const retainedSections = options.plan.sections.filter((section) => !selectedIndexes.has(section.index));
+  if (retainedSections.length === 0) {
+    return buildMarkdownSplitDirectory({
+      sourceTitle: options.sourceTitle,
+      operationId: options.operationId,
+      headingLevel: options.plan.headingLevel,
+      preamble: options.plan.preamble,
+      preservePreamble: options.preservePreamble,
+      sections: options.sections,
+    });
+  }
+
+  const chunks: string[] = [];
+  if (options.preservePreamble && options.plan.preamble.trim()) chunks.push(options.plan.preamble.trim());
+  chunks.push(`<!-- nowen-note-split:${options.operationId} -->`);
   chunks.push(
-    options.sections
-      .map((section, index) => `${index + 1}. [[${section.id}|${escapeWikiAlias(section.title)}]]`)
-      .join("\n"),
+    `> 已将 ${options.sections.length}/${options.plan.sections.length} 个 H${options.plan.headingLevel} 章节拆分为独立笔记；未选择的 ${retainedSections.length} 个章节继续保留在当前笔记中。原始正文已保存在版本历史中。`,
+  );
+  chunks.push(directoryHeading(options.plan.headingLevel));
+  chunks.push(buildDirectoryList(options.sections));
+  chunks.push(
+    `> 以下 ${retainedSections.length} 个章节未拆分，仍可在当前笔记中继续编辑。`,
+  );
+  chunks.push(
+    retainedSections
+      .map((section) => options.sourceMarkdown.slice(section.sourceStart, section.sourceEnd).trimEnd())
+      .filter(Boolean)
+      .join("\n\n"),
   );
   return `${chunks.filter(Boolean).join("\n\n").trim()}\n`;
 }
