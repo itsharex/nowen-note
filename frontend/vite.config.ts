@@ -50,6 +50,10 @@ export default defineConfig({
       keepNames: true,
     },
   },
+  // Keep worker output compatible with the Chrome 64 / older Android WebView build target.
+  worker: {
+    format: "iife",
+  },
   build: {
     target: "chrome64",
     cssTarget: "chrome64",
