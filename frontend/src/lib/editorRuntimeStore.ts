@@ -73,11 +73,11 @@ html[data-nowen-editor-runtime-mode="viewport-optimized"] .ProseMirror {
   display: flex;
   align-items: center;
   gap: 10px;
-  max-width: min(520px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
   padding: 9px 10px 9px 12px;
-  border: 1px solid color-mix(in srgb, var(--color-accent-primary, #3b82f6) 35%, transparent);
+  border: 1px solid rgba(59, 130, 246, 0.35);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--color-app-elevated, #fff) 94%, transparent);
+  background: var(--color-app-elevated, rgba(255, 255, 255, 0.96));
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.16);
   color: var(--color-tx-primary, #111827);
   backdrop-filter: blur(12px);
@@ -86,7 +86,7 @@ html[data-nowen-editor-runtime-mode="viewport-optimized"] .ProseMirror {
 }
 #${NOTICE_ID}[hidden] { display: none !important; }
 #${NOTICE_ID}[data-mode="lightweight-edit"] {
-  border-color: color-mix(in srgb, #f59e0b 45%, transparent);
+  border-color: rgba(245, 158, 11, 0.45);
 }
 #${NOTICE_ID} .nowen-runtime-copy { min-width: 0; }
 #${NOTICE_ID} .nowen-runtime-title { display: block; font-weight: 650; }
@@ -100,16 +100,16 @@ html[data-nowen-editor-runtime-mode="viewport-optimized"] .ProseMirror {
 }
 #${NOTICE_ID} button {
   flex: none;
-  border: 1px solid color-mix(in srgb, var(--color-accent-primary, #3b82f6) 35%, transparent);
+  border: 1px solid rgba(59, 130, 246, 0.35);
   border-radius: 8px;
   padding: 5px 8px;
-  background: color-mix(in srgb, var(--color-accent-primary, #3b82f6) 10%, transparent);
+  background: rgba(59, 130, 246, 0.10);
   color: var(--color-accent-primary, #2563eb);
   cursor: pointer;
   font: inherit;
   font-weight: 600;
 }
-#${NOTICE_ID} button:hover { background: color-mix(in srgb, var(--color-accent-primary, #3b82f6) 18%, transparent); }
+#${NOTICE_ID} button:hover { background: rgba(59, 130, 246, 0.18); }
 @media (max-width: 767px) {
   #${NOTICE_ID} {
     right: 10px;
