@@ -14,6 +14,7 @@ on:
       - "backend/tests/note-split.test.ts"
       - "backend/tests/note-split-title.test.ts"
       - "backend/tests/tiptap-note-split.test.ts"
+      - "backend/tests/tiptap-note-split-empty.test.ts"
       - "frontend/vite.config.ts"
       - "frontend/src/lib/noteSplit.ts"
       - "frontend/src/lib/tiptapNoteSplit.ts"
@@ -36,6 +37,7 @@ on:
       - "backend/tests/note-split.test.ts"
       - "backend/tests/note-split-title.test.ts"
       - "backend/tests/tiptap-note-split.test.ts"
+      - "backend/tests/tiptap-note-split-empty.test.ts"
       - "frontend/vite.config.ts"
       - "frontend/src/lib/noteSplit.ts"
       - "frontend/src/lib/tiptapNoteSplit.ts"
@@ -94,5 +96,6 @@ jobs:
           tests/note-split.test.ts
           tests/note-split-title.test.ts
           tests/tiptap-note-split.test.ts
+          tests/tiptap-note-split-empty.test.ts
       - name: Backend typecheck
         run: npm run build:tsc
