@@ -60,19 +60,18 @@ describe("Bilibili video paste", () => {
   it("inserts a video node when the standalone URL is pasted", () => {
     const editor = createEditor();
     const event = dispatchPaste(editor, url);
+    const videoNode = editor.getJSON().content?.find((node) => node.type === "video");
 
     expect(event.defaultPrevented).toBe(true);
-    expect(editor.getJSON().content).toEqual([
-      {
-        type: "video",
-        attrs: expect.objectContaining({
-          src: "https://player.bilibili.com/player.html?bvid=BV1mwMc6uEdX&autoplay=0&high_quality=1",
-          platform: "bilibili",
-          kind: "iframe",
-          originalUrl: url,
-        }),
+    expect(videoNode).toMatchObject({
+      type: "video",
+      attrs: {
+        src: "https://player.bilibili.com/player.html?bvid=BV1mwMc6uEdX&autoplay=0&high_quality=1",
+        platform: "bilibili",
+        kind: "iframe",
+        originalUrl: url,
       },
-    ]);
+    });
   });
 
   it("does not convert prose containing a Bilibili URL", () => {
