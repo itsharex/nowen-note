@@ -10,6 +10,7 @@ on:
       - "backend/src/runtime/note-split-selection.ts"
       - "backend/src/runtime/task-stats-hardening.ts"
       - "backend/tests/note-split.test.ts"
+      - "backend/tests/note-split-title.test.ts"
       - "frontend/vite.config.ts"
       - "frontend/src/lib/noteSplit.ts"
       - "frontend/src/lib/noteSplitApi.ts"
@@ -26,6 +27,7 @@ on:
       - "backend/src/runtime/note-split-selection.ts"
       - "backend/src/runtime/task-stats-hardening.ts"
       - "backend/tests/note-split.test.ts"
+      - "backend/tests/note-split-title.test.ts"
       - "frontend/vite.config.ts"
       - "frontend/src/lib/noteSplit.ts"
       - "frontend/src/lib/noteSplitApi.ts"
@@ -76,6 +78,9 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - name: Split planner and transaction tests
-        run: node --import tsx --import ./tests/setup-db-isolation.ts --test tests/note-split.test.ts
+        run: >-
+          node --import tsx --import ./tests/setup-db-isolation.ts --test
+          tests/note-split.test.ts
+          tests/note-split-title.test.ts
       - name: Backend typecheck
         run: npm run build:tsc
