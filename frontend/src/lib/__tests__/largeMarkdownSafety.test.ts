@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EDITOR_RUNTIME_THRESHOLDS } from "@/lib/editorRuntimePolicy";
 import {
   LARGE_MARKDOWN_OUTLINE_LIMIT,
   LARGE_MARKDOWN_SEARCH_TEXT_LIMIT,
@@ -7,20 +8,35 @@ import {
   buildLargeMarkdownSearchText,
   computeSingleTextChange,
   extractLargeMarkdownHeadings,
+  shouldUseLargeMarkdownOptimizedMode,
   shouldUseLargeMarkdownSafeMode,
 } from "@/lib/largeMarkdownSafety";
 
-describe("large Markdown safe mode", () => {
+describe("large Markdown progressive editor routing", () => {
   it("keeps ordinary notes in the full editor", () => {
-    expect(shouldUseLargeMarkdownSafeMode("# Title\n\nSmall note.")).toBe(false);
+    const markdown = "# Title\n\nSmall note.";
+    expect(shouldUseLargeMarkdownOptimizedMode(markdown)).toBe(false);
+    expect(shouldUseLargeMarkdownSafeMode(markdown)).toBe(false);
   });
 
-  it("detects a document by total character count without additional parsing", () => {
-    expect(
-      shouldUseLargeMarkdownSafeMode(
-        "x".repeat(LARGE_MARKDOWN_THRESHOLDS.characters),
-      ),
-    ).toBe(true);
+  it("routes medium documents to the viewport editor before lightweight mode", () => {
+    const line = `${"x".repeat(80)}\n`;
+    const markdown = line.repeat(
+      Math.ceil(EDITOR_RUNTIME_THRESHOLDS.markdown.viewport.characters / line.length),
+    );
+
+    expect(shouldUseLargeMarkdownOptimizedMode(markdown)).toBe(true);
+    expect(shouldUseLargeMarkdownSafeMode(markdown)).toBe(false);
+  });
+
+  it("detects a lightweight document by total character count", () => {
+    const line = `${"x".repeat(80)}\n`;
+    const markdown = line.repeat(
+      Math.ceil(LARGE_MARKDOWN_THRESHOLDS.characters / line.length),
+    );
+
+    expect(shouldUseLargeMarkdownSafeMode(markdown)).toBe(true);
+    expect(shouldUseLargeMarkdownOptimizedMode(markdown)).toBe(true);
   });
 
   it("detects pathological line counts and single-line lengths", () => {
