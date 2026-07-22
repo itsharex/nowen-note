@@ -12,6 +12,17 @@ import {
 import { findPreferredTiptapSplitLevel } from "@/lib/tiptapNoteSplit";
 import type { Note } from "@/types";
 
+function resolvePreferredLevel(note: Note | null | undefined): NoteSplitHeadingLevel | null {
+  if (!note) return null;
+  if (note.contentFormat === "markdown") {
+    return findPreferredMarkdownSplitLevel(note.content || "");
+  }
+  if (note.contentFormat === "tiptap-json") {
+    return findPreferredTiptapSplitLevel(note.content || "");
+  }
+  return null;
+}
+
 /**
  * Runtime shell for document splitting.
  *
@@ -28,17 +39,7 @@ export default function EditorPaneRuntime() {
 
   useEffect(() => {
     setDialogOpen(false);
-    if (!activeNote) {
-      setPreferredLevel(null);
-      return;
-    }
-    if (activeNote.contentFormat === "markdown") {
-      setPreferredLevel(findPreferredMarkdownSplitLevel(activeNote.content || ""));
-    } else if (activeNote.contentFormat === "tiptap-json") {
-      setPreferredLevel(findPreferredTiptapSplitLevel(activeNote.content || ""));
-    } else {
-      setPreferredLevel(null);
-    }
+    setPreferredLevel(resolvePreferredLevel(activeNote));
     // Deliberately scan only when a note is opened. Re-running a full heading scan after every
     // debounced save would undermine the large-document performance work this feature builds on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -64,6 +65,7 @@ export default function EditorPaneRuntime() {
       isTrashed: updated.isTrashed,
       notebookId: updated.notebookId,
     });
+    setPreferredLevel(resolvePreferredLevel(updated));
     actions.refreshNotes();
     actions.refreshNotebooks();
   };
