@@ -8,7 +8,7 @@ import type {
   NoteEditorProps,
 } from "@/components/editors/types";
 import { normalizeToMarkdown } from "@/lib/contentFormat";
-import { shouldUseLargeMarkdownSafeMode } from "@/lib/largeMarkdownSafety";
+import { shouldUseLargeMarkdownOptimizedMode } from "@/lib/largeMarkdownSafety";
 import { isLargeRichTextSafeNote } from "@/lib/largeRichTextSafeMode";
 import { mergeMarkdownEditorHeadings } from "@/lib/markdownEditorOutline";
 
@@ -24,10 +24,9 @@ interface MarkdownEditorProps extends NoteEditorProps {
 /**
  * Public Markdown editor adapter.
  *
- * Normal notes use the full CodeMirror + live-preview implementation. Pathological
- * native Markdown documents use an uncontrolled textarea. Large non-Markdown notes are
- * routed here by useNoteLoader and use a read-only plain-text viewer, so Tiptap and Y.js
- * never receive the multi-megabyte payload.
+ * Small notes use the complete editor with live preview. Medium and large Markdown documents use
+ * the worker-backed CodeMirror viewport editor. Extreme rich-text payloads routed through this
+ * adapter continue to use the emergency read-only viewer before Tiptap/Y.js are mounted.
  */
 const MarkdownEditor = forwardRef<NoteEditorHandle, MarkdownEditorProps>(
   function MarkdownEditor(props, forwardedRef) {
@@ -35,8 +34,8 @@ const MarkdownEditor = forwardRef<NoteEditorHandle, MarkdownEditorProps>(
     const { note, onHeadingsChange } = props;
     const richTextSafeMode = isLargeRichTextSafeNote(note);
 
-    const safeMode = useMemo(
-      () => shouldUseLargeMarkdownSafeMode(note.content || note.contentText),
+    const optimizedMode = useMemo(
+      () => shouldUseLargeMarkdownOptimizedMode(note.content || note.contentText),
       [note.content, note.contentText],
     );
 
@@ -52,8 +51,8 @@ const MarkdownEditor = forwardRef<NoteEditorHandle, MarkdownEditorProps>(
     const handleHeadingsChange = useCallback((headings: NoteEditorHeading[]) => {
       if (!onHeadingsChange) return;
       const markdown =
-        innerRef.current?.getSnapshot?.()?.content ??
-        normalizeToMarkdown(note.content, note.contentText);
+        innerRef.current?.getSnapshot?.()?.content
+        ?? normalizeToMarkdown(note.content, note.contentText);
       onHeadingsChange(mergeMarkdownEditorHeadings(headings, markdown));
     }, [note.content, note.contentText, onHeadingsChange]);
 
@@ -67,7 +66,7 @@ const MarkdownEditor = forwardRef<NoteEditorHandle, MarkdownEditorProps>(
       );
     }
 
-    if (safeMode) {
+    if (optimizedMode) {
       return (
         <LargeMarkdownSafeEditor
           {...props}
