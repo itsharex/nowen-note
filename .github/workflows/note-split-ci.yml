@@ -4,8 +4,10 @@ on:
   push:
     branches: [main]
     paths:
+      - "backend/src/index.hardened.ts"
       - "backend/src/lib/noteSplit.ts"
       - "backend/src/runtime/note-split.ts"
+      - "backend/src/runtime/note-split-selection.ts"
       - "backend/src/runtime/task-stats-hardening.ts"
       - "backend/tests/note-split.test.ts"
       - "frontend/vite.config.ts"
@@ -14,11 +16,14 @@ on:
       - "frontend/src/lib/__tests__/noteSplit.test.ts"
       - "frontend/src/components/NoteSplitDialog.tsx"
       - "frontend/src/components/EditorPaneRuntime.tsx"
+      - "frontend/src/components/__tests__/NoteSplitDialog.test.tsx"
       - ".github/workflows/note-split-ci.yml"
   pull_request:
     paths:
+      - "backend/src/index.hardened.ts"
       - "backend/src/lib/noteSplit.ts"
       - "backend/src/runtime/note-split.ts"
+      - "backend/src/runtime/note-split-selection.ts"
       - "backend/src/runtime/task-stats-hardening.ts"
       - "backend/tests/note-split.test.ts"
       - "frontend/vite.config.ts"
@@ -27,6 +32,7 @@ on:
       - "frontend/src/lib/__tests__/noteSplit.test.ts"
       - "frontend/src/components/NoteSplitDialog.tsx"
       - "frontend/src/components/EditorPaneRuntime.tsx"
+      - "frontend/src/components/__tests__/NoteSplitDialog.test.tsx"
       - ".github/workflows/note-split-ci.yml"
 
 permissions:
@@ -47,8 +53,11 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - name: Split preview tests
-        run: npm run test:run -- src/lib/__tests__/noteSplit.test.ts
+      - name: Split preview and selection tests
+        run: >-
+          npm run test:run --
+          src/lib/__tests__/noteSplit.test.ts
+          src/components/__tests__/NoteSplitDialog.test.tsx
       - name: Frontend typecheck
         run: npx tsc -b
 
@@ -66,7 +75,7 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
-      - name: Split planner tests
+      - name: Split planner and transaction tests
         run: node --import tsx --import ./tests/setup-db-isolation.ts --test tests/note-split.test.ts
       - name: Backend typecheck
         run: npm run build:tsc
