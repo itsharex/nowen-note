@@ -205,6 +205,15 @@ const TiptapEditorRuntime = forwardRef<NoteEditorHandle, RuntimeTiptapEditorProp
     const processPayload = useCallback((payload: NoteEditorUpdatePayload) => {
       const currentProps = propsRef.current;
       const note = currentProps.note;
+
+      if (inflightRef.current) {
+        // All saves, including title/meta changes which will use the whole-note route, must wait for
+        // the authoritative patch version. Otherwise a same-version PUT can race the patch.
+        queuedPayloadRef.current = payload;
+        persistDraft(payload, note);
+        return;
+      }
+
       if (
         !blockPatchEnabledRef.current
         || typeof payload.content !== "string"
@@ -212,14 +221,6 @@ const TiptapEditorRuntime = forwardRef<NoteEditorHandle, RuntimeTiptapEditorProp
         || payload.title !== note.title
       ) {
         forwardWholeSave(payload);
-        return;
-      }
-
-      if (inflightRef.current) {
-        // Keep only the newest full snapshot. Once the first patch is confirmed, this snapshot is
-        // re-planned against the new authoritative content/version instead of replaying stale ops.
-        queuedPayloadRef.current = payload;
-        persistDraft(payload, note);
         return;
       }
 
