@@ -92,6 +92,13 @@ describe("Tiptap Block Patch planner", () => {
     });
   });
 
+  it("keeps delete-all on the whole-document path until empty Block IDs can reconcile", () => {
+    expect(planTiptapBlockPatch(
+      doc([paragraph("blk_only000", "Only")]),
+      doc([]),
+    )).toBeNull();
+  });
+
   it("rejects mark changes, non-default created headings and unstable IDs", () => {
     expect(planTiptapBlockPatch(
       doc([paragraph("blk_alpha00", "Alpha")]),
