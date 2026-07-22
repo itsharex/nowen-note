@@ -41,38 +41,6 @@ function paragraph(text: string, blockId: string): any {
   };
 }
 
-function insertOperation(options: {
-  id: string;
-  sourceNoteId: string;
-  originalContent: string;
-  childNoteId: string;
-  title: string;
-}) {
-  const source = db.prepare("SELECT version, title, contentText, contentFormat FROM notes WHERE id = ?")
-    .get(options.sourceNoteId) as any;
-  db.prepare(`
-    INSERT INTO note_split_operations (
-      id, sourceNoteId, actorUserId, originalVersion, directoryVersion,
-      originalTitle, originalContent, originalContentText, originalContentFormat,
-      headingLevel, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'completed')
-  `).run(
-    options.id,
-    options.sourceNoteId,
-    owner,
-    source.version,
-    source.version + 1,
-    source.title,
-    options.originalContent,
-    source.contentText,
-    source.contentFormat,
-  );
-  db.prepare(`
-    INSERT INTO note_split_items (operationId, noteId, sortOrder, createdVersion, title)
-    VALUES (?, ?, 0, 1, ?)
-  `).run(options.id, options.childNoteId, options.title);
-}
-
 test.before(async () => {
   const [schema, noteBlocks, noteSplit] = await Promise.all([
     import("../src/db/schema"),
@@ -101,12 +69,13 @@ test.before(async () => {
   ]);
   const sourceDirectory = doc([paragraph("Directory", "blk_directory")]);
   const childOriginal = doc([
+    heading("Part", "blk_heading_part"),
     paragraph("Alpha body", "blk_body_alpha"),
-    heading("Nested", "blk_heading_nested"),
-    paragraph("Nested body", "blk_nested_body"),
+    heading("Other", "blk_heading_other"),
+    paragraph("Other body", "blk_other_body"),
   ]);
   const childDirectory = doc([paragraph("Child directory", "blk_child_directory")]);
-  const grandchild = doc([paragraph("Nested body", "blk_nested_body")]);
+  const grandchild = doc([paragraph("Alpha body", "blk_body_alpha")]);
 
   const insertNote = db.prepare(`
     INSERT INTO notes (id, userId, notebookId, title, content, contentText, contentFormat, version)
@@ -114,7 +83,7 @@ test.before(async () => {
   `);
   insertNote.run(sourceId, owner, notebookId, "Source", sourceDirectory, "Directory", 2);
   insertNote.run(childId, owner, notebookId, "Alpha", childDirectory, "Child directory", 2);
-  insertNote.run(grandchildId, owner, notebookId, "Nested", grandchild, "Nested body", 1);
+  insertNote.run(grandchildId, owner, notebookId, "Part", grandchild, "Alpha body", 1);
 
   syncNoteBlocks(db, sourceId, sourceDirectory, "tiptap-json");
   syncNoteBlocks(db, childId, childDirectory, "tiptap-json");
@@ -136,10 +105,10 @@ test.before(async () => {
       id, sourceNoteId, actorUserId, originalVersion, directoryVersion,
       originalTitle, originalContent, originalContentText, originalContentFormat,
       headingLevel, status
-    ) VALUES ('op-child', ?, ?, 1, 2, 'Alpha', ?, 'Alpha body Nested body', 'tiptap-json', 1, 'completed')
+    ) VALUES ('op-child', ?, ?, 1, 2, 'Alpha', ?, 'Part Alpha body Other body', 'tiptap-json', 1, 'completed')
   `).run(childId, owner, childOriginal);
   db.prepare(`INSERT INTO note_split_items (operationId, noteId, sortOrder, createdVersion, title)
-              VALUES ('op-child', ?, 0, 1, 'Nested')`).run(grandchildId);
+              VALUES ('op-child', ?, 0, 1, 'Part')`).run(grandchildId);
 });
 
 test.after(() => {
@@ -155,11 +124,11 @@ async function resolve(noteId: string, blockId: string) {
 }
 
 test("redirects a moved body block through multiple split operations", async () => {
-  const response = await resolve(sourceId, "blk_nested_body");
+  const response = await resolve(sourceId, "blk_body_alpha");
   assert.equal(response.status, 200);
   const payload = await response.json() as any;
   assert.equal(payload.note.id, grandchildId);
-  assert.equal(payload.block.blockId, "blk_nested_body");
+  assert.equal(payload.block.blockId, "blk_body_alpha");
   assert.equal(payload.redirect.redirected, true);
   assert.equal(payload.redirect.hops, 2);
 });
