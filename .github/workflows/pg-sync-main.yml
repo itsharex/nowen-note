@@ -132,8 +132,33 @@ jobs:
         run: exit 1
 
       - name: PostgreSQL schema parity
+        id: schema_parity
+        continue-on-error: true
         working-directory: backend
-        run: npm run audit:pg-schema-parity
+        shell: bash
+        run: |
+          set +e
+          npm run audit:pg-schema-parity 2>&1 | tee /tmp/schema-parity.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Publish schema parity diagnostics
+        if: steps.schema_parity.outcome == 'failure'
+        shell: bash
+        run: |
+          {
+            echo '## ❌ main synchronization PostgreSQL schema parity failed'
+            echo
+            echo "Run: \`${{ github.run_id }}\`"
+            echo
+            echo '```text'
+            tail -n 260 /tmp/schema-parity.log
+            echo '```'
+          } > /tmp/status.md
+          gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${STATUS_COMMENT_ID}" -X PATCH -f body="$(cat /tmp/status.md)"
+
+      - name: Stop after schema parity failure
+        if: steps.schema_parity.outcome == 'failure'
+        run: exit 1
 
       - name: SQL dialect tests
         working-directory: backend
@@ -189,7 +214,7 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${STATUS_COMMENT_ID}" -X PATCH -f body="$(cat /tmp/status.md)"
 
       - name: Publish generic failure
-        if: failure() && steps.typecheck.outcome != 'failure' && steps.sqlite_audit.outcome != 'failure'
+        if: failure() && steps.typecheck.outcome != 'failure' && steps.sqlite_audit.outcome != 'failure' && steps.schema_parity.outcome != 'failure'
         shell: bash
         run: |
           {
