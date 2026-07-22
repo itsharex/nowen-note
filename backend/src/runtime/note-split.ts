@@ -329,12 +329,23 @@ export function installNoteSplitRoutes(router: Hono<any>): void {
         });
 
         const normalizedDirectory = syncNoteBlocks(db, source.id, directoryContent, "markdown");
-        db.prepare(`
+        const updateResult = db.prepare(`
           UPDATE notes
           SET content = ?, contentText = ?, contentFormat = 'markdown',
               version = version + 1, updatedAt = datetime('now')
           WHERE id = ? AND version = ?
         `).run(normalizedDirectory.content, normalizedDirectory.contentText, source.id, source.version);
+        if (updateResult.changes !== 1) {
+          const current = db.prepare("SELECT version FROM notes WHERE id = ?").get(source.id) as
+            | { version: number }
+            | undefined;
+          throw new NoteSplitError(
+            "笔记已被更新，请重新打开拆分预览",
+            "VERSION_CONFLICT",
+            409,
+            { currentVersion: current?.version },
+          );
+        }
         syncAttachmentReferences(db, source.id, normalizedDirectory.content);
         syncNoteLinks(db, userId, source.id, normalizedDirectory.content);
       });
@@ -442,7 +453,7 @@ export function installNoteSplitRoutes(router: Hono<any>): void {
           operation.originalContent,
           operation.originalContentFormat || "markdown",
         );
-        db.prepare(`
+        const updateResult = db.prepare(`
           UPDATE notes
           SET title = ?, content = ?, contentText = ?, contentFormat = ?,
               version = version + 1, updatedAt = datetime('now')
@@ -455,6 +466,17 @@ export function installNoteSplitRoutes(router: Hono<any>): void {
           source.id,
           operation.directoryVersion,
         );
+        if (updateResult.changes !== 1) {
+          const current = db.prepare("SELECT version FROM notes WHERE id = ?").get(source.id) as
+            | { version: number }
+            | undefined;
+          throw new NoteSplitError(
+            "目录页已被继续编辑，不能自动撤销；可从版本历史恢复原文",
+            "SPLIT_UNDO_SOURCE_CHANGED",
+            409,
+            { currentVersion: current?.version, expectedVersion: operation.directoryVersion },
+          );
+        }
         syncAttachmentReferences(db, source.id, restored.content);
         syncNoteLinks(db, userId, source.id, restored.content);
         db.prepare(`
