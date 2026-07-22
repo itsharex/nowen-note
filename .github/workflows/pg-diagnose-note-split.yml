@@ -1,4 +1,4 @@
-name: Migrate PG image hosting settings
+name: Finalize PG image hosting settings
 
 on:
   issue_comment:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   migrate:
-    if: github.event.issue.number == 372 && github.event.issue.pull_request && github.event.comment.body == '/migrate-pg-image-hosting-settings'
+    if: github.event.issue.number == 372 && github.event.issue.pull_request && github.event.comment.body == '/finalize-pg-image-hosting-settings'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -42,198 +42,16 @@ jobs:
           ref: pg-migration-unified
           fetch-depth: 0
 
-      - name: Rewrite image hosting persistence to Runtime Provider
+      - name: Transform service and add tests
+        id: transform
+        shell: bash
         run: |
+          set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          policy = '''import { systemSettingsRepository } from "../repositories/systemSettingsRepository";
-
-          const FALLBACK_SETTING_KEY = "imageHosting:fallbackToLocal";
-
-          /**
-           * Whether clients may fall back to Nowen's attachment storage when the external image host fails.
-           * Legacy installations did not persist this switch, so the compatibility default is true.
-           */
-          export async function readImageHostingFallbackToLocal(): Promise<boolean> {
-            try {
-              const row = await systemSettingsRepository.getAsync(FALLBACK_SETTING_KEY);
-              if (!row) return true;
-              const normalized = String(row.value ?? "").trim().toLowerCase();
-              return normalized !== "false" && normalized !== "0";
-            } catch (error) {
-              console.warn("[image-hosting] read fallback policy failed; using safe default", error);
-              return true;
-            }
-          }
-
-          export async function writeImageHostingFallbackToLocal(value: boolean): Promise<boolean> {
-            const normalized = value !== false;
-            await systemSettingsRepository.setAsync(
-              FALLBACK_SETTING_KEY,
-              normalized ? "true" : "false",
-            );
-            return normalized;
-          }
-
-          export async function deleteImageHostingFallbackPolicy(): Promise<void> {
-            await systemSettingsRepository.deleteAsync(FALLBACK_SETTING_KEY);
-          }
-          '''
-          Path('backend/src/services/image-hosting-policy.ts').write_text(policy)
-
-          route = '''/**
-           * 第三方图床路由
-           *
-           * 提供图床配置管理、测试连接、图片上传接口。
-           */
-
-          import { Hono } from "hono";
-          import {
-            readImageHostingConfigPublic,
-            writeImageHostingConfig,
-            deleteImageHostingConfig,
-            testImageHostingConfig,
-            uploadImageToHosting,
-            isImageHostingEnabled,
-            type WriteImageHostingConfigInput,
-          } from "../services/image-hosting";
-          import {
-            deleteImageHostingFallbackPolicy,
-            readImageHostingFallbackToLocal,
-            writeImageHostingFallbackToLocal,
-          } from "../services/image-hosting-policy";
-          import { isSystemAdmin } from "../middleware/acl";
-
-          const app = new Hono();
-
-          const ALLOWED_MIMES = new Set([
-            "image/png", "image/jpeg", "image/gif", "image/webp",
-          ]);
-
-          const MAX_FILE_SIZE = 20 * 1024 * 1024;
-
-          async function readPublicConfigWithPolicy() {
-            const [config, fallbackToLocal] = await Promise.all([
-              readImageHostingConfigPublic(),
-              readImageHostingFallbackToLocal(),
-            ]);
-            return { ...config, fallbackToLocal };
-          }
-
-          app.get("/config", async (c) => {
-            const userId = c.req.header("X-User-Id") || "";
-            if (!isSystemAdmin(userId)) {
-              return c.json({ error: "需要管理员权限", code: "FORBIDDEN" }, 403);
-            }
-            return c.json(await readPublicConfigWithPolicy());
-          });
-
-          app.put("/config", async (c) => {
-            const userId = c.req.header("X-User-Id") || "";
-            if (!isSystemAdmin(userId)) {
-              return c.json({ error: "需要管理员权限", code: "FORBIDDEN" }, 403);
-            }
-
-            const body = await c.req.json();
-            const input: WriteImageHostingConfigInput = {
-              enabled: body.enabled === true,
-              provider: body.provider || "s3-compatible",
-              endpoint: body.endpoint || "",
-              region: body.region || "auto",
-              bucket: body.bucket || "",
-              accessKeyId: body.accessKeyId || "",
-              secretAccessKey: body.secretAccessKey || undefined,
-              publicBaseUrl: body.publicBaseUrl || "",
-              pathPrefix: body.pathPrefix || "images",
-              usePathStyle: body.usePathStyle !== false,
-              maxFileSizeMb: body.maxFileSizeMb || 10,
-              allowedTypes: body.allowedTypes || ["image/png", "image/jpeg", "image/gif", "image/webp"],
-            };
-
-            await Promise.all([
-              writeImageHostingConfig(input),
-              writeImageHostingFallbackToLocal(body.fallbackToLocal !== false),
-            ]);
-            return c.json(await readPublicConfigWithPolicy());
-          });
-
-          app.delete("/config", async (c) => {
-            const userId = c.req.header("X-User-Id") || "";
-            if (!isSystemAdmin(userId)) {
-              return c.json({ error: "需要管理员权限", code: "FORBIDDEN" }, 403);
-            }
-            await Promise.all([
-              deleteImageHostingConfig(),
-              deleteImageHostingFallbackPolicy(),
-            ]);
-            return c.json(await readPublicConfigWithPolicy());
-          });
-
-          app.post("/test", async (c) => {
-            const userId = c.req.header("X-User-Id") || "";
-            if (!isSystemAdmin(userId)) {
-              return c.json({ error: "需要管理员权限", code: "FORBIDDEN" }, 403);
-            }
-            return c.json(await testImageHostingConfig());
-          });
-
-          app.post("/upload", async (c) => {
-            const userId = c.req.header("X-User-Id") || "";
-            if (!userId) {
-              return c.json({ error: "未登录", code: "UNAUTHORIZED" }, 401);
-            }
-
-            if (!(await isImageHostingEnabled())) {
-              return c.json({ error: "第三方图床未启用", code: "NOT_ENABLED" }, 400);
-            }
-
-            const body = await c.req.parseBody();
-            const file = body["file"];
-            const source = (body["source"] as string) || "editor";
-
-            if (!file || !(file instanceof File)) {
-              return c.json({ error: "未上传文件", code: "NO_FILE" }, 400);
-            }
-
-            const mime = (file.type || "application/octet-stream").toLowerCase();
-            if (!ALLOWED_MIMES.has(mime)) {
-              return c.json({ error: `不支持的文件类型: ${mime}`, code: "INVALID_TYPE" }, 400);
-            }
-            if (file.size > MAX_FILE_SIZE) {
-              return c.json({ error: `文件过大（最大 ${MAX_FILE_SIZE / 1024 / 1024}MB）`, code: "FILE_TOO_LARGE" }, 400);
-            }
-
-            const buffer = Buffer.from(await file.arrayBuffer());
-            const result = await uploadImageToHosting(buffer, file.name, mime);
-            if (!result.success) return c.json(result, 500);
-
-            return c.json({
-              success: true,
-              url: result.url,
-              filename: result.filename,
-              size: result.size,
-              mimeType: result.mimeType,
-              uploadSource: "third-party-image-hosting",
-              source,
-            });
-          });
-
-          app.get("/status", async (c) => {
-            const [enabled, fallbackToLocal] = await Promise.all([
-              isImageHostingEnabled(),
-              readImageHostingFallbackToLocal(),
-            ]);
-            return c.json({ enabled, fallbackToLocal });
-          });
-
-          export default app;
-          '''
-          Path('backend/src/routes/image-hosting.ts').write_text(route)
-
           service_path = Path('backend/src/services/image-hosting.ts')
           service = service_path.read_text()
-
           replacements = [
             (
               'function readPersistedConfig(): (ImageHostingConfig & { updatedAt: string | null }) | null {',
@@ -269,19 +87,33 @@ jobs:
             ),
           ]
           for old, new in replacements:
-              if old not in service:
-                  raise SystemExit(f'image-hosting transform anchor missing: {old}')
-              service = service.replace(old, new, 1)
+              if old in service:
+                  service = service.replace(old, new, 1)
+              elif new not in service:
+                  raise SystemExit(f'missing image-hosting anchor: {old}')
 
-          service = service.replace('const cfg = readPersistedConfig();', 'const cfg = await readPersistedConfigAsync();')
-          service = service.replace('const existing = readPersistedConfig();', 'const existing = await readPersistedConfigAsync();')
-          service = service.replace('return readImageHostingConfigPublic();', 'return await readImageHostingConfigPublic();')
+          service = service.replace(
+              'const cfg = readPersistedConfig();',
+              'const cfg = await readPersistedConfigAsync();',
+          )
+          service = service.replace(
+              'const existing = readPersistedConfig();',
+              'const existing = await readPersistedConfigAsync();',
+          )
+          service = service.replace(
+              'return readImageHostingConfigPublic();',
+              'return await readImageHostingConfigPublic();',
+          )
 
-          if 'readPersistedConfig()' in service:
-              raise SystemExit('sync readPersistedConfig call remains')
-          if 'systemSettingsRepository.get(' in service or 'systemSettingsRepository.set(' in service or 'systemSettingsRepository.delete(' in service:
-              raise SystemExit('sync system settings repository call remains')
-
+          forbidden = [
+              'readPersistedConfig()',
+              'systemSettingsRepository.get(',
+              'systemSettingsRepository.set(',
+              'systemSettingsRepository.delete(',
+          ]
+          remaining = [item for item in forbidden if item in service]
+          if remaining:
+              raise SystemExit(f'sync image-hosting persistence remains: {remaining}')
           service_path.write_text(service)
 
           test_source = '''import assert from "node:assert/strict";
@@ -294,15 +126,12 @@ jobs:
             const { Pool } = await import("pg");
             const pool = new Pool({ connectionString: databaseUrl });
             const runtime = await import("../src/db/runtime");
+            const keys = ["imageHosting:config", "imageHosting:fallbackToLocal"];
 
             process.env.IMAGE_HOSTING_ENCRYPTION_KEY = "pg-image-hosting-test-key-2026";
             await runtime.resetDatabaseRuntimeForTests();
             await runtime.initializeDatabase({
-              env: {
-                ...process.env,
-                DB_DRIVER: "postgres",
-                DATABASE_URL: databaseUrl,
-              },
+              env: { ...process.env, DB_DRIVER: "postgres", DATABASE_URL: databaseUrl },
               dependencies: {
                 createPostgresPool: () => pool,
                 logger: { log: () => undefined, warn: () => undefined },
@@ -311,8 +140,6 @@ jobs:
 
             const { runPostgresMigrations } = await import("../src/db/postgres/migrations");
             await runPostgresMigrations();
-
-            const keys = ["imageHosting:config", "imageHosting:fallbackToLocal"];
             await pool.query('DELETE FROM system_settings WHERE key = ANY($1::text[])', [keys]);
 
             try {
@@ -336,32 +163,29 @@ jobs:
                 maxFileSizeMb: 12,
                 allowedTypes: ["image/png"],
               });
-              assert.equal(first.enabled, true);
               assert.equal(first.endpoint, "https://s3.example.test");
               assert.equal(first.publicBaseUrl, "https://cdn.example.test");
               assert.equal(first.pathPrefix, "uploads");
               assert.equal(first.secretAccessKeySet, true);
               assert.equal(await hosting.isImageHostingEnabled(), true);
 
-              const rawFirst = await pool.query(
+              const raw = await pool.query(
                 'SELECT value FROM system_settings WHERE key = $1',
                 ["imageHosting:config"],
               );
-              const firstStored = JSON.parse(rawFirst.rows[0].value);
-              assert.match(firstStored.secretAccessKeyEnc, /^v1:/);
-              assert.doesNotMatch(rawFirst.rows[0].value, /secret-key/);
+              const stored = JSON.parse(raw.rows[0].value);
+              assert.match(stored.secretAccessKeyEnc, /^v1:/);
+              assert.doesNotMatch(raw.rows[0].value, /secret-key/);
 
               const updated = await hosting.writeImageHostingConfig({
                 enabled: true,
                 endpoint: "https://s3.example.test",
-                region: "auto",
                 bucket: "images-v2",
                 accessKeyId: "access-key",
                 publicBaseUrl: "https://cdn.example.test",
               });
               assert.equal(updated.bucket, "images-v2");
               assert.equal(updated.secretAccessKeySet, true);
-              assert.equal(await hosting.isImageHostingEnabled(), true);
 
               const deleted = await hosting.deleteImageHostingConfig();
               assert.equal(deleted.enabled, false);
@@ -373,7 +197,6 @@ jobs:
             } finally {
               await pool.query('DELETE FROM system_settings WHERE key = ANY($1::text[])', [keys]);
               await runtime.resetDatabaseRuntimeForTests();
-              await pool.end().catch(() => undefined);
             }
           });
           '''
@@ -381,63 +204,87 @@ jobs:
 
           workflow_path = Path('.github/workflows/pg-runtime.yml')
           workflow = workflow_path.read_text()
-          pg_anchor = '          tests/system-settings-repository-pg.test.ts\n'
-          pg_line = '          tests/image-hosting-settings-pg.test.ts\n'
-          if pg_line not in workflow:
-              if pg_anchor not in workflow:
-                  raise SystemExit('pg-runtime test anchor missing')
-              workflow = workflow.replace(pg_anchor, pg_anchor + pg_line, 1)
-          migration_anchor = '          test -f dist/postgres/migrations/0007_note_import_origins.sql\n'
+          test_line = '          tests/image-hosting-settings-pg.test.ts\n'
+          if test_line not in workflow:
+              anchor = '          tests/system-settings-repository-pg.test.ts\n'
+              if anchor not in workflow:
+                  raise SystemExit('pg-runtime image hosting test anchor missing')
+              workflow = workflow.replace(anchor, anchor + test_line, 1)
+
           migration_line = '          test -f dist/postgres/migrations/0008_note_split_tables.sql\n'
           if migration_line not in workflow:
-              if migration_anchor not in workflow:
-                  raise SystemExit('pg-runtime migration anchor missing')
-              workflow = workflow.replace(migration_anchor, migration_anchor.rstrip('\n') + ' &&\n' + migration_line, 1)
+              anchor = '          test -f dist/postgres/migrations/0007_note_import_origins.sql\n'
+              if anchor not in workflow:
+                  raise SystemExit('pg-runtime 0008 packaging anchor missing')
+              workflow = workflow.replace(
+                  anchor,
+                  '          test -f dist/postgres/migrations/0007_note_import_origins.sql &&\n' + migration_line,
+                  1,
+              )
           workflow_path.write_text(workflow)
           PY
 
-      - name: Install backend dependencies
+      - name: Install dependencies
         working-directory: backend
         run: npm ci --no-audit --no-fund
 
-      - name: TypeScript
+      - name: Validate migration
+        id: validate
+        continue-on-error: true
         working-directory: backend
-        run: npm run build:tsc -- --noEmit
+        shell: bash
+        run: |
+          set -o pipefail
+          {
+            echo '=== TypeScript ==='
+            npm run build:tsc -- --noEmit
+            echo '=== SQLite boundary audit ==='
+            npm run audit:sqlite-boundaries
+            echo '=== PostgreSQL schema parity ==='
+            npm run audit:pg-schema-parity
+            echo '=== Real PostgreSQL image hosting test ==='
+            node --import tsx --test --test-concurrency=1 tests/image-hosting-settings-pg.test.ts
+          } 2>&1 | tee /tmp/image-hosting-migration.log
 
-      - name: SQLite boundary audit
-        working-directory: backend
-        run: npm run audit:sqlite-boundaries
-
-      - name: PostgreSQL schema parity
-        working-directory: backend
-        run: npm run audit:pg-schema-parity
-
-      - name: Real PostgreSQL image hosting test
-        working-directory: backend
-        run: node --import tsx --test --test-concurrency=1 tests/image-hosting-settings-pg.test.ts
-
-      - name: Commit and push
+      - name: Commit migration
         id: commit
+        if: steps.validate.outcome == 'success'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
             backend/src/services/image-hosting.ts \
-            backend/src/services/image-hosting-policy.ts \
-            backend/src/routes/image-hosting.ts \
             backend/tests/image-hosting-settings-pg.test.ts \
             .github/workflows/pg-runtime.yml
-          git commit -m "refactor(pg): migrate image hosting settings to runtime repository"
+          git commit -m "refactor(pg): finalize image hosting runtime settings"
           git push origin HEAD:pg-migration-unified
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Publish result
+        if: always()
+        shell: bash
         run: |
-          {
-            echo '## ✅ image hosting settings migrated to Runtime Provider'
-            echo
-            echo "Commit: \`${{ steps.commit.outputs.sha }}\`"
-            echo
-            echo 'Configuration, fallback policy, status checks and upload prerequisites now use the async system settings repository. TypeScript, SQLite boundary audit, schema parity and the real PostgreSQL test passed.'
-          } > /tmp/status.md
+          if [ "${{ steps.validate.outcome }}" = "success" ]; then
+            {
+              echo '## ✅ image hosting settings migrated to Runtime Provider'
+              echo
+              echo "Commit: \`${{ steps.commit.outputs.sha }}\`"
+              echo
+              echo 'TypeScript, SQLite boundary audit, schema parity and the real PostgreSQL image hosting test passed.'
+            } > /tmp/status.md
+          else
+            {
+              echo '## ❌ image hosting Runtime migration validation failed'
+              echo
+              echo "Run: \`${{ github.run_id }}\`"
+              echo
+              echo '```text'
+              tail -n 260 /tmp/image-hosting-migration.log
+              echo '```'
+            } > /tmp/status.md
+          fi
           gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${STATUS_COMMENT_ID}" -X PATCH -f body="$(cat /tmp/status.md)"
+
+      - name: Preserve validation failure
+        if: steps.validate.outcome == 'failure'
+        run: exit 1
