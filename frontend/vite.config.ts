@@ -52,6 +52,11 @@ export default defineConfig({
         find: /^@\/lib\/largeMarkdownSafety$/,
         replacement: path.resolve(__dirname, "./src/lib/largeMarkdownSafetyRuntime.ts"),
       },
+      // Issue #369 P2：在不侵入 EditorPane 主体的前提下增加事务化文档拆分入口。
+      {
+        find: /^@\/components\/EditorPane$/,
+        replacement: path.resolve(__dirname, "./src/components/EditorPaneRuntime.tsx"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
   },
