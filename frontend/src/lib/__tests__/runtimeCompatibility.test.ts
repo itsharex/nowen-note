@@ -114,7 +114,7 @@ describe("installRuntimeCompatibility", () => {
     editors.push(editor);
 
     expect(() => {
-      editor.commands.setTextSelection("end");
+      editor.commands.setTextSelection(editor.state.doc.content.size);
       editor.commands.insertContent("通过");
       editor.view.dispatch(editor.state.tr.setMeta("focus", true));
       editor.view.dispatch(editor.state.tr.setMeta("blur", true));
