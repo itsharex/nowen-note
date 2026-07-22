@@ -9,6 +9,8 @@ on:
       - "frontend/src/lib/editorComplexityProfile.ts"
       - "frontend/src/lib/editorRuntimePolicy.ts"
       - "frontend/src/lib/editorRuntimeStore.ts"
+      - "frontend/src/lib/tiptapDerivedRuntime.ts"
+      - "frontend/src/lib/proseMirrorPlainTextRuntime.ts"
       - "frontend/src/lib/largeMarkdownSafety.ts"
       - "frontend/src/lib/largeMarkdownSafetyRuntime.ts"
       - "frontend/src/lib/markdownAnalysis.ts"
@@ -22,6 +24,7 @@ on:
       - "frontend/src/hooks/useLazyNodeView.ts"
       - "frontend/src/hooks/useNoteLoader.ts"
       - "frontend/src/components/MarkdownEditor.tsx"
+      - "frontend/src/components/TiptapEditorRuntime.tsx"
       - "frontend/src/components/LargeMarkdownSafeEditor.tsx"
       - "frontend/src/components/LargeMarkdownSafeEditorRuntime.tsx"
       - "frontend/src/components/ResizableImageView.tsx"
@@ -35,6 +38,8 @@ on:
       - "frontend/src/lib/__tests__/largeMarkdownSafety.test.ts"
       - "frontend/src/lib/__tests__/markdownAnalysis*.test.ts"
       - "frontend/src/lib/__tests__/markdownYText*.test.ts"
+      - "frontend/src/lib/__tests__/proseMirrorPlainTextRuntime.test.ts"
+      - "frontend/src/lib/__tests__/tiptapDerivedRuntime.test.ts"
       - "frontend/src/lib/__tests__/codeBlockHighlightPlugin.test.ts"
       - "frontend/src/lib/__tests__/codeBlockViewportHighlight.test.ts"
       - "frontend/src/hooks/__tests__/useLazyNodeView.test.tsx"
@@ -49,6 +54,8 @@ on:
       - "frontend/src/lib/editorComplexityProfile.ts"
       - "frontend/src/lib/editorRuntimePolicy.ts"
       - "frontend/src/lib/editorRuntimeStore.ts"
+      - "frontend/src/lib/tiptapDerivedRuntime.ts"
+      - "frontend/src/lib/proseMirrorPlainTextRuntime.ts"
       - "frontend/src/lib/largeMarkdownSafety.ts"
       - "frontend/src/lib/largeMarkdownSafetyRuntime.ts"
       - "frontend/src/lib/markdownAnalysis.ts"
@@ -62,6 +69,7 @@ on:
       - "frontend/src/hooks/useLazyNodeView.ts"
       - "frontend/src/hooks/useNoteLoader.ts"
       - "frontend/src/components/MarkdownEditor.tsx"
+      - "frontend/src/components/TiptapEditorRuntime.tsx"
       - "frontend/src/components/LargeMarkdownSafeEditor.tsx"
       - "frontend/src/components/LargeMarkdownSafeEditorRuntime.tsx"
       - "frontend/src/components/ResizableImageView.tsx"
@@ -75,6 +83,8 @@ on:
       - "frontend/src/lib/__tests__/largeMarkdownSafety.test.ts"
       - "frontend/src/lib/__tests__/markdownAnalysis*.test.ts"
       - "frontend/src/lib/__tests__/markdownYText*.test.ts"
+      - "frontend/src/lib/__tests__/proseMirrorPlainTextRuntime.test.ts"
+      - "frontend/src/lib/__tests__/tiptapDerivedRuntime.test.ts"
       - "frontend/src/lib/__tests__/codeBlockHighlightPlugin.test.ts"
       - "frontend/src/lib/__tests__/codeBlockViewportHighlight.test.ts"
       - "frontend/src/hooks/__tests__/useLazyNodeView.test.tsx"
@@ -114,6 +124,8 @@ jobs:
           src/lib/__tests__/markdownAnalysisClient.test.ts
           src/lib/__tests__/markdownYTextSync.test.ts
           src/lib/__tests__/markdownYTextRuntime.test.ts
+          src/lib/__tests__/proseMirrorPlainTextRuntime.test.ts
+          src/lib/__tests__/tiptapDerivedRuntime.test.ts
           src/lib/__tests__/codeBlockHighlightPlugin.test.ts
           src/lib/__tests__/codeBlockViewportHighlight.test.ts
           src/hooks/__tests__/useLazyNodeView.test.tsx
