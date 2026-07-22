@@ -42,6 +42,16 @@ export default defineConfig({
         find: /^@\/components\/MermaidView$/,
         replacement: path.resolve(__dirname, "./src/components/MermaidViewRuntime.tsx"),
       },
+      // Issue #369：大 Markdown 使用 CodeMirror transaction ↔ Y.Text delta 增量同步。
+      // 原组件和纯策略通过相对路径保留，Runtime 壳只接管协作热路径。
+      {
+        find: /^@\/components\/LargeMarkdownSafeEditor$/,
+        replacement: path.resolve(__dirname, "./src/components/LargeMarkdownSafeEditorRuntime.tsx"),
+      },
+      {
+        find: /^@\/lib\/largeMarkdownSafety$/,
+        replacement: path.resolve(__dirname, "./src/lib/largeMarkdownSafetyRuntime.ts"),
+      },
       { find: "@", replacement: path.resolve(__dirname, "./src") },
     ],
   },
