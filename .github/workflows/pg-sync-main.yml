@@ -56,6 +56,15 @@ jobs:
           echo "before=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "main=$(git rev-parse origin/main)" >> "$GITHUB_OUTPUT"
           git merge --no-ff --no-edit -X ours origin/main
+
+          pg_parent=$(git rev-parse HEAD^1)
+          git checkout "$pg_parent" -- \
+            backend/src/lib/api-tokens.ts \
+            backend/src/routes/tokens.ts \
+            backend/src/repositories/apiTokensRepository.ts \
+            backend/src/repositories/notebookShareLinksRepository.ts \
+            backend/src/repositories/shareCommentsRepository.ts
+
           git rm -f .github/workflows/pg-sync-main.yml
           git commit --amend --no-edit
           echo "after=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -84,7 +93,7 @@ jobs:
             echo "Run: \`${{ github.run_id }}\`"
             echo
             echo '```text'
-            tail -n 160 /tmp/typecheck.log
+            tail -n 200 /tmp/typecheck.log
             echo '```'
           } > /tmp/status.md
           gh api "repos/${GITHUB_REPOSITORY}/issues/comments/${STATUS_COMMENT_ID}" -X PATCH -f body="$(cat /tmp/status.md)"
@@ -132,7 +141,8 @@ jobs:
         working-directory: backend
         run: >-
           test -f dist/postgres/migrations/0004_notebook_members_unique.sql &&
-          test -f dist/postgres/migrations/0005_api_token_resources.sql
+          test -f dist/postgres/migrations/0005_api_token_resources.sql &&
+          test -f dist/postgres/migrations/0006_share_capabilities.sql
 
       - name: Push synchronized branch
         run: git push origin HEAD:pg-migration-unified
