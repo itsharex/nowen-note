@@ -1,6 +1,10 @@
 name: Sync main into PostgreSQL migration branch
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - .github/pg-sync-main-trigger
   issue_comment:
     types: [created]
 
@@ -11,7 +15,7 @@ permissions:
 
 jobs:
   sync:
-    if: github.event.issue.number == 372 && github.event.issue.pull_request && github.event.comment.body == '/sync-main-into-pg'
+    if: github.event_name == 'push' || (github.event.issue.number == 372 && github.event.issue.pull_request && github.event.comment.body == '/sync-main-into-pg')
     runs-on: ubuntu-latest
     timeout-minutes: 50
 
@@ -139,7 +143,7 @@ jobs:
             backend/src/services/attachment-indexer.ts \
             backend/src/services/nowenPackageImport.ts \
             backend/tests/note-links-repository-async.test.ts
-          git rm -f .github/workflows/pg-sync-main.yml
+          git rm -f .github/pg-sync-main-trigger .github/workflows/pg-sync-main.yml
           git commit --amend --no-edit
           echo "after=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
