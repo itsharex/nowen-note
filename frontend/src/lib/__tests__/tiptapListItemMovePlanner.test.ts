@@ -32,8 +32,12 @@ function taskItem(blockId: string, text: string, checked: boolean, nested?: unkn
   };
 }
 
-function list(type: "bulletList" | "orderedList" | "taskList", content: unknown[]) {
-  return { type, content };
+function list(
+  type: "bulletList" | "orderedList" | "taskList",
+  content: unknown[],
+  attrs?: Record<string, unknown>,
+) {
+  return { type, ...(attrs ? { attrs } : {}), content };
 }
 
 function doc(content: unknown[]) {
@@ -62,6 +66,28 @@ describe("Tiptap controlled list hierarchy planner", () => {
         position: "inside",
       }],
       affectedBlockIds: ["blk_item_b0", "blk_item_a0"],
+    });
+  });
+
+  it("plans ordered-list sinking with canonical list attrs", () => {
+    const attrs = { start: 1 };
+    const base = doc([list("orderedList", [
+      item("blk_item_a0", "A"),
+      item("blk_item_b0", "B"),
+    ], attrs)]);
+    const next = doc([list("orderedList", [
+      item("blk_item_a0", "A", list("orderedList", [item("blk_item_b0", "B")], attrs)),
+    ], attrs)]);
+
+    expect(planTiptapBlockPatch(base, next)).toMatchObject({
+      kind: "list-hierarchy",
+      operations: [{
+        type: "move",
+        scope: "listItem",
+        blockId: "blk_item_b0",
+        targetBlockId: "blk_item_a0",
+        position: "inside",
+      }],
     });
   });
 
@@ -116,6 +142,31 @@ describe("Tiptap controlled list hierarchy planner", () => {
     });
   });
 
+  it("chooses one stable equivalent operation for an adjacent swap", () => {
+    const base = doc([list("bulletList", [
+      item("blk_item_a0", "A"),
+      item("blk_item_b0", "B"),
+      item("blk_item_c0", "C"),
+    ])]);
+    const next = doc([list("bulletList", [
+      item("blk_item_b0", "B"),
+      item("blk_item_a0", "A"),
+      item("blk_item_c0", "C"),
+    ])]);
+
+    expect(planTiptapBlockPatch(base, next)).toEqual({
+      kind: "list-hierarchy",
+      operations: [{
+        type: "move",
+        scope: "listItem",
+        blockId: "blk_item_a0",
+        targetBlockId: "blk_item_b0",
+        position: "after",
+      }],
+      affectedBlockIds: ["blk_item_a0", "blk_item_b0"],
+    });
+  });
+
   it("plans task-list sinking without losing checked state", () => {
     const base = doc([list("taskList", [
       taskItem("blk_task_a0", "A", true),
@@ -164,7 +215,7 @@ describe("Tiptap controlled list hierarchy planner", () => {
       item("blk_item_b0", "B"),
       item("blk_item_c0", "C"),
       item("blk_item_d0", "D"),
-    ])]);
+    ], { start: 1 })]);
     expect(planTiptapBlockPatch(base, ordered)).toBeNull();
   });
 });
