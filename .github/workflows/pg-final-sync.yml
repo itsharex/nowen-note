@@ -33,7 +33,7 @@ jobs:
     env:
       TEST_PG_DATABASE_URL: postgres://nowen:nowen_ci_password@127.0.0.1:5432/nowen_note_test
       DATABASE_URL: postgres://nowen:nowen_ci_password@127.0.0.1:5432/nowen_note_test
-      IMAGE_HOSTING_ENCRYPTION_KEY: pg-final-sync-image-hosting-key-2026
+      CALENDAR_EXPORT_ENCRYPTION_KEY: pg-final-sync-calendar-export-key-2026
       GH_TOKEN: ${{ github.token }}
       STATUS_COMMENT_ID: "5042929483"
 
@@ -64,7 +64,6 @@ jobs:
             backend/src/lib/api-tokens.ts \
             backend/src/lib/attachment-signed-url.ts \
             backend/src/routes/attachments.ts \
-            backend/src/routes/image-hosting.ts \
             backend/src/routes/tokens.ts \
             backend/src/repositories/apiTokensRepository.ts \
             backend/src/repositories/apiTokenSchemaRepository.ts \
@@ -72,14 +71,11 @@ jobs:
             backend/src/repositories/memberQueryRepository.ts \
             backend/src/repositories/notebookShareLinksRepository.ts \
             backend/src/repositories/shareCommentsRepository.ts \
-            backend/src/services/image-hosting.ts \
-            backend/src/services/image-hosting-policy.ts \
             backend/src/services/roundTripMarkdownExportJobs.ts \
             backend/src/services/yjs.ts \
             backend/tests/api-token-resources-pg.test.ts \
             backend/tests/attachment-signed-url-boundary.test.ts \
             backend/tests/docker-hardened-entrypoint.test.ts \
-            backend/tests/image-hosting-settings-pg.test.ts \
             backend/tests/note-transfer-hardening.test.ts \
             backend/tests/note-transfer.test.ts \
             backend/tests/postgres-migrations.test.ts \
@@ -108,7 +104,7 @@ jobs:
           new_notes_loop = '''  const notesFolder = zip.folder("notes");
             if (notesFolder) {
               for (const name of Object.keys(notesFolder.files)) {
-                if (!/^notes\\/[^/]+\\/meta\\.json$/.test(name)) continue;
+                if (!/^notes\/[^/]+\/meta\.json$/.test(name)) continue;
           '''
           if old_notes_loop in import_source:
               import_source = import_source.replace(old_notes_loop, new_notes_loop, 1)
@@ -158,12 +154,10 @@ jobs:
           git rm -f --ignore-unmatch \
             .github/pg-sync-main-trigger \
             .github/pg-fix-yjs-version-trigger \
-            .github/pg-image-hosting-trigger \
             .github/workflows/pg-sync-main.yml \
             .github/workflows/pg-final-sync.yml \
             .github/workflows/pg-fix-yjs-version.yml \
-            .github/workflows/pg-diagnose-note-split.yml \
-            .github/workflows/pg-image-hosting-finalize.yml
+            .github/workflows/pg-diagnose-note-split.yml
 
           git commit --amend --no-edit
           echo "after=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -233,7 +227,6 @@ jobs:
             tests/repository-access-session-pg.test.ts \
             tests/api-token-resources-pg.test.ts \
             tests/system-settings-repository-pg.test.ts \
-            tests/image-hosting-settings-pg.test.ts \
             tests/custom-fonts-repository-pg.test.ts \
             tests/favorites-repository-pg.test.ts \
             tests/note-tags-repository-pg.test.ts 2>&1 | tee -a /tmp/pg-final-sync.log
@@ -308,7 +301,7 @@ Main: \`${{ steps.merge.outputs.main }}\`
 Merge head: \`${{ steps.merge.outputs.after }}\`
 Run: \`${{ github.run_id }}\`
 
-TypeScript, SQLite boundary audit, PostgreSQL schema parity, SQL dialect, full SQLite regression, real PostgreSQL regression including image hosting settings, production bundle, migrations 0001–0008 packaging, and PostgreSQL runtime-only smoke all passed."
+TypeScript, SQLite boundary audit, PostgreSQL schema parity, SQL dialect, full SQLite regression, real PostgreSQL regression, production bundle, migrations 0001–0008 packaging, and PostgreSQL runtime-only smoke all passed."
 
       - name: Publish failure
         if: failure()
