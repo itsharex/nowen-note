@@ -5,7 +5,8 @@ const ITEM_TYPES = new Set(["listItem", "taskItem"]);
 export type TiptapListItemMovePosition = "before" | "after" | "inside";
 
 export interface TiptapListItemMoveOperation {
-  type: "moveListItem";
+  type: "move";
+  scope: "listItem";
   blockId: string;
   targetBlockId: string;
   position: TiptapListItemMovePosition;
