@@ -1,11 +1,12 @@
 name: Remove third-party image hosting
 
 on:
-  issue_comment:
-    types: [created]
+  pull_request:
+    types: [opened]
 
 permissions:
   contents: write
+  pull-requests: write
   issues: write
 
 concurrency:
@@ -14,7 +15,7 @@ concurrency:
 
 jobs:
   remove:
-    if: github.event.issue.number == 392 && github.event.comment.body == '/remove-third-party-image-hosting'
+    if: github.event.pull_request.head.ref == 'chore/remove-third-party-image-hosting-trigger'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -38,7 +39,6 @@ jobs:
           def write(path: str, content: str) -> None:
               Path(path).write_text(content, encoding="utf-8")
 
-          # Settings: remove import, type, navigation item and panel.
           settings_path = "frontend/src/components/SettingsModal.tsx"
           settings = read(settings_path)
           replacements = [
@@ -54,7 +54,6 @@ jobs:
               settings = settings.replace(old, new, 1)
           write(settings_path, settings)
 
-          # Frontend API: remove the entire legacy imageHosting namespace.
           api_path = "frontend/src/lib/api.impl.ts"
           api_source = read(api_path)
           pattern = re.compile(r"\n  // Image Hosting\n  imageHosting: \{.*?\n  \},\n\n  // Site Settings", re.S)
@@ -63,7 +62,6 @@ jobs:
               raise SystemExit(f"{api_path}: imageHosting API block not found")
           write(api_path, api_source)
 
-          # Backend: remove route import and mount.
           index_path = "backend/src/index.ts"
           index_source = read(index_path)
           for old in [
@@ -75,7 +73,6 @@ jobs:
               index_source = index_source.replace(old, "", 1)
           write(index_path, index_source)
 
-          # Calendar export owns its own encryption key name; no image-hosting terminology remains.
           calendar_path = "backend/src/services/calendar-export.ts"
           calendar = read(calendar_path)
           calendar = calendar.replace(
@@ -89,7 +86,6 @@ jobs:
           calendar = calendar.replace("IMAGE_HOSTING_ENCRYPTION_KEY", "CALENDAR_EXPORT_ENCRYPTION_KEY")
           write(calendar_path, calendar)
 
-          # Remove obsolete translation namespace without reordering other keys.
           for locale_path in [
               "frontend/src/i18n/locales/zh-CN.json",
               "frontend/src/i18n/locales/en.json",
@@ -100,7 +96,6 @@ jobs:
               del data["imageHosting"]
               write(locale_path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
 
-          # Documentation and environment naming.
           textual_paths = [
               "README.md",
               "README.en.md",
@@ -124,7 +119,6 @@ jobs:
               text = text.replace(" and third-party image hosts", "")
               text = text.replace("加密第三方图床密钥", "加密日历 S3 镜像导出凭据")
               text = text.replace("Encrypt third-party image-hosting credentials", "Encrypt calendar S3 mirror export credentials")
-              # PostgreSQL sync workflows must not restore or test removed files.
               filtered = []
               for line in text.splitlines():
                   if any(token in line for token in [
@@ -141,7 +135,6 @@ jobs:
               text = text.replace("、图床设置", "")
               write(text_path, text)
 
-          # Delete feature, compatibility, tests and temporary documentation.
           delete_paths = [
               "frontend/src/components/settings/ImageHostingSettings.tsx",
               "frontend/src/lib/__tests__/imageHostingRetirement.test.ts",
@@ -154,7 +147,6 @@ jobs:
               if path.exists():
                   path.unlink()
 
-          # Guardrails: no active image-hosting implementation or UI/API references may remain.
           forbidden = {
               "frontend/src/components/SettingsModal.tsx": ["imageHosting", "ImageHostingSettings", "ImageIcon"],
               "frontend/src/lib/api.impl.ts": ["imageHosting:", "/image-hosting"],
@@ -166,7 +158,6 @@ jobs:
               found = [token for token in tokens if token in source]
               if found:
                   raise SystemExit(f"{file_path}: forbidden remnants {found}")
-
           for file_path in delete_paths:
               if Path(file_path).exists():
                   raise SystemExit(f"{file_path}: expected deleted")
@@ -195,6 +186,7 @@ jobs:
       - name: Commit removal and self-clean
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           set -euo pipefail
@@ -206,4 +198,5 @@ jobs:
           git add -A
           git commit -m "refactor(attachments): remove third-party image hosting"
           git push origin HEAD:main
-          gh issue close 392 --repo "$GITHUB_REPOSITORY" --reason completed
+          gh pr close "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --comment "第三方图床已从 main 完全移除。"
+          gh issue close 392 --repo "$GITHUB_REPOSITORY" --reason completed || true
