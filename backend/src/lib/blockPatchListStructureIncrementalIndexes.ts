@@ -362,7 +362,7 @@ export function planIncrementalListStructureIndexes(
 
   return {
     mode: "incremental",
-    kind: "list-structural",
+    kind: "structural",
     contentText: analysis.contentText,
     affectedRows,
     deletedBlockIds: deletedIds,
