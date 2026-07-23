@@ -222,7 +222,7 @@ async function patchBlocks(c: Context) {
         ? planIncrementalPatchIndexes(db, userId, noteId, patch.content, operations)
         : null;
       const contentText = incrementalPlan?.contentText
-        || plainTextFromNoteContent(patch.content, note.contentFormat);
+        ?? plainTextFromNoteContent(patch.content, note.contentFormat);
       const nextVersion = note.version + 1;
 
       // Match PUT /notes/:id version-history semantics. This insert is inside the same transaction,
@@ -282,7 +282,7 @@ async function patchBlocks(c: Context) {
         blocks,
         indexUpdateMode,
         indexedBlockIds: indexUpdateMode === "incremental"
-          ? incrementalPlan?.affectedBlockIds || []
+          ? incrementalPlan?.indexedBlockIds || []
           : patch.affectedBlockIds,
         contentChangedByNormalization: normalizedBefore.changed || postSyncChanged,
       };
