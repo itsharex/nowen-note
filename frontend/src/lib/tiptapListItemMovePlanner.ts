@@ -275,6 +275,10 @@ function operationRank(
   return `${semanticRank}:${positionRank}:${operation.blockId}:${operation.targetBlockId}`;
 }
 
+function compareRanks(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
 /**
  * Prove that one controlled list item move can reproduce the complete target JSON. Content, marks,
  * checked state and non-list structure must remain byte-for-byte equivalent. When two equivalent
@@ -295,7 +299,15 @@ export function planTiptapListItemMove(
   }
 
   const changedIds = [...base.keys()].filter((id) => descriptorChanged(base.get(id)!, next.get(id)!));
-  if (changedIds.length === 0 || changedIds.length > 8) return null;
+  if (changedIds.length === 0) return null;
+  const candidateSourceIds = changedIds.filter((id) => {
+    const before = base.get(id)!;
+    const after = next.get(id)!;
+    return before.parentItemId !== after.parentItemId
+      || before.previousId !== after.previousId
+      || before.nextId !== after.nextId;
+  });
+  if (candidateSourceIds.length === 0 || candidateSourceIds.length > 16) return null;
 
   const candidates = new Map<string, ListMoveOperation>();
   const add = (operation: ListMoveOperation) => {
@@ -303,7 +315,7 @@ export function planTiptapListItemMove(
     candidates.set(JSON.stringify(operation), operation);
   };
 
-  for (const blockId of changedIds) {
+  for (const blockId of candidateSourceIds) {
     const before = base.get(blockId)!;
     const after = next.get(blockId)!;
     if (after.parentItemId && after.depth === before.depth + 1) {
@@ -328,6 +340,9 @@ export function planTiptapListItemMove(
       matches.push(operation);
     }
   }
-  matches.sort((left, right) => operationRank(left, base, next).localeCompare(operationRank(right, base, next)));
+  matches.sort((left, right) => compareRanks(
+    operationRank(left, base, next),
+    operationRank(right, base, next),
+  ));
   return matches[0] || null;
 }
