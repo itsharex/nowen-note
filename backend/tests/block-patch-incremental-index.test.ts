@@ -70,7 +70,8 @@ async function patch(noteId: string, body: unknown) {
 
 function indexRow(noteId: string, blockId: string) {
   return db.prepare(`
-    SELECT blockId, blockType, plainText, contentHash, path, blockOrder, createdAt, updatedAt
+    SELECT blockId, blockType, parentBlockId, plainText, contentHash,
+           path, blockOrder, createdAt, updatedAt
     FROM note_blocks_index
     WHERE noteId = ? AND blockId = ?
   `).get(noteId, blockId) as Record<string, unknown> | undefined;
@@ -165,6 +166,71 @@ test("updates only the affected Block row and source-Block links", async () => {
     ORDER BY targetNoteId
   `).all(noteId, changedBlockId) as Array<{ targetNoteId: string }>;
   assert.deepEqual(changedLinks.map((row) => row.targetNoteId), [secondTarget]);
+});
+
+test("refreshes indexed ancestors but preserves unrelated rows for nested leaf edits", async () => {
+  const noteId = "66666666-6666-4666-8666-666666666666";
+  const itemBlockId = "blk_itemnest";
+  const nestedBlockId = "blk_paranest";
+  const unrelatedBlockId = "blk_unrelated";
+  insertNote(noteId, tiptap(
+    {
+      type: "bulletList",
+      content: [{
+        type: "listItem",
+        attrs: { blockId: itemBlockId },
+        content: [paragraph(nestedBlockId, "Nested before")],
+      }],
+    },
+    paragraph(unrelatedBlockId, "Unrelated"),
+  ));
+
+  const sentinel = "2002-02-02 00:00:00";
+  db.prepare(`
+    UPDATE note_blocks_index SET updatedAt = ?
+    WHERE noteId = ? AND blockId = ?
+  `).run(sentinel, noteId, unrelatedBlockId);
+
+  const response = await patch(noteId, {
+    expectedNoteVersion: 1,
+    operationId: "block-patch-incremental-index-nested",
+    operations: [{ type: "update", blockId: nestedBlockId, text: "Nested after" }],
+  });
+
+  assert.equal(response.status, 200);
+  const payload = await response.json() as any;
+  assert.equal(payload.indexUpdateMode, "incremental");
+  assert.deepEqual(payload.indexedBlockIds, [itemBlockId, nestedBlockId]);
+  assert.equal(indexRow(noteId, itemBlockId)?.plainText, "Nested after");
+  assert.equal(indexRow(noteId, nestedBlockId)?.plainText, "Nested after");
+  assert.equal(indexRow(noteId, nestedBlockId)?.parentBlockId, itemBlockId);
+  assert.equal(indexRow(noteId, unrelatedBlockId)?.updatedAt, sentinel);
+});
+
+test("updates a top-level block type incrementally", async () => {
+  const noteId = "77777777-7777-4777-8777-777777777777";
+  const blockId = "blk_convert0";
+  insertNote(noteId, tiptap(paragraph(blockId, "Convertible")));
+
+  const response = await patch(noteId, {
+    expectedNoteVersion: 1,
+    operationId: "block-patch-incremental-index-convert",
+    operations: [{
+      type: "replace",
+      blockId,
+      node: {
+        type: "heading",
+        attrs: { blockId, level: 3, textAlign: null, lineHeight: null },
+        content: [{ type: "text", text: "Convertible" }],
+      },
+    }],
+  });
+
+  assert.equal(response.status, 200);
+  const payload = await response.json() as any;
+  assert.equal(payload.indexUpdateMode, "incremental");
+  assert.deepEqual(payload.indexedBlockIds, [blockId]);
+  assert.equal(indexRow(noteId, blockId)?.blockType, "heading");
 });
 
 test("falls back to a full rebuild when the existing index is stale", async () => {
