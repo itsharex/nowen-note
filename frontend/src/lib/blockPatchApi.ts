@@ -9,14 +9,33 @@ export type BlockPatchBlockType =
   | "blockquote"
   | "codeBlock";
 
+export interface BlockPatchListItemNode {
+  type: "listItem" | "taskItem";
+  attrs: {
+    blockId: string;
+    checked?: boolean;
+  };
+  content: [TiptapPatchJsonNode];
+}
+
 export type BlockPatchOperation =
   | {
       type: "create";
+      scope?: undefined;
       clientId?: string;
       blockId?: string;
       blockType?: BlockPatchBlockType;
       text?: string;
       afterBlockId?: string;
+    }
+  | {
+      type: "create";
+      scope: "listItem";
+      clientId?: string;
+      blockId: string;
+      targetBlockId: string;
+      position: "before" | "after";
+      node: BlockPatchListItemNode;
     }
   | {
       type: "update";
@@ -30,6 +49,12 @@ export type BlockPatchOperation =
     }
   | {
       type: "delete";
+      scope?: undefined;
+      blockId: string;
+    }
+  | {
+      type: "delete";
+      scope: "listItem";
       blockId: string;
     }
   | {
@@ -88,8 +113,14 @@ export interface BlockPatchResult {
   blocks: BlockPatchIndexRow[];
   /** Whether the server updated a proven-safe subset or rebuilt every note index row. */
   indexUpdateMode: "incremental" | "full";
-  /** Distinguishes leaf, top-level structural, mixed, list-subtree updates and full fallback. */
-  indexUpdateKind: "leaf" | "structural" | "mixed" | "list-subtree" | "full";
+  /** Distinguishes leaf, top-level, list-subtree/list-structural updates and full fallback. */
+  indexUpdateKind:
+    | "leaf"
+    | "structural"
+    | "mixed"
+    | "list-subtree"
+    | "list-structural"
+    | "full";
   /** Block IDs inserted, updated or deleted by index synchronization. */
   indexedBlockIds: string[];
   contentChangedByNormalization: boolean;
