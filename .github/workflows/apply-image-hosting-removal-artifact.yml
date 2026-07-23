@@ -1,0 +1,67 @@
+name: Apply verified image hosting removal
+
+on:
+  pull_request:
+    types: [synchronize]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.ref == 'chore/remove-third-party-image-hosting-trigger'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download verified removal bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 29978513571 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name verified-image-hosting-removal \
+            --dir /tmp/verified-removal
+
+      - name: Apply verified non-workflow files
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r path; do
+            case "$path" in
+              .github/workflows/*) continue ;;
+            esac
+            source="/tmp/verified-removal/$path"
+            [ -f "$source" ] || continue
+            mkdir -p "$(dirname "$path")"
+            cp "$source" "$path"
+          done <<'EOF'
+          frontend/src/components/SettingsModal.tsx
+          frontend/src/lib/api.impl.ts
+          frontend/src/i18n/locales/zh-CN.json
+          frontend/src/i18n/locales/en.json
+          backend/src/index.ts
+          backend/src/services/calendar-export.ts
+          README.md
+          README.en.md
+          .env.example
+          docs/tutorials/quick-start.md
+          EOF
+
+          while IFS= read -r path; do
+            case "$path" in
+              .github/workflows/*) continue ;;
+            esac
+            rm -f "$path"
+          done < /tmp/verified-removal/deletions.txt
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor(attachments): remove third-party image hosting"
+          git push --force origin HEAD:refs/heads/chore/remove-third-party-image-hosting-result
