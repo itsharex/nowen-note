@@ -24,11 +24,13 @@ on:
       - "frontend/src/lib/tiptapBlockPatchNode.ts"
       - "frontend/src/lib/tiptapBlockPatchPlanner.ts"
       - "frontend/src/lib/tiptapBlockPatchRuntime.ts"
+      - "frontend/src/lib/tiptapEmptyBlockIdentityDispatch.ts"
       - "frontend/src/lib/__tests__/blockPatchApi.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchPlanner.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchPlannerV2.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchEmptyDocument.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchRuntime.test.ts"
+      - "frontend/src/lib/__tests__/tiptapEmptyBlockIdentityDispatch.test.ts"
       - "docs/block-patch-api.md"
       - "docs/block-patch-empty-document.md"
       - ".github/workflows/block-patch-ci.yml"
@@ -54,11 +56,13 @@ on:
       - "frontend/src/lib/tiptapBlockPatchNode.ts"
       - "frontend/src/lib/tiptapBlockPatchPlanner.ts"
       - "frontend/src/lib/tiptapBlockPatchRuntime.ts"
+      - "frontend/src/lib/tiptapEmptyBlockIdentityDispatch.ts"
       - "frontend/src/lib/__tests__/blockPatchApi.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchPlanner.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchPlannerV2.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchEmptyDocument.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchRuntime.test.ts"
+      - "frontend/src/lib/__tests__/tiptapEmptyBlockIdentityDispatch.test.ts"
       - "docs/block-patch-api.md"
       - "docs/block-patch-empty-document.md"
       - ".github/workflows/block-patch-ci.yml"
@@ -115,6 +119,7 @@ jobs:
           src/lib/__tests__/tiptapBlockPatchPlannerV2.test.ts
           src/lib/__tests__/tiptapBlockPatchEmptyDocument.test.ts
           src/lib/__tests__/tiptapBlockPatchRuntime.test.ts
+          src/lib/__tests__/tiptapEmptyBlockIdentityDispatch.test.ts
           src/components/__tests__/TiptapBlockPatchRuntime.test.tsx
           src/components/__tests__/TiptapBlockPatchRuntimeV2.test.tsx
           src/components/__tests__/TiptapBlockPatchEmptyDocument.test.tsx
