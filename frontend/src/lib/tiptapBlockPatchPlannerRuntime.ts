@@ -4,6 +4,10 @@ import {
   type TiptapBlockPatchPlan as BaseTiptapBlockPatchPlan,
 } from "@/lib/tiptapBlockPatchPlanner";
 import { planTiptapListItemMove } from "@/lib/tiptapListItemMovePlanner";
+import {
+  listItemStructureOperationForPatch,
+  planTiptapListItemStructure,
+} from "@/lib/tiptapListItemStructurePlanner";
 
 interface JsonNode {
   type?: string;
@@ -15,7 +19,7 @@ interface JsonNode {
 
 export type TiptapBlockPatchPlan = BaseTiptapBlockPatchPlan | {
   operations: BlockPatchOperation[];
-  kind: "list-hierarchy";
+  kind: "list-hierarchy" | "list-structure";
   affectedBlockIds: string[];
 };
 
@@ -29,7 +33,7 @@ function parseDocument(content: string): JsonNode | null {
   }
 }
 
-/** Combine the established planner with the fail-closed single list hierarchy move planner. */
+/** Combine the established planner with fail-closed list structure and hierarchy planners. */
 export function planTiptapBlockPatch(
   baseContent: string,
   nextContent: string,
@@ -40,6 +44,23 @@ export function planTiptapBlockPatch(
   const baseDoc = parseDocument(baseContent);
   const nextDoc = parseDocument(nextContent);
   if (!baseDoc || !nextDoc) return null;
+
+  const structure = planTiptapListItemStructure(baseDoc, nextDoc);
+  if (structure) {
+    const paragraphId = structure.type === "create"
+      ? structure.node.content[0].attrs.blockId as string
+      : null;
+    return {
+      operations: [listItemStructureOperationForPatch(structure)],
+      kind: "list-structure",
+      affectedBlockIds: [...new Set([
+        structure.blockId,
+        ...(paragraphId ? [paragraphId] : []),
+        ...(structure.type === "create" ? [structure.targetBlockId] : []),
+      ])],
+    };
+  }
+
   const operation = planTiptapListItemMove(baseDoc, nextDoc);
   if (!operation) return null;
   return {
