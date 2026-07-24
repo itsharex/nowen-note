@@ -10,6 +10,7 @@ import {
 import {
   downloadRoundTripPermissionPackage,
   requestRoundTripPermissionExport,
+  resolveRoundTripExportWorkspaceFromUi,
   resolveRoundTripPermissionExport,
   roundTripPermissionExportTestUtils,
   subscribeRoundTripPermissionExports,
@@ -55,6 +56,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   roundTripPermissionReviewTestUtils.reset();
   roundTripPermissionExportTestUtils.reset();
+  document.body.innerHTML = "";
 });
 
 describe("round-trip permission transfer UI bridge", () => {
@@ -117,6 +119,24 @@ describe("round-trip permission transfer UI bridge", () => {
     const body = init?.body as FormData;
     expect(body.get("applyPermissions")).toBe("true");
     expect(body.get("permissionMappings")).toBe(JSON.stringify({ "source-a": "target-a" }));
+  });
+
+  it("uses DataManager's explicit personal or workspace scope", () => {
+    document.body.innerHTML = `
+      <div>
+        <div role="tablist" aria-label="data scope">
+          <button role="tab" aria-selected="false">Personal</button>
+          <button role="tab" aria-selected="true">Workspace</button>
+          <button role="tab" aria-selected="false">System</button>
+        </div>
+        <select><option value="workspace-a">A</option><option selected value="workspace-b">B</option></select>
+      </div>
+    `;
+    expect(resolveRoundTripExportWorkspaceFromUi("sidebar-workspace")).toBe("workspace-b");
+    const tabs = document.querySelectorAll('[role="tab"]');
+    tabs[0].setAttribute("aria-selected", "true");
+    tabs[1].setAttribute("aria-selected", "false");
+    expect(resolveRoundTripExportWorkspaceFromUi("sidebar-workspace")).toBe("personal");
   });
 
   it("keeps permission export opt-in and forwards the explicit decision", async () => {
