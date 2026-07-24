@@ -14,6 +14,7 @@ on:
       - "backend/src/db/postgres/migrations/0054-roundtrip-import-batches.sql"
       - "backend/tests/roundtrip-permission-transfer-v2.test.ts"
       - "backend/tests/roundtrip-permission-postgres-schema.test.ts"
+      - "backend/tests/roundtrip-permission-undo-authorization.test.ts"
       - "frontend/src/components/RoundTripPermissionMappingPanel.tsx"
       - "frontend/src/components/RoundTripPermissionMappingCenter.tsx"
       - "frontend/src/components/RoundTripPermissionExportCenter.tsx"
@@ -36,6 +37,7 @@ on:
       - "backend/src/db/postgres/migrations/0054-roundtrip-import-batches.sql"
       - "backend/tests/roundtrip-permission-transfer-v2.test.ts"
       - "backend/tests/roundtrip-permission-postgres-schema.test.ts"
+      - "backend/tests/roundtrip-permission-undo-authorization.test.ts"
       - "frontend/src/components/RoundTripPermissionMappingPanel.tsx"
       - "frontend/src/components/RoundTripPermissionMappingCenter.tsx"
       - "frontend/src/components/RoundTripPermissionExportCenter.tsx"
@@ -71,6 +73,7 @@ jobs:
           set -o pipefail; node --import tsx --import ./tests/setup-db-isolation.ts --test
           tests/roundtrip-permission-transfer-v2.test.ts
           tests/roundtrip-permission-postgres-schema.test.ts
+          tests/roundtrip-permission-undo-authorization.test.ts
           2>&1 | tee ../ci-logs/backend-tests.log
       - name: Backend typecheck
         if: always()
