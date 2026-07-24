@@ -10,7 +10,9 @@ on:
       - "backend/src/services/roundTripPermissionMapping.ts"
       - "backend/src/services/roundTripPermissionTransfer.ts"
       - "backend/src/services/roundTripImportPermissionUndo.ts"
+      - "backend/src/db/postgres/schema.base.sql"
       - "backend/tests/roundtrip-permission-transfer-v2.test.ts"
+      - "backend/tests/roundtrip-permission-postgres-schema.test.ts"
       - "frontend/src/components/RoundTripPermissionMappingPanel.tsx"
       - "frontend/src/components/RoundTripPermissionMappingCenter.tsx"
       - "frontend/src/components/RoundTripPermissionExportCenter.tsx"
@@ -28,7 +30,9 @@ on:
       - "backend/src/services/roundTripPermissionMapping.ts"
       - "backend/src/services/roundTripPermissionTransfer.ts"
       - "backend/src/services/roundTripImportPermissionUndo.ts"
+      - "backend/src/db/postgres/schema.base.sql"
       - "backend/tests/roundtrip-permission-transfer-v2.test.ts"
+      - "backend/tests/roundtrip-permission-postgres-schema.test.ts"
       - "frontend/src/components/RoundTripPermissionMappingPanel.tsx"
       - "frontend/src/components/RoundTripPermissionMappingCenter.tsx"
       - "frontend/src/components/RoundTripPermissionExportCenter.tsx"
@@ -58,8 +62,12 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
       - run: mkdir -p ../ci-logs
-      - name: Permission manifest, mapping and undo tests
-        run: set -o pipefail; node --import tsx --import ./tests/setup-db-isolation.ts --test tests/roundtrip-permission-transfer-v2.test.ts 2>&1 | tee ../ci-logs/backend-tests.log
+      - name: Permission manifest, mapping, undo and PostgreSQL schema tests
+        run: >-
+          set -o pipefail; node --import tsx --import ./tests/setup-db-isolation.ts --test
+          tests/roundtrip-permission-transfer-v2.test.ts
+          tests/roundtrip-permission-postgres-schema.test.ts
+          2>&1 | tee ../ci-logs/backend-tests.log
       - name: Backend typecheck
         if: always()
         run: set -o pipefail; npm run build:tsc 2>&1 | tee ../ci-logs/backend-typecheck.log
