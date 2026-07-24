@@ -1,7 +1,7 @@
 /**
- * Block 权威存储只读 Repository。
+ * Block 权威存储 Repository。
  *
- * 保持现有同步 store 不变，仅为 SQLite/PostgreSQL 共用查询提供 async 边界。
+ * 保持现有同步 store 不变，为 SQLite/PostgreSQL 共用查询和原子替换提供 async 边界。
  */
 import { getDb } from "../db/schema";
 import { SqliteAdapter } from "../db/adapters";
@@ -51,6 +51,20 @@ export interface BlockAuthorityOperationRow {
   createdAt: string;
 }
 
+export interface BlockAuthorityAttachmentRefRow {
+  noteId: string;
+  blockId: string;
+  attachmentId: string;
+  createdAt: string;
+}
+
+export interface BlockAuthorityWriteState {
+  document: BlockAuthorityDocumentRow;
+  records: BlockAuthorityRecordRow[];
+  attachmentRefs: BlockAuthorityAttachmentRefRow[];
+  operation?: BlockAuthorityOperationRow;
+}
+
 function getAdapter(): DatabaseAdapter {
   return new SqliteAdapter(getDb());
 }
@@ -64,18 +78,18 @@ export function createBlockAuthorityRepository(adapter?: DatabaseAdapter) {
   return {
     async getDocument(noteId: string): Promise<BlockAuthorityDocumentRow | undefined> {
       return resolveAdapter().queryOne<BlockAuthorityDocumentRow>(`
-        SELECT noteId, contentFormat, noteVersion, blockVersion, structureVersion,
-               snapshotHash, materializedHash, snapshotContent, rootOrderJson,
-               status, mismatchReason, createdAt, updatedAt
-        FROM note_block_documents WHERE noteId = ?
+        SELECT "noteId", "contentFormat", "noteVersion", "blockVersion", "structureVersion",
+               "snapshotHash", "materializedHash", "snapshotContent", "rootOrderJson",
+               status, "mismatchReason", "createdAt", "updatedAt"
+        FROM note_block_documents WHERE "noteId" = ?
       `, [noteId]);
     },
 
     async listRecords(noteId: string): Promise<BlockAuthorityRecordRow[]> {
       return resolveAdapter().queryMany<BlockAuthorityRecordRow>(`
-        SELECT noteId, blockId, parentBlockId, blockType, blockOrder, path, version,
-               payload, payloadHash, plainText, contentHash, createdAt, updatedAt
-        FROM note_block_records WHERE noteId = ? ORDER BY blockOrder
+        SELECT "noteId", "blockId", "parentBlockId", "blockType", "blockOrder", path, version,
+               payload, "payloadHash", "plainText", "contentHash", "createdAt", "updatedAt"
+        FROM note_block_records WHERE "noteId" = ? ORDER BY "blockOrder"
       `, [noteId]);
     },
 
@@ -88,13 +102,102 @@ export function createBlockAuthorityRepository(adapter?: DatabaseAdapter) {
       const limit = Math.max(1, Math.min(100, requestedLimit));
       const offset = Math.max(0, requestedOffset);
       return resolveAdapter().queryMany<BlockAuthorityOperationRow>(`
-        SELECT id, noteId, operationId, operationType, noteVersion, blockVersion,
-               structureVersion, operationJson, createdAt
+        SELECT id, "noteId", "operationId", "operationType", "noteVersion", "blockVersion",
+               "structureVersion", "operationJson", "createdAt"
         FROM note_block_operations
-        WHERE noteId = ?
-        ORDER BY createdAt DESC, id DESC
+        WHERE "noteId" = ?
+        ORDER BY "createdAt" DESC, id DESC
         LIMIT ? OFFSET ?
       `, [noteId, limit, offset]);
+    },
+
+    async replaceAuthorityState(state: BlockAuthorityWriteState): Promise<{ changes: number }> {
+      const statements: Array<{ sql: string; params?: unknown[] }> = [
+        {
+          sql: `DELETE FROM note_block_attachment_refs WHERE "noteId" = ?`,
+          params: [state.document.noteId],
+        },
+        {
+          sql: `DELETE FROM note_block_records WHERE "noteId" = ?`,
+          params: [state.document.noteId],
+        },
+      ];
+
+      for (const record of state.records) {
+        statements.push({
+          sql: `
+            INSERT INTO note_block_records (
+              "noteId", "blockId", "parentBlockId", "blockType", "blockOrder", path, version,
+              payload, "payloadHash", "plainText", "contentHash", "createdAt", "updatedAt"
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          params: [
+            record.noteId, record.blockId, record.parentBlockId, record.blockType,
+            record.blockOrder, record.path, record.version, record.payload, record.payloadHash,
+            record.plainText, record.contentHash, record.createdAt, record.updatedAt,
+          ],
+        });
+      }
+
+      for (const ref of state.attachmentRefs) {
+        statements.push({
+          sql: `
+            INSERT INTO note_block_attachment_refs (
+              "noteId", "blockId", "attachmentId", "createdAt"
+            ) VALUES (?, ?, ?, ?)
+          `,
+          params: [ref.noteId, ref.blockId, ref.attachmentId, ref.createdAt],
+        });
+      }
+
+      const document = state.document;
+      statements.push({
+        sql: `
+          INSERT INTO note_block_documents (
+            "noteId", "contentFormat", "noteVersion", "blockVersion", "structureVersion",
+            "snapshotHash", "materializedHash", "snapshotContent", "rootOrderJson", status,
+            "mismatchReason", "createdAt", "updatedAt"
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT ("noteId") DO UPDATE SET
+            "contentFormat" = excluded."contentFormat",
+            "noteVersion" = excluded."noteVersion",
+            "blockVersion" = excluded."blockVersion",
+            "structureVersion" = excluded."structureVersion",
+            "snapshotHash" = excluded."snapshotHash",
+            "materializedHash" = excluded."materializedHash",
+            "snapshotContent" = excluded."snapshotContent",
+            "rootOrderJson" = excluded."rootOrderJson",
+            status = excluded.status,
+            "mismatchReason" = excluded."mismatchReason",
+            "updatedAt" = excluded."updatedAt"
+        `,
+        params: [
+          document.noteId, document.contentFormat, document.noteVersion, document.blockVersion,
+          document.structureVersion, document.snapshotHash, document.materializedHash,
+          document.snapshotContent, document.rootOrderJson, document.status,
+          document.mismatchReason, document.createdAt, document.updatedAt,
+        ],
+      });
+
+      if (state.operation) {
+        const operation = state.operation;
+        statements.push({
+          sql: `
+            INSERT INTO note_block_operations (
+              id, "noteId", "operationId", "operationType", "noteVersion", "blockVersion",
+              "structureVersion", "operationJson", "createdAt"
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT ("noteId", "operationId") WHERE "operationId" IS NOT NULL DO NOTHING
+          `,
+          params: [
+            operation.id, operation.noteId, operation.operationId, operation.operationType,
+            operation.noteVersion, operation.blockVersion, operation.structureVersion,
+            operation.operationJson, operation.createdAt,
+          ],
+        });
+      }
+
+      return resolveAdapter().executeStatements(statements);
     },
   };
 }

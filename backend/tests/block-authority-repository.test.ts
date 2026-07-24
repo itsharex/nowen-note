@@ -51,3 +51,83 @@ test("block authority repository queries document, records and bounded operation
     assert.doesNotMatch(call.sql, /\$\d+/);
   }
 });
+
+test("replaceAuthorityState uses one ordered cross-database transaction and preserves JSON strings", async () => {
+  const transactions: Array<Array<{ sql: string; params?: unknown[] }>> = [];
+  const adapter: DatabaseAdapter = {
+    async queryOne() { return undefined; },
+    async queryMany() { return []; },
+    async execute() { throw new Error("原子替换不应执行独立写入"); },
+    async executeBatch() { throw new Error("原子替换不应拆分批量写入"); },
+    async executeStatements(statements) {
+      transactions.push(statements);
+      return { changes: statements.length };
+    },
+  };
+  const { createBlockAuthorityRepository } = await import("../src/repositories/blockAuthorityRepository");
+  const repository = createBlockAuthorityRepository(adapter);
+  const timestamp = "2026-07-24T10:00:00.000Z";
+
+  await repository.replaceAuthorityState({
+    document: {
+      noteId: "repo-note",
+      contentFormat: "tiptap-json",
+      noteVersion: 2,
+      blockVersion: 3,
+      structureVersion: 4,
+      snapshotHash: "snapshot-hash",
+      materializedHash: "materialized-hash",
+      snapshotContent: "{\"type\":\"doc\"}",
+      rootOrderJson: "[\"blk_repo\"]",
+      status: "healthy",
+      mismatchReason: null,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+    records: [{
+      noteId: "repo-note",
+      blockId: "blk_repo",
+      parentBlockId: null,
+      blockType: "paragraph",
+      blockOrder: 0,
+      path: "0",
+      version: 3,
+      payload: "{\"type\":\"paragraph\"}",
+      payloadHash: "payload-hash",
+      plainText: "正文",
+      contentHash: "content-hash",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }],
+    attachmentRefs: [{
+      noteId: "repo-note",
+      blockId: "blk_repo",
+      attachmentId: "attachment-1",
+      createdAt: timestamp,
+    }],
+    operation: {
+      id: "operation-row-1",
+      noteId: "repo-note",
+      operationId: "client-operation-1",
+      operationType: "whole-save",
+      noteVersion: 2,
+      blockVersion: 3,
+      structureVersion: 4,
+      operationJson: "{\"kind\":\"replace\"}",
+      createdAt: timestamp,
+    },
+  });
+
+  assert.equal(transactions.length, 1);
+  assert.deepEqual(
+    transactions[0].map((statement) => statement.sql.match(/^\s*(DELETE|INSERT)/)?.[1]),
+    ["DELETE", "DELETE", "INSERT", "INSERT", "INSERT", "INSERT"],
+  );
+  assert.match(transactions[0][0].sql, /note_block_attachment_refs/);
+  assert.match(transactions[0][1].sql, /note_block_records/);
+  assert.match(transactions[0][4].sql, /ON CONFLICT\s*\(\s*"noteId"\s*\)\s*DO UPDATE/i);
+  assert.match(transactions[0][5].sql, /ON CONFLICT\s*\(\s*"noteId"\s*,\s*"operationId"\s*\)[\s\S]*DO NOTHING/i);
+  assert.equal(typeof transactions[0][2].params?.[7], "string");
+  assert.equal(typeof transactions[0][4].params?.[8], "string");
+  assert.equal(typeof transactions[0][5].params?.[7], "string");
+});
