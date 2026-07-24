@@ -32,6 +32,10 @@ test("persists stable section GUIDs and restores a lossless Tiptap snapshot", as
     VALUES ('ys-note', 'ys-user', 'ys-book', 'note', ?, '', 'tiptap-json')`).run(content);
   const first = service.rebuildYjsSubdocuments(db, "ys-note", content, 10);
   assert.equal(first.sections.length, 2);
+  assert.deepEqual(
+    db.prepare("SELECT generation, structureVersion FROM note_y_subdocument_manifests WHERE noteId = 'ys-note'").get(),
+    { generation: 1, structureVersion: 1 },
+  );
   assert.equal(service.readYjsSubdocumentBundle(db, "ys-note", content).content, content);
   const changed = content.replace("one", "changed");
   db.prepare("UPDATE notes SET content = ? WHERE id = 'ys-note'").run(changed);

@@ -89,6 +89,8 @@ export function ensureYjsSubdocumentTables(db: Database.Database): void {
       rootSnapshot BLOB NOT NULL,
       contentHash TEXT NOT NULL,
       sectionCount INTEGER NOT NULL,
+      generation INTEGER NOT NULL DEFAULT 1,
+      structureVersion INTEGER NOT NULL DEFAULT 1,
       status TEXT NOT NULL DEFAULT 'healthy',
       mismatchReason TEXT,
       updatedAt TEXT NOT NULL DEFAULT (datetime('now')),

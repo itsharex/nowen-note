@@ -17,6 +17,7 @@ import { roundTripImportBatchesMigration } from "./roundtripImportBatchesMigrati
 import { blockAuthorityMigration } from "./blockAuthorityMigration.js";
 import { yjsSubdocumentsMigration } from "./yjsSubdocumentsMigration.js";
 import { blockAuthorityStaleGuardMigration } from "./blockAuthorityStaleGuardMigration.js";
+import { yjsSubdocumentGenerationMigration } from "./yjsSubdocumentGenerationMigration.js";
 
 export type { Migration } from "./migrations.impl.js";
 
@@ -266,6 +267,7 @@ export const MIGRATIONS: Migration[] = [
   blockAuthorityMigration,
   yjsSubdocumentsMigration,
   blockAuthorityStaleGuardMigration,
+  yjsSubdocumentGenerationMigration,
 ].sort((a, b) => a.version - b.version);
 
 export const CURRENT_SCHEMA_VERSION: number = MIGRATIONS.reduce(

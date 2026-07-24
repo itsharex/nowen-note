@@ -925,6 +925,8 @@ CREATE TABLE IF NOT EXISTS note_y_subdocument_manifests (
     "rootSnapshot" BYTEA NOT NULL,
     "contentHash" TEXT NOT NULL,
     "sectionCount" INTEGER NOT NULL,
+    generation INTEGER NOT NULL DEFAULT 1,
+    "structureVersion" INTEGER NOT NULL DEFAULT 1,
     status TEXT NOT NULL DEFAULT 'healthy',
     "mismatchReason" TEXT,
     "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
