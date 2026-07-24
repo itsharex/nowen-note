@@ -34,8 +34,12 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Build and test SDK
-        run: npm test
+      - name: Build SDK
+        run: npm run build
+      - name: Run existing SDK tests
+        run: node --test tests/attachments.test.mjs
+      - name: Run Markdown note contract tests
+        run: node --test tests/markdown-notes.test.mjs
       - name: Validate Markdown API documentation
         working-directory: .
         run: |
