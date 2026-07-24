@@ -54,6 +54,9 @@ import { installNodeViewMutationGuard } from "./lib/nodeViewMutationGuard";
 import { installEditorMediaScopeGuard } from "./lib/editorMediaScopeGuard";
 import { installRoundTripImportReviewBridge } from "./lib/roundTripImportReview";
 import { installEditorPerformanceGlobal } from "./lib/editorPerformanceHarness";
+import { cleanupRemovedServerProfiles } from "./lib/removedServerProfileCleanup";
+
+void cleanupRemovedServerProfiles();
 
 function removeBootSplash() {
   try {
