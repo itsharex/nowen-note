@@ -43,7 +43,7 @@ export function evaluateEditorPerformanceBudget(
   if (p50 > budget.p50) failures.push(`input p50 ${p50}ms exceeds ${budget.p50}ms`);
   if (p95 > budget.p95) failures.push(`input p95 ${p95}ms exceeds ${budget.p95}ms`);
   if (longestTask > 200) failures.push(`longest task ${longestTask}ms exceeds 200ms`);
-  if (heapGrowthBytes > heapAllowance) failures.push("heap growth exceeds 20% or 64 MiB allowance");
+  if (heapGrowthBytes > heapAllowance) failures.push("heap growth exceeds max(64 MiB, 20% of baseline) allowance");
   if ((sample.activeWorkersAfterClose || 0) > 0) failures.push("workers remain active after note close");
   if ((sample.activeMediaRequestsAfterClose || 0) > 0) failures.push("media requests remain active after note close");
 

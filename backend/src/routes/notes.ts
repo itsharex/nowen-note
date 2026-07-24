@@ -16,9 +16,11 @@ import { deleteAttachmentFilesByNoteIds, extractInlineBase64Images } from "./att
 import { syncReferences as syncAttachmentReferences } from "../lib/attachmentRefs";
 import { syncNoteLinks, getBacklinks } from "../lib/noteLinks";
 import { syncNoteBlocks } from "../lib/noteBlocks";
+import { readAuthoritativeNoteContent, rebuildBlockAuthorityStore } from "../lib/blockAuthorityStore";
 import { extractSearchableText } from "../lib/searchIndex";
 import { syncAutomaticNoteLinkTitles } from "../lib/noteLinkTitles";
 import { noteLinksRepository, noteTagsRepository, noteVersionsRepository, favoritesRepository, noteYsnapshotsRepository, noteYupdatesRepository } from "../repositories";
+import { rebuildYjsSubdocumentsIfEnabled } from "../services/yjs-subdocuments";
 import { reclaimSpace } from "../lib/reclaimSpace";
 import { buildFtsSearchTerm } from "../lib/searchQuery";
 
@@ -359,8 +361,33 @@ app.get("/:id", (c) => {
        isArchived, isTrashed, version, sortOrder, createdAt, updatedAt, trashedAt, contentFormat`
     : `id, userId, notebookId, workspaceId, title, content, contentText, isPinned, ${favExpr},
        isLocked, isArchived, isTrashed, version, sortOrder, createdAt, updatedAt, trashedAt, contentFormat`;
-  const note = db.prepare(`SELECT ${selectCols} FROM notes WHERE id = ?`).get(userId, id);
+  const note = db.prepare(`SELECT ${selectCols} FROM notes WHERE id = ?`).get(userId, id) as any;
   if (!note) return c.json({ error: "Note not found" }, 404);
+
+  if (!slim && typeof note.content === "string") {
+    const authoritative = readAuthoritativeNoteContent(db, id, note.content);
+    note.content = authoritative.content;
+    note.blockAuthority = { source: authoritative.source, status: authoritative.status };
+    if (authoritative.source === "notes" && ["tiptap-json", "markdown"].includes(note.contentFormat)) {
+      try {
+        const synced = syncNoteBlocks(db, id, note.content, note.contentFormat);
+        if (synced.changed) {
+          db.prepare("UPDATE notes SET content = ?, contentText = ? WHERE id = ?")
+            .run(synced.content, synced.contentText, id);
+          note.content = synced.content;
+          note.contentText = synced.contentText;
+        }
+        rebuildBlockAuthorityStore(db, id, note.content, note.contentFormat, {
+          noteVersion: note.version,
+          operationType: "read-repair",
+        });
+        rebuildYjsSubdocumentsIfEnabled(db, id, note.content, note.contentFormat);
+        note.blockAuthority.repaired = true;
+      } catch (error) {
+        console.warn("[notes.get] block authority read repair failed:", error instanceof Error ? error.message : error);
+      }
+    }
+  }
 
   const tags = noteTagsRepository.listTagsByNoteId(id);
 
@@ -471,6 +498,13 @@ app.post("/", async (c) => {
         .run(synced.content, synced.contentText, id);
       normalizedLinkContent = synced.content;
       finalContent = synced.content;
+      if (["tiptap-json", "markdown"].includes(stored.contentFormat || "tiptap-json")) {
+        rebuildBlockAuthorityStore(db, id, synced.content, stored.contentFormat || "tiptap-json", {
+          noteVersion: 1,
+          operationType: "create",
+        });
+        rebuildYjsSubdocumentsIfEnabled(db, id, synced.content, stored.contentFormat || "tiptap-json");
+      }
     }
   } catch (e) {
     console.warn("[notes.post] syncNoteBlocks failed:", e instanceof Error ? e.message : e);
@@ -840,8 +874,8 @@ app.put("/:id", async (c) => {
   if (body.content !== undefined && typeof body.content === "string") {
     let normalizedLinkContent = body.content;
     try {
-      const stored = db.prepare("SELECT content, contentFormat FROM notes WHERE id = ?").get(id) as
-        | { content: string; contentFormat: string }
+      const stored = db.prepare("SELECT content, contentFormat, version FROM notes WHERE id = ?").get(id) as
+        | { content: string; contentFormat: string; version: number }
         | undefined;
       if (stored) {
         const synced = syncNoteBlocks(db, id, stored.content || "", stored.contentFormat || "tiptap-json");
@@ -850,6 +884,13 @@ app.put("/:id", async (c) => {
         normalizedLinkContent = synced.content;
         body.content = synced.content;
         body.contentText = synced.contentText;
+        if (["tiptap-json", "markdown"].includes(stored.contentFormat || "tiptap-json")) {
+          rebuildBlockAuthorityStore(db, id, synced.content, stored.contentFormat || "tiptap-json", {
+            noteVersion: stored.version,
+            operationType: "whole-save",
+          });
+          rebuildYjsSubdocumentsIfEnabled(db, id, synced.content, stored.contentFormat || "tiptap-json");
+        }
       }
     } catch (e) {
       console.warn("[notes.put] syncNoteBlocks failed:", e instanceof Error ? e.message : e);

@@ -788,8 +788,8 @@ const IndentExtension = Extension.create({
  *   - TipTap JSON 中保存 attrs.blockId
  *
  * 限制：
- *   - 第一版处理 heading / paragraph / listItem / taskItem / blockquote / codeBlock
- *   - table / image / media 暂不纳入块身份模型
+ *   - 处理 heading / paragraph / listItem / taskItem / blockquote / codeBlock / table
+ *   - 顶层 video / blockEmbed / mathBlock 使用独立块身份；inline image 归属父段落
  */
 const BlockIdExtension = Extension.create({
   name: "blockId",
@@ -797,7 +797,7 @@ const BlockIdExtension = Extension.create({
   addGlobalAttributes() {
     return [
       {
-        types: ["heading", "paragraph", "listItem", "taskItem", "blockquote", "codeBlock"],
+        types: ["heading", "paragraph", "listItem", "taskItem", "blockquote", "codeBlock", "table", "video", "blockEmbed", "mathBlock"],
         attributes: {
           blockId: {
             default: null,
@@ -838,7 +838,7 @@ const BlockIdExtension = Extension.create({
           };
 
           // 扫描所有受支持块节点
-          const supportedBlockTypes = new Set(["heading", "paragraph", "listItem", "taskItem", "blockquote", "codeBlock"]);
+          const supportedBlockTypes = new Set(["heading", "paragraph", "listItem", "taskItem", "blockquote", "codeBlock", "table", "video", "blockEmbed", "mathBlock"]);
           newState.doc.descendants((node, pos) => {
             if (!supportedBlockTypes.has(node.type.name)) return;
 
@@ -1521,6 +1521,8 @@ function ColorPopover({ editor, iconSize = 15, compact = false }: ColorPopoverPr
 type TiptapEditorProps = NoteEditorProps & {
   /** Published/read-only embedding: render document content without editor chrome. */
   presentationMode?: boolean;
+  /** M7 章节编辑器：隐藏只应出现一次的标签栏。 */
+  windowedSection?: boolean;
 };
 
 function extractHeadings(editor: any): NoteEditorHeading[] {
@@ -1575,7 +1577,7 @@ const WordStatsDisplay = React.memo(forwardRef<WordStatsHandle, {
 }));
 
 const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function TiptapEditor(
-  { note, onUpdate, onTagsChange, onHeadingsChange, onEditorReady, onOpenNote, editable = true, isGuest = false, presentationMode = false, searchQuery },
+  { note, onUpdate, onTagsChange, onHeadingsChange, onEditorReady, onOpenNote, editable = true, isGuest = false, presentationMode = false, windowedSection = false, searchQuery },
   ref,
 ) {
   const titleRef = useRef<HTMLInputElement>(null);
@@ -5116,7 +5118,7 @@ const TiptapEditor = forwardRef<NoteEditorHandle, TiptapEditorProps>(function Ti
       )}
 
       {/* Tag Bar：访客模式下隐藏（TagInput 依赖 AppProvider + 登录态 API） */}
-      {!isGuest && (
+      {!isGuest && !windowedSection && (
         <div className="px-4 md:px-8 pb-2">
           <TagInput
             noteId={note.id}

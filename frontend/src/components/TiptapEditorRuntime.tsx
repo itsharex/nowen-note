@@ -33,6 +33,7 @@ import { clearDraft, saveDraft } from "@/lib/draftStorage";
 import { useAppActions } from "@/store/AppContext";
 import type { Note } from "@/types";
 import BaseTiptapEditor from "./TiptapEditor";
+import WindowedTiptapEditor, { isTiptapSubdocumentWindowingEnabled } from "./WindowedTiptapEditor";
 
 type RuntimeTiptapEditorProps = NoteEditorProps & {
   presentationMode?: boolean;
@@ -117,6 +118,11 @@ const TiptapEditorRuntime = forwardRef<NoteEditorHandle, RuntimeTiptapEditorProp
     });
     const blockPatchEnabledRef = useRef(blockPatchEnabled);
     blockPatchEnabledRef.current = blockPatchEnabled;
+    const [windowingFallbackNoteId, setWindowingFallbackNoteId] = React.useState<string | null>(null);
+    const windowingEnabled = windowingFallbackNoteId !== props.note.id
+      && runtimeBelongsToNote
+      && decision.mode !== "normal"
+      && isTiptapSubdocumentWindowingEnabled();
 
     useImperativeHandle(ref, () => ({
       flushSave: () => baseRef.current?.flushSave(),
@@ -341,12 +347,25 @@ const TiptapEditorRuntime = forwardRef<NoteEditorHandle, RuntimeTiptapEditorProp
     return (
       <>
         {blockPatchEnabled && <BlockPatchAppActionsBridge target={appActionsRef} />}
-        <BaseTiptapEditor
-          {...props}
-          ref={baseRef}
-          onUpdate={handleUpdate}
-          onHeadingsChange={publishRealtimeOutline ? props.onHeadingsChange : undefined}
-        />
+        {windowingEnabled ? (
+          <WindowedTiptapEditor
+            {...props}
+            ref={baseRef}
+            onUpdate={handleUpdate}
+            onFallback={(reason) => {
+              console.warn("[tiptap-windowing] fallback to monolithic editor", reason);
+              setWindowingFallbackNoteId(props.note.id);
+            }}
+            onHeadingsChange={publishRealtimeOutline ? props.onHeadingsChange : undefined}
+          />
+        ) : (
+          <BaseTiptapEditor
+            {...props}
+            ref={baseRef}
+            onUpdate={handleUpdate}
+            onHeadingsChange={publishRealtimeOutline ? props.onHeadingsChange : undefined}
+          />
+        )}
       </>
     );
   },

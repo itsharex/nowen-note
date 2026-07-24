@@ -1,6 +1,6 @@
 # Block Patch API V2-I
 
-Block Patch applies ordered Tiptap Block mutations as one confirmed transaction. It is the persistence boundary between whole-note saves and the future Block-authoritative storage model.
+Block Patch applies ordered Tiptap or Markdown Block mutations as one confirmed transaction. The same transaction updates the compatibility snapshot, Block-authoritative shadow, indexes and operation history.
 
 ## Endpoint
 
@@ -10,19 +10,24 @@ Authorization: Bearer <token>
 Content-Type: application/json
 ```
 
-Only notes whose `contentFormat` is `tiptap-json` are accepted.
+Notes whose `contentFormat` is `tiptap-json` or `markdown` are accepted. The operation union is selected by the persisted format; clients cannot choose a parser independently.
 
 ## Request envelope
 
 ```json
 {
   "expectedNoteVersion": 7,
+  "expectedStructureVersion": 3,
+  "expectedBlockVersions": { "blk_alpha000": 5 },
   "operationId": "block-patch-550e8400-e29b-41d4-a716-446655440000",
   "operations": []
 }
 ```
 
-- `expectedNoteVersion` is required. A mismatch returns `409 VERSION_CONFLICT` before persistence.
+- `expectedNoteVersion` is required. A mismatch normally returns `409 VERSION_CONFLICT`.
+- A stale note version may still apply a content-only `update`/`replace` when every affected Block has a matching `expectedBlockVersions` entry. This prevents an unrelated Block edit from conflicting.
+- Structural create/delete/move/lift may additionally carry `expectedStructureVersion`; a mismatch returns `409 STRUCTURE_VERSION_CONFLICT`.
+- A relevant content version mismatch returns `409 BLOCK_VERSION_CONFLICT` with the conflicting Block IDs and current versions.
 - `operationId` is a user-level idempotency key, 8–128 characters.
 - An uncertain retry must reuse the same operation ID for the same note.
 - Reusing one operation ID on another note returns `409 OPERATION_ID_CONFLICT`.
@@ -134,9 +139,21 @@ This keeps the existing Block type and attributes while replacing its editable t
 }
 ```
 
-The API does not accept arbitrary ProseMirror JSON. Allowed Block nodes are `paragraph`, `heading` and `codeBlock`; allowed inline nodes are `text` and paragraph/heading `hardBreak`.
+The API does not accept arbitrary ProseMirror JSON. Allowed leaf Block nodes are `paragraph`, `heading` and `codeBlock`; allowed inline nodes are `text` and paragraph/heading `hardBreak`.
 
-Allowed marks include bold, italic, underline, strike, inline code, safe links, highlight and text style. Unknown nodes, marks, attrs, fields, dangerous URL schemes, mismatched Block IDs and oversized replacement nodes return `INVALID_BLOCK_NODE` before persistence.
+Allowed marks include bold, italic, underline, strike, inline code, safe links, highlight and text style. Paragraphs accept the editor's bounded `indent` attribute (`0`–`8`). Unknown nodes, marks, attrs, fields, dangerous URL schemes, mismatched Block IDs and oversized replacement nodes return `INVALID_BLOCK_NODE` before persistence.
+
+The same `replace` protocol accepts an existing top-level `video`, `blockEmbed` or `mathBlock` only when the replacement has the same type and Block ID and passes its attribute/URL/size allowlist. Inline images remain owned by their parent paragraph and are patched by replacing that paragraph. Mermaid remains a `codeBlock` with the `mermaid` language.
+
+## Markdown operations
+
+Markdown Blocks use stable trailing `^blk_*` markers and a content hash. `replace`, `insert`, `delete` and `move` are supported, up to 100 ordered operations. The server parses ranges again, checks every expected hash and replays the complete result before persistence. Ambiguous IDs or boundaries inside fenced code, tables, lists, quotes, raw HTML or reference definitions fail closed; the client then uses the existing whole-document save path.
+
+### Replace one top-level table atomically
+
+`replace` also accepts one existing top-level `table` as an atomic Block. The target and replacement must use the same table `blockId`; table creation, deletion, moving, nesting and conversion to another node type continue through whole-note save.
+
+The accepted shape is `table -> tableRow -> tableCell/tableHeader -> paragraph -> text/hardBreak`. Every level uses an attribute allowlist. Nested paragraph Block IDs must be valid, unique inside the table and conflict-free with Blocks outside the replaced table. A table is limited to 500 rows, 200 cells per row, 10,000 cells total and 256 KB per replacement node. Table replacements always use full Block/link index synchronization inside the same note transaction.
 
 ### Delete a normal Block
 
@@ -207,7 +224,8 @@ Operations are evaluated in request order. Inside one SQLite transaction, the se
 5. Records the pre-edit version using the same five-minute merge window as whole-note save.
 6. Updates `notes.content`, `contentText`, version and timestamp with optimistic locking.
 7. Applies a leaf, structural, mixed, list-subtree, list-structural or full index synchronization plan.
-8. Stores the idempotent authoritative response.
+8. Rebuilds and verifies the Block-authoritative records, per-Block versions, structure version and attachment ownership.
+9. Stores the idempotent authoritative response.
 
 Any failure rolls back the document, indexes, history row and idempotency record. One successful request increments the note version exactly once. Idempotent replay returns the same authoritative content and generated IDs.
 

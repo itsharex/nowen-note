@@ -143,11 +143,17 @@ describe("MarkdownPreview task checkboxes", () => {
     expect(host.textContent).not.toContain("Second");
 
     await act(async () => {
-      callbacks[0]?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+      callbacks[1]?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
     });
     expect(host.textContent).toContain("Second");
     const checkboxes = host.querySelectorAll<HTMLInputElement>("input[type='checkbox']");
     await act(async () => { checkboxes[1].click(); });
     expect(onTaskCheckboxChange).toHaveBeenLastCalledWith(1, true);
+
+    await act(async () => {
+      callbacks[1]?.([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver);
+    });
+    expect(host.textContent).not.toContain("Second");
+    expect(host.querySelectorAll("[data-markdown-segment]")[1]?.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
   });
 });

@@ -31,6 +31,12 @@
 import * as Y from "yjs";
 import { getDb } from "../db/schema";
 import { noteYsnapshotsRepository, noteYupdatesRepository } from "../repositories";
+import {
+  getYjsSubdocumentSnapshot,
+  applyYjsSubdocumentUpdate,
+  isYjsSubdocumentsEnabled,
+  rebuildYjsSubdocuments,
+} from "./yjs-subdocuments.js";
 
 // ---------------------------------------------------------------------------
 // 配置
@@ -483,6 +489,35 @@ export function getYjsStats() {
       idle: r.refCount === 0,
     })),
   };
+}
+
+/** 实验协议：为超大富文本建立章节清单，并按需返回单个 Subdocument 快照。 */
+export function yPrepareSubdocuments(noteId: string): { rootGuid: string; sectionIds: string[] } | null {
+  if (!isYjsSubdocumentsEnabled()) return null;
+  const db = getDb();
+  const note = db.prepare("SELECT content, contentFormat FROM notes WHERE id = ?").get(noteId) as
+    | { content: string; contentFormat: string }
+    | undefined;
+  if (!note || note.contentFormat !== "tiptap-json") return null;
+  const result = rebuildYjsSubdocuments(db, noteId, note.content);
+  return { rootGuid: result.rootGuid, sectionIds: result.sections.map((section) => section.id) };
+}
+
+export function yGetSubdocumentState(noteId: string, sectionId: string): { guid: string; stateBase64: string } | null {
+  if (!isYjsSubdocumentsEnabled()) return null;
+  const snapshot = getYjsSubdocumentSnapshot(getDb(), noteId, sectionId);
+  return snapshot ? { guid: snapshot.guid, stateBase64: bufferToBase64(snapshot.snapshot) } : null;
+}
+
+export function yApplySubdocumentUpdate(
+  noteId: string,
+  sectionId: string,
+  updateBase64: string,
+  userId: string | null,
+): { content: string; sectionGuid: string } | null {
+  if (!isYjsSubdocumentsEnabled()) return null;
+  const update = base64ToUint8(updateBase64);
+  return applyYjsSubdocumentUpdate(getDb(), noteId, sectionId, update, userId);
 }
 
 /**

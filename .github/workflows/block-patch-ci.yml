@@ -8,6 +8,7 @@ on:
       - "backend/src/lib/blockPatchIncrementalIndexes.ts"
       - "backend/src/lib/blockPatchListIncrementalIndexes.ts"
       - "backend/src/lib/blockPatchListStructureIncrementalIndexes.ts"
+      - "backend/src/lib/noteBlocks.ts"
       - "backend/src/lib/tiptapBlockPatch.ts"
       - "backend/src/lib/tiptapBlockPatchNode.ts"
       - "backend/src/lib/tiptapListItemMove.ts"
@@ -32,6 +33,8 @@ on:
       - "frontend/src/components/__tests__/TiptapBlockPatchListStructureRuntime.test.tsx"
       - "frontend/src/components/__tests__/TiptapRuntimePublicContext.test.tsx"
       - "frontend/src/lib/blockPatchApi.ts"
+      - "frontend/src/lib/contentFormat.ts"
+      - "frontend/src/lib/importService.base.ts"
       - "frontend/src/lib/tiptapBlockPatchNode.ts"
       - "frontend/src/lib/tiptapBlockPatchPlanner.ts"
       - "frontend/src/lib/tiptapBlockPatchPlannerRuntime.ts"
@@ -45,6 +48,7 @@ on:
       - "frontend/src/lib/__tests__/blockPatchListStructureApi.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchPlanner.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchPlannerV2.test.ts"
+      - "frontend/src/lib/__tests__/tiptapSchemaRepair.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchEmptyDocument.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchRuntime.test.ts"
       - "frontend/src/lib/__tests__/tiptapListItemMovePlanner.test.ts"
@@ -63,6 +67,7 @@ on:
       - "backend/src/lib/blockPatchIncrementalIndexes.ts"
       - "backend/src/lib/blockPatchListIncrementalIndexes.ts"
       - "backend/src/lib/blockPatchListStructureIncrementalIndexes.ts"
+      - "backend/src/lib/noteBlocks.ts"
       - "backend/src/lib/tiptapBlockPatch.ts"
       - "backend/src/lib/tiptapBlockPatchNode.ts"
       - "backend/src/lib/tiptapListItemMove.ts"
@@ -87,6 +92,8 @@ on:
       - "frontend/src/components/__tests__/TiptapBlockPatchListStructureRuntime.test.tsx"
       - "frontend/src/components/__tests__/TiptapRuntimePublicContext.test.tsx"
       - "frontend/src/lib/blockPatchApi.ts"
+      - "frontend/src/lib/contentFormat.ts"
+      - "frontend/src/lib/importService.base.ts"
       - "frontend/src/lib/tiptapBlockPatchNode.ts"
       - "frontend/src/lib/tiptapBlockPatchPlanner.ts"
       - "frontend/src/lib/tiptapBlockPatchPlannerRuntime.ts"
@@ -100,6 +107,7 @@ on:
       - "frontend/src/lib/__tests__/blockPatchListStructureApi.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchPlanner.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchPlannerV2.test.ts"
+      - "frontend/src/lib/__tests__/tiptapSchemaRepair.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchEmptyDocument.test.ts"
       - "frontend/src/lib/__tests__/tiptapBlockPatchRuntime.test.ts"
       - "frontend/src/lib/__tests__/tiptapListItemMovePlanner.test.ts"
@@ -168,6 +176,7 @@ jobs:
           src/lib/__tests__/blockPatchListStructureApi.test.ts
           src/lib/__tests__/tiptapBlockPatchPlanner.test.ts
           src/lib/__tests__/tiptapBlockPatchPlannerV2.test.ts
+          src/lib/__tests__/tiptapSchemaRepair.test.ts
           src/lib/__tests__/tiptapBlockPatchEmptyDocument.test.ts
           src/lib/__tests__/tiptapBlockPatchRuntime.test.ts
           src/lib/__tests__/tiptapListItemMovePlanner.test.ts

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -333,14 +333,21 @@ function MarkdownSegment({ segment, onTaskCheckboxChange }: {
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [mounted, setMounted] = useState(() => segment.start === 0 || typeof IntersectionObserver === "undefined");
+  const [estimatedHeight, setEstimatedHeight] = useState(480);
   useEffect(() => {
-    if (mounted || !hostRef.current || typeof IntersectionObserver === "undefined") return;
+    if (!hostRef.current || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) setMounted(true);
+      const visible = entries.some((entry) => entry.isIntersecting);
+      setMounted(visible);
     }, { rootMargin: "1000px 0px" });
     observer.observe(hostRef.current);
     return () => observer.disconnect();
-  }, [mounted]);
+  }, [segment.id]);
+  useLayoutEffect(() => {
+    if (!mounted || !hostRef.current) return;
+    const height = Math.ceil(hostRef.current.getBoundingClientRect().height);
+    if (height > 0) setEstimatedHeight(height);
+  }, [mounted, segment.markdown]);
   const components = useMemo(
     () => createComponents(onTaskCheckboxChange, segment.start, segment.taskOffset),
     [onTaskCheckboxChange, segment.start, segment.taskOffset],
@@ -353,13 +360,14 @@ function MarkdownSegment({ segment, onTaskCheckboxChange }: {
       ref={hostRef}
       data-markdown-segment={segment.id}
       data-md-pos={segment.start}
-      className="[content-visibility:auto] [contain-intrinsic-size:auto_480px]"
+      className="[content-visibility:auto]"
+      style={{ containIntrinsicSize: `auto ${estimatedHeight}px` }}
     >
       {mounted ? (
         <ReactMarkdown remarkPlugins={[remarkGfm, remarkSiyuanCallouts]} rehypePlugins={rehypePlugins} components={components}>
           {segment.markdown}
         </ReactMarkdown>
-      ) : <div aria-hidden="true" className="min-h-[480px]" />}
+      ) : <div aria-hidden="true" style={{ minHeight: estimatedHeight }} />}
     </div>
   );
 }
