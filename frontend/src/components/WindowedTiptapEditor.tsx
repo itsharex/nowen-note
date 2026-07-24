@@ -240,7 +240,18 @@ const WindowedTiptapEditor = forwardRef<NoteEditorHandle, WindowedTiptapEditorPr
               encodeBase64(update),
               generation,
             );
-            if (active && bundleRef.current === bundle) commitRef.current?.(result);
+            if (active && bundleRef.current === bundle) {
+              commitRef.current?.(result);
+              if (
+                result.generation !== manifest.generation
+                || result.structureVersion !== manifest.structureVersion
+              ) {
+                fallbackRef.current?.("subdocument-structure-changed", {
+                  content: result.content,
+                  contentText: result.contentText,
+                });
+              }
+            }
           },
         }, {
           generation: manifest.generation,

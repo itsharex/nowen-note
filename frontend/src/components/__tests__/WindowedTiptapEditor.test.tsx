@@ -238,6 +238,38 @@ describe("WindowedTiptapEditor", () => {
     expect(onUpdate).not.toHaveBeenCalled();
   });
 
+  it("falls back immediately with the committed snapshot after server resegmentation", async () => {
+    const resegmentedContent = largeNote().content.replace("p0", "server-resegmented");
+    apiMocks.applyUpdate.mockResolvedValue({
+      success: true,
+      content: resegmentedContent,
+      contentText: "server-resegmented",
+      sectionGuid: "guid-after-resegment",
+      version: 2,
+      generation: 2,
+      structureVersion: 2,
+    });
+    const onFallback = vi.fn();
+    await act(async () => root.render(
+      <WindowedTiptapEditor note={largeNote()} onUpdate={vi.fn()} onFallback={onFallback} />,
+    ));
+    await vi.waitFor(() => expect(host.querySelector("[data-section-editor]")).not.toBeNull());
+    const editor = host.querySelector<HTMLTextAreaElement>("[data-section-editor]")!;
+
+    await act(async () => changeTextarea(editor, editor.value.replace("p0", "local-change")));
+
+    await vi.waitFor(() => expect(onFallback).toHaveBeenCalledWith(
+      "subdocument-structure-changed",
+      { content: resegmentedContent, contentText: "server-resegmented" },
+    ));
+    expect(apiMocks.applyUpdate).toHaveBeenCalledWith(
+      "window-note",
+      expect.any(String),
+      expect.any(String),
+      1,
+    );
+  });
+
   it("propagates only a real title change through the parent update callback", async () => {
     const onUpdate = vi.fn();
     await act(async () => root.render(<WindowedTiptapEditor note={largeNote()} onUpdate={onUpdate} />));
