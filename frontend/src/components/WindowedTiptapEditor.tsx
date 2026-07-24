@@ -215,14 +215,19 @@ const WindowedTiptapEditor = forwardRef<NoteEditorHandle, WindowedTiptapEditorPr
             const state = await api.getYjsSubdocumentState(props.note.id, sectionId);
             return { guid: state.guid, state: decodeBase64(state.stateBase64) };
           },
-          send: async (sectionId, update) => {
+          send: async (sectionId, update, generation) => {
             const result = await api.applyYjsSubdocumentUpdate(
               props.note.id,
               sectionId,
               encodeBase64(update),
+              generation,
             );
             if (active && bundleRef.current === bundle) commitRef.current?.(result);
           },
+        }, {
+          generation: manifest.generation,
+          manifest,
+          onGenerationConflict: () => requestFallback("subdocument-generation-conflict"),
         });
         controllerRef.current = controller;
         // 先尝试提交跨卸载恢复的 pending，再加载首章，避免旧 snapshot 覆盖已提交的离线编辑。

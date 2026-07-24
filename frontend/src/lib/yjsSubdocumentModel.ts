@@ -27,7 +27,19 @@ export interface TiptapSubdocumentSyncController {
 
 export interface TiptapSubdocumentRestTransport {
   load(sectionId: string): Promise<{ guid: string; state: Uint8Array }>;
-  send(sectionId: string, update: Uint8Array): Promise<void>;
+  send(sectionId: string, update: Uint8Array, generation: number): Promise<void>;
+}
+
+export interface TiptapSubdocumentGenerationManifest {
+  generation: number;
+  structureVersion: number;
+  sections: unknown[];
+}
+
+export interface TiptapSubdocumentRestSyncOptions {
+  generation?: number;
+  manifest?: TiptapSubdocumentGenerationManifest;
+  onGenerationConflict?: (manifest: TiptapSubdocumentGenerationManifest) => void;
 }
 
 export interface TiptapSubdocumentRestSyncController {
@@ -206,6 +218,7 @@ export function createTiptapSubdocumentSyncController(
 export function createTiptapSubdocumentRestSyncController(
   bundle: TiptapSubdocumentBundle,
   transport: TiptapSubdocumentRestTransport,
+  options: TiptapSubdocumentRestSyncOptions = {},
 ): TiptapSubdocumentRestSyncController {
   const pending = new Map<string, Uint8Array>();
   const inflight = new Map<string, Uint8Array>();
@@ -215,6 +228,7 @@ export function createTiptapSubdocumentRestSyncController(
   const noteId = String(bundle.rootDoc.getMap<unknown>("metadata").get("noteId") || "");
   const storageKey = `${SUBDOCUMENT_PENDING_STORAGE_PREFIX}${encodeURIComponent(noteId)}`;
   const validSectionIds = new Set(bundle.sections.map((section) => section.id));
+  const generation = options.generation ?? 1;
   let destroyed = false;
 
   const canSendNow = () => typeof navigator === "undefined" || navigator.onLine !== false;
@@ -235,7 +249,7 @@ export function createTiptapSubdocumentRestSyncController(
           : queued || sending;
         if (update) sections[sectionId] = encodePendingUpdate(update);
       }
-      localStorage.setItem(storageKey, JSON.stringify({ version: 1, sections }));
+      localStorage.setItem(storageKey, JSON.stringify({ version: 2, generation, sections }));
     } catch {
       // localStorage 配额或禁用时保留内存 pending；不把不完整记录写回。
     }
@@ -245,9 +259,21 @@ export function createTiptapSubdocumentRestSyncController(
     try {
       const raw = localStorage.getItem(storageKey);
       if (!raw) return;
-      const parsed = JSON.parse(raw) as { version?: unknown; sections?: unknown };
-      if (parsed.version !== 1 || !parsed.sections || typeof parsed.sections !== "object" || Array.isArray(parsed.sections)) {
+      const parsed = JSON.parse(raw) as { version?: unknown; generation?: unknown; sections?: unknown };
+      const persistedGeneration = parsed.version === 1 ? 1 : parsed.generation;
+      if (
+        ![1, 2].includes(Number(parsed.version))
+        || !Number.isInteger(persistedGeneration)
+        || Number(persistedGeneration) < 1
+        || !parsed.sections
+        || typeof parsed.sections !== "object"
+        || Array.isArray(parsed.sections)
+      ) {
         throw new Error("Subdocument pending 格式无效");
+      }
+      if (persistedGeneration !== generation) {
+        if (options.manifest) options.onGenerationConflict?.(options.manifest);
+        return;
       }
       for (const [sectionId, encoded] of Object.entries(parsed.sections as Record<string, unknown>)) {
         if (!validSectionIds.has(sectionId) || typeof encoded !== "string") continue;
@@ -285,14 +311,23 @@ export function createTiptapSubdocumentRestSyncController(
     persistPending();
     let sent = false;
     try {
-      await transport.send(sectionId, update);
+      await transport.send(sectionId, update, generation);
       sent = true;
       inflight.delete(sectionId);
       persistPending();
       return true;
-    } catch {
+    } catch (error) {
       inflight.delete(sectionId);
-      if (!destroyed) mergePending(sectionId, update);
+      if (!destroyed) {
+        mergePending(sectionId, update);
+        const conflict = error as {
+          code?: string;
+          manifest?: TiptapSubdocumentGenerationManifest;
+        };
+        if (conflict?.code === "SUBDOCUMENT_GENERATION_CONFLICT" && conflict.manifest) {
+          options.onGenerationConflict?.(conflict.manifest);
+        }
+      }
       return false;
     } finally {
       if (sent && !destroyed && canSendNow() && pending.has(sectionId)) void sendSection(sectionId);

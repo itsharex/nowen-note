@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createTiptapSubdocumentBundle,
   createTiptapSubdocumentRestSyncController,
@@ -162,6 +162,10 @@ describe("Y.js Tiptap subdocument model", () => {
     ]));
     await Promise.resolve();
     expect(firstController.pendingCount()).toBe(1);
+    expect(JSON.parse(localStorage.getItem(`nowen:yjs-subdocument-pending:${encodeURIComponent("note-persist")}`) || "{}")).toMatchObject({
+      version: 2,
+      generation: 1,
+    });
     firstController.destroy();
     destroyTiptapSubdocumentBundle(firstBundle);
 
@@ -183,6 +187,35 @@ describe("Y.js Tiptap subdocument model", () => {
     rebuiltController.destroy();
     destroyTiptapSubdocumentBundle(rebuiltBundle);
     serverDoc.destroy();
+  });
+
+  it("keeps an older-generation pending queue untouched and reports the latest manifest", async () => {
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: false });
+    const noteId = "note-generation-conflict";
+    const content = document([{ type: "paragraph", attrs: { blockId: "blk_generation" }, content: [] }]);
+    const bundle = createTiptapSubdocumentBundle(noteId, content, 250, { preload: false })!;
+    const sectionId = bundle.sections[0].id;
+    const encoded = "AQ==";
+    const storageKey = `nowen:yjs-subdocument-pending:${encodeURIComponent(noteId)}`;
+    const original = JSON.stringify({ version: 2, generation: 1, sections: { [sectionId]: encoded } });
+    localStorage.setItem(storageKey, original);
+    const send = vi.fn(async () => undefined);
+    const latestManifest = { generation: 2, structureVersion: 2, sections: bundle.sections };
+    const onGenerationConflict = vi.fn();
+
+    const controller = createTiptapSubdocumentRestSyncController(bundle, { load: async () => { throw new Error("unused"); }, send }, {
+      generation: 2,
+      manifest: latestManifest,
+      onGenerationConflict,
+    });
+
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+    expect(await controller.flushPending()).toBe(0);
+    expect(send).not.toHaveBeenCalled();
+    expect(localStorage.getItem(storageKey)).toBe(original);
+    expect(onGenerationConflict).toHaveBeenCalledWith(latestManifest);
+    controller.destroy();
+    destroyTiptapSubdocumentBundle(bundle);
   });
 
   it("clears a corrupted persisted pending queue without applying it", () => {
