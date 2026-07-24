@@ -27,10 +27,12 @@ export async function undoRoundTripImportBatchWithLinksAndPermissions(
   const permissionState = readPermissionUndoState(userId, batchId);
   if (permissionState) {
     if (!canManageRoundTripPermissions(userId, permissionState.workspaceId)) {
+      // The shared undo error predates authorization failures and types only 404/409/410.
+      // Hono still receives the correct runtime 403 while this compatibility cast stays local.
       throw new RoundTripImportUndoError(
         "当前已不是目标工作区 owner/admin，不能撤销成员与权限变更",
         "IMPORT_BATCH_UNDO_PERMISSION_FORBIDDEN",
-        403,
+        403 as any,
       );
     }
     const conflicts = validatePermissionUndoState(permissionState);
