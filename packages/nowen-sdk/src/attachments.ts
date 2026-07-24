@@ -284,7 +284,6 @@ export class NowenAttachmentClient {
         },
         body: JSON.stringify({
           content: nextContent,
-          contentText: nextContent,
           contentFormat: "markdown",
           version: Number(note.version) || 1,
         }),
