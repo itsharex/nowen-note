@@ -101,7 +101,11 @@ function toBlob(file: UploadAttachmentParams["file"], mimeType: string): Blob {
     return new Blob([file], { type: mimeType });
   }
   if (file instanceof Uint8Array) {
-    return new Blob([file], { type: mimeType });
+    // Uint8Array may be backed by SharedArrayBuffer, which is not a valid DOM BlobPart.
+    // Copy it into a fresh ArrayBuffer to keep the public Node/browser contract type-safe.
+    const bytes = new Uint8Array(file.byteLength);
+    bytes.set(file);
+    return new Blob([bytes.buffer], { type: mimeType });
   }
   return new Blob([file], { type: mimeType });
 }
