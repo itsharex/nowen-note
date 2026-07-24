@@ -31,6 +31,8 @@ import NoteImageExportCenter from "./components/NoteImageExportCenter";
 import DocxImportCenter from "./components/DocxImportCenter";
 import NoteTransferCenter from "./components/NoteTransferCenter";
 import RoundTripImportBatchCenter from "./components/RoundTripImportBatchCenter";
+import RoundTripPermissionMappingCenter from "./components/RoundTripPermissionMappingCenter";
+import RoundTripPermissionExportCenter from "./components/RoundTripPermissionExportCenter";
 import "./index.css";
 import "./editor-list-markers.css";
 import "./code-block-wrap.css";
@@ -54,6 +56,7 @@ import { installTaskUpdateSafetyBridge } from "./lib/taskUpdateSafetyBridge";
 import { installNodeViewMutationGuard } from "./lib/nodeViewMutationGuard";
 import { installEditorMediaScopeGuard } from "./lib/editorMediaScopeGuard";
 import { installRoundTripImportReviewBridge } from "./lib/roundTripImportReview";
+import { installRoundTripPermissionExportBridge } from "./lib/roundTripPermissionExport";
 import { installEditorPerformanceGlobal } from "./lib/editorPerformanceHarness";
 
 function removeBootSplash() {
@@ -116,6 +119,8 @@ installReliableExportDownloadBridge();
 // Pause Nowen package imports after the authoritative dry-run and show the full package/conflict
 // report before the legacy import panel can continue to the formal write request.
 installRoundTripImportReviewBridge();
+// Keep the legacy DataManager button while adding an explicit opt-in permission export dialog.
+installRoundTripPermissionExportBridge();
 // 只暴露浏览器自动化显式调用的性能入口，不会自动启动任何采集场景。
 installEditorPerformanceGlobal();
 
@@ -178,6 +183,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <PublicSpaceLauncher />
         <NoteTransferCenter />
         <RoundTripImportBatchCenter />
+        <RoundTripPermissionMappingCenter />
+        <RoundTripPermissionExportCenter />
         <App />
       </>
     )}
