@@ -36,6 +36,26 @@ function filenameFromDisposition(value: string | null): string | null {
   return plain?.[1] ? decodeFilename(plain[1].trim()) : null;
 }
 
+/**
+ * DataManager intentionally keeps its export scope separate from the sidebar's current workspace.
+ * Its stable accessibility contract (`aria-label="data scope"`) lets the bridge read that explicit
+ * choice without coupling the large component to another export implementation.
+ */
+export function resolveRoundTripExportWorkspaceFromUi(fallback = getCurrentWorkspace()): string {
+  if (typeof document === "undefined") return fallback || "personal";
+  const tablist = document.querySelector<HTMLElement>('[role="tablist"][aria-label="data scope"]');
+  if (!tablist || tablist.closest('[hidden], [aria-hidden="true"]')) return fallback || "personal";
+  const tabs = Array.from(tablist.querySelectorAll<HTMLElement>('[role="tab"]'));
+  const activeIndex = tabs.findIndex((tab) => tab.getAttribute("aria-selected") === "true");
+  if (activeIndex === 0) return "personal";
+  if (activeIndex === 1) {
+    const root = tablist.parentElement;
+    const selected = root?.querySelector<HTMLSelectElement>("select");
+    if (selected?.value) return selected.value;
+  }
+  return fallback || "personal";
+}
+
 export async function downloadRoundTripPermissionPackage(options: {
   workspaceId?: string;
   includePermissions?: boolean;
@@ -85,7 +105,7 @@ export function installRoundTripPermissionExportBridge(): void {
   installed = true;
   const nativeDownload = api.downloadNowenPackage.bind(api);
   api.downloadNowenPackage = (async (...args: any[]) => {
-    const workspace = getCurrentWorkspace();
+    const workspace = resolveRoundTripExportWorkspaceFromUi();
     if (!workspace || workspace === "personal") {
       try { return await downloadRoundTripPermissionPackage({}); }
       catch { return nativeDownload(...args); }
