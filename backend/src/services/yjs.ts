@@ -32,6 +32,7 @@ import * as Y from "yjs";
 import { getDb } from "../db/schema";
 import { noteYsnapshotsRepository, noteYupdatesRepository } from "../repositories";
 import {
+  assertYjsSubdocumentGeneration,
   getYjsSubdocumentSnapshot,
   applyYjsSubdocumentUpdate,
   isYjsSubdocumentsEnabled,
@@ -502,6 +503,8 @@ export function getYjsStats() {
 /** 实验协议：为超大富文本建立章节清单，并按需返回单个 Subdocument 快照。 */
 export function yPrepareSubdocuments(noteId: string): {
   rootGuid: string;
+  generation: number;
+  structureVersion: number;
   sections: Array<{ id: string; guid: string; startBlock: number; endBlock: number }>;
 } | null {
   if (!isYjsSubdocumentsEnabled()) return null;
@@ -524,17 +527,26 @@ export function yApplySubdocumentUpdate(
   sectionId: string,
   updateBase64: string,
   userId: string | null,
-): { content: string; contentText: string; sectionGuid: string; version: number } | null {
+  expectedGeneration: number,
+): {
+  content: string;
+  contentText: string;
+  sectionGuid: string;
+  version: number;
+  generation: number;
+  structureVersion: number;
+} | null {
   if (!isYjsSubdocumentsEnabled()) return null;
+  const db = getDb();
+  assertYjsSubdocumentGeneration(db, noteId, expectedGeneration);
   // 旧的整篇 Y.js room 与章节协议不能同时作为写入者，否则 debounce 会用旧内容覆盖章节更新。
   yDestroyDoc(noteId);
-  const db = getDb();
   db.transaction(() => {
     noteYupdatesRepository.deleteByNoteId(noteId);
     noteYsnapshotsRepository.deleteByNoteId(noteId);
   })();
   const update = base64ToUint8(updateBase64);
-  return applyYjsSubdocumentUpdate(db, noteId, sectionId, update, userId);
+  return applyYjsSubdocumentUpdate(db, noteId, sectionId, update, userId, expectedGeneration);
 }
 
 /**

@@ -41,6 +41,8 @@ test("persists stable section GUIDs and restores a lossless Tiptap snapshot", as
   db.prepare("UPDATE notes SET content = ? WHERE id = 'ys-note'").run(changed);
   const second = service.rebuildYjsSubdocuments(db, "ys-note", changed, 10);
   assert.deepEqual(first.sections.map((section) => section.guid), second.sections.map((section) => section.guid));
+  assert.equal(second.generation, 1, "只修改章节文本不得推进代际");
+  assert.equal(second.structureVersion, 1);
 });
 
 test("fails closed when a section snapshot is corrupted", async () => {
@@ -69,7 +71,57 @@ test("applies and journals an offline subdocument update before materializing no
     snapshot.snapshot,
     replacement.replace("changed", "offline-change"),
   );
-  const result = service.applyYjsSubdocumentUpdate(db, "ys-note", sectionId, update, "ys-user");
+  const manifest = service.prepareYjsSubdocuments(db, "ys-note", currentContent, 10);
+  const result = service.applyYjsSubdocumentUpdate(
+    db,
+    "ys-note",
+    sectionId,
+    update,
+    "ys-user",
+    manifest.generation,
+  );
   assert.match(result.content, /offline-change/);
+  assert.equal(result.generation, manifest.generation);
   assert.equal((db.prepare("SELECT COUNT(*) AS c FROM note_y_subdocument_updates WHERE noteId = 'ys-note'").get() as any).c, 1);
+
+  const nextSnapshot = service.getYjsSubdocumentSnapshot(db, "ys-note", sectionId)!;
+  const nextSectionContent = JSON.stringify({
+    type: "doc",
+    content: [
+      ...JSON.parse(replacement.replace("changed", "offline-change")).content,
+      { type: "heading", attrs: { level: 1, blockId: "blk_sectionc" }, content: [{ type: "text", text: "C" }] },
+      { type: "paragraph", attrs: { blockId: "blk_sectionc1" }, content: [{ type: "text", text: "three" }] },
+    ],
+  });
+  const structureUpdate = service.createYjsSubdocumentContentUpdate(
+    nextSnapshot.guid,
+    nextSnapshot.snapshot,
+    nextSectionContent,
+  );
+  const resegmented = service.applyYjsSubdocumentUpdate(
+    db,
+    "ys-note",
+    sectionId,
+    structureUpdate,
+    "ys-user",
+    manifest.generation,
+  );
+  assert.equal(resegmented.generation, manifest.generation + 1);
+  assert.equal(resegmented.structureVersion, manifest.structureVersion + 1);
+  assert.equal(service.prepareYjsSubdocuments(db, "ys-note", resegmented.content, 10).sections.length, 3);
+  assert.equal((db.prepare("SELECT COUNT(*) AS c FROM note_y_subdocument_updates WHERE noteId = 'ys-note'").get() as any).c, 0);
+
+  assert.throws(
+    () => service.applyYjsSubdocumentUpdate(
+      db,
+      "ys-note",
+      sectionId,
+      structureUpdate,
+      "ys-user",
+      manifest.generation,
+    ),
+    (error: unknown) => error instanceof service.SubdocumentGenerationConflictError
+      && error.code === "SUBDOCUMENT_GENERATION_CONFLICT"
+      && error.manifest.generation === resegmented.generation,
+  );
 });

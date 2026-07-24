@@ -19,7 +19,10 @@ import {
   yPrepareSubdocuments,
   yReplaceContentAsUpdate,
 } from "../services/yjs";
-import { isYjsSubdocumentsEnabled } from "../services/yjs-subdocuments";
+import {
+  isYjsSubdocumentsEnabled,
+  SubdocumentGenerationConflictError,
+} from "../services/yjs-subdocuments";
 import { deleteAttachmentFilesByNoteIds, extractInlineBase64Images } from "./attachments";
 import { syncReferences as syncAttachmentReferences } from "../lib/attachmentRefs";
 import { syncNoteLinks, getBacklinks } from "../lib/noteLinks";
@@ -1258,6 +1261,7 @@ app.post("/:id/yjs/subdocuments/:sectionId", async (c) => {
     return c.json({ error: "章节更新过大", code: "SUBDOCUMENT_UPDATE_TOO_LARGE" }, 413);
   }
   let updateBase64 = "";
+  let generation = 0;
   try {
     const rawBody = await c.req.text();
     if (rawBody.length > 1_600_000) {
@@ -1265,6 +1269,7 @@ app.post("/:id/yjs/subdocuments/:sectionId", async (c) => {
     }
     const body = JSON.parse(rawBody);
     updateBase64 = typeof body?.updateBase64 === "string" ? body.updateBase64 : "";
+    generation = Number(body?.generation);
   } catch {
     return c.json({ error: "无效章节更新", code: "INVALID_SUBDOCUMENT_UPDATE" }, 400);
   }
@@ -1273,6 +1278,8 @@ app.post("/:id/yjs/subdocuments/:sectionId", async (c) => {
     || updateBase64.length > 1_500_000
     || updateBase64.length % 4 !== 0
     || !/^[A-Za-z0-9+/]+={0,2}$/.test(updateBase64)
+    || !Number.isInteger(generation)
+    || generation < 1
   ) {
     return c.json({ error: "无效章节更新", code: "INVALID_SUBDOCUMENT_UPDATE" }, 400);
   }
@@ -1282,6 +1289,7 @@ app.post("/:id/yjs/subdocuments/:sectionId", async (c) => {
       c.req.param("sectionId"),
       updateBase64,
       userId,
+      generation,
     );
     if (!result) {
       return c.json({ error: "Subdocument 功能未启用", code: "SUBDOCUMENTS_DISABLED" }, 409);
@@ -1295,6 +1303,19 @@ app.post("/:id/yjs/subdocuments/:sectionId", async (c) => {
     return c.json({ success: true, ...result });
   } catch (error) {
     console.warn("[notes.applySubdocumentUpdate] rejected:", error instanceof Error ? error.message : error);
+    if (error instanceof SubdocumentGenerationConflictError) {
+      return c.json({
+        error: "章节代际已更新，请重新加载清单",
+        code: error.code,
+        manifest: error.manifest,
+      }, 409);
+    }
+    if (error instanceof Error && error.message === "SUBDOCUMENT_NOT_FOUND") {
+      return c.json({ error: "章节不存在", code: "SUBDOCUMENT_NOT_FOUND" }, 404);
+    }
+    if (error instanceof Error && error.message === "INVALID_SUBDOCUMENT_UPDATE_SIZE") {
+      return c.json({ error: "章节更新过大", code: "SUBDOCUMENT_UPDATE_TOO_LARGE" }, 413);
+    }
     return c.json({ error: "无效章节更新", code: "INVALID_SUBDOCUMENT_UPDATE" }, 400);
   }
 });

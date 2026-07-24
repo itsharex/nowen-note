@@ -14,7 +14,18 @@ export interface YjsSubdocumentSection {
 
 export interface YjsSubdocumentManifest {
   rootGuid: string;
+  generation: number;
+  structureVersion: number;
   sections: Array<Pick<YjsSubdocumentSection, "id" | "guid" | "startBlock" | "endBlock">>;
+}
+
+export class SubdocumentGenerationConflictError extends Error {
+  readonly code = "SUBDOCUMENT_GENERATION_CONFLICT";
+
+  constructor(readonly manifest: YjsSubdocumentManifest) {
+    super("Subdocument generation conflict");
+    this.name = "SubdocumentGenerationConflictError";
+  }
 }
 
 export function isYjsSubdocumentsEnabled(): boolean {
@@ -146,15 +157,10 @@ function decodeSection(guid: string, snapshot: Buffer): string | null {
   }
 }
 
-export function rebuildYjsSubdocuments(
-  db: Database.Database,
-  noteId: string,
-  content: string,
-  maxBlocks = 250,
-): { rootGuid: string; sections: YjsSubdocumentSection[] } {
-  ensureYjsSubdocumentTables(db);
-  const sections = splitYjsSubdocumentSections(noteId, content, maxBlocks);
-  if (!sections) throw new Error("INVALID_TIPTAP_SUBDOCUMENT_SOURCE");
+function buildRootSnapshot(noteId: string, sections: YjsSubdocumentSection[]): {
+  rootGuid: string;
+  rootSnapshot: Buffer;
+} {
   const rootGuid = `nowen-root-${stablePart(noteId)}`;
   const root = new Y.Doc({ guid: rootGuid });
   root.getArray<string>("sectionOrder").insert(0, sections.map((section) => section.id));
@@ -162,38 +168,123 @@ export function rebuildYjsSubdocuments(
   for (const section of sections) meta.set(section.id, section.guid);
   const rootSnapshot = Buffer.from(Y.encodeStateAsUpdate(root));
   root.destroy();
+  return { rootGuid, rootSnapshot };
+}
 
-  db.transaction(() => {
-    db.prepare("DELETE FROM note_y_subdocuments WHERE noteId = ?").run(noteId);
-    const insert = db.prepare(`
-      INSERT INTO note_y_subdocuments (
-        noteId, sectionId, guid, blockStart, blockEnd, snapshotBlob, payloadHash
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    for (const section of sections) {
-      insert.run(
-        noteId,
-        section.id,
-        section.guid,
-        section.startBlock,
-        section.endBlock,
-        encodeSection(section),
-        hash(section.content),
-      );
-    }
-    db.prepare(`
-      INSERT INTO note_y_subdocument_manifests (
-        noteId, rootGuid, rootSnapshot, contentHash, sectionCount, status, mismatchReason, updatedAt
-      ) VALUES (?, ?, ?, ?, ?, 'healthy', NULL, datetime('now'))
-      ON CONFLICT(noteId) DO UPDATE SET
-        rootGuid = excluded.rootGuid,
-        rootSnapshot = excluded.rootSnapshot,
-        contentHash = excluded.contentHash,
-        sectionCount = excluded.sectionCount,
-        status = 'healthy', mismatchReason = NULL, updatedAt = datetime('now')
-    `).run(noteId, rootGuid, rootSnapshot, hash(content), sections.length);
-  })();
-  return { rootGuid, sections };
+function readManifest(db: Database.Database, noteId: string): YjsSubdocumentManifest | null {
+  const manifest = db.prepare(`
+    SELECT rootGuid, generation, structureVersion
+    FROM note_y_subdocument_manifests WHERE noteId = ?
+  `).get(noteId) as {
+    rootGuid: string;
+    generation: number;
+    structureVersion: number;
+  } | undefined;
+  if (!manifest) return null;
+  const rows = db.prepare(`
+    SELECT sectionId, guid, blockStart, blockEnd
+    FROM note_y_subdocuments WHERE noteId = ? ORDER BY blockStart
+  `).all(noteId) as Array<{
+    sectionId: string;
+    guid: string;
+    blockStart: number;
+    blockEnd: number;
+  }>;
+  return {
+    rootGuid: manifest.rootGuid,
+    generation: manifest.generation,
+    structureVersion: manifest.structureVersion,
+    sections: rows.map((row) => ({
+      id: row.sectionId,
+      guid: row.guid,
+      startBlock: row.blockStart,
+      endBlock: row.blockEnd,
+    })),
+  };
+}
+
+export function assertYjsSubdocumentGeneration(
+  db: Database.Database,
+  noteId: string,
+  expectedGeneration: number,
+): YjsSubdocumentManifest {
+  ensureYjsSubdocumentTables(db);
+  const manifest = readManifest(db, noteId);
+  if (!manifest) throw new Error("SUBDOCUMENT_NOT_FOUND");
+  if (manifest.generation !== expectedGeneration) {
+    throw new SubdocumentGenerationConflictError(manifest);
+  }
+  return manifest;
+}
+
+function sameSectionStructure(
+  previous: YjsSubdocumentManifest["sections"],
+  next: YjsSubdocumentSection[],
+): boolean {
+  return previous.length === next.length && previous.every((section, index) => (
+    section.id === next[index]?.id
+    && section.startBlock === next[index]?.startBlock
+    && section.endBlock === next[index]?.endBlock
+  ));
+}
+
+function replaceYjsSubdocumentRows(
+  db: Database.Database,
+  noteId: string,
+  content: string,
+  sections: YjsSubdocumentSection[],
+): { rootGuid: string; sections: YjsSubdocumentSection[]; generation: number; structureVersion: number } {
+  const previous = readManifest(db, noteId);
+  const structureChanged = previous != null && !sameSectionStructure(previous.sections, sections);
+  const generation = previous ? previous.generation + (structureChanged ? 1 : 0) : 1;
+  const structureVersion = previous ? previous.structureVersion + (structureChanged ? 1 : 0) : 1;
+  const { rootGuid, rootSnapshot } = buildRootSnapshot(noteId, sections);
+
+  db.prepare("DELETE FROM note_y_subdocument_updates WHERE noteId = ?").run(noteId);
+  db.prepare("DELETE FROM note_y_subdocuments WHERE noteId = ?").run(noteId);
+  const insert = db.prepare(`
+    INSERT INTO note_y_subdocuments (
+      noteId, sectionId, guid, blockStart, blockEnd, snapshotBlob, payloadHash
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  for (const section of sections) {
+    insert.run(
+      noteId,
+      section.id,
+      section.guid,
+      section.startBlock,
+      section.endBlock,
+      encodeSection(section),
+      hash(section.content),
+    );
+  }
+  db.prepare(`
+    INSERT INTO note_y_subdocument_manifests (
+      noteId, rootGuid, rootSnapshot, contentHash, sectionCount, generation,
+      structureVersion, status, mismatchReason, updatedAt
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'healthy', NULL, datetime('now'))
+    ON CONFLICT(noteId) DO UPDATE SET
+      rootGuid = excluded.rootGuid,
+      rootSnapshot = excluded.rootSnapshot,
+      contentHash = excluded.contentHash,
+      sectionCount = excluded.sectionCount,
+      generation = excluded.generation,
+      structureVersion = excluded.structureVersion,
+      status = 'healthy', mismatchReason = NULL, updatedAt = datetime('now')
+  `).run(noteId, rootGuid, rootSnapshot, hash(content), sections.length, generation, structureVersion);
+  return { rootGuid, sections, generation, structureVersion };
+}
+
+export function rebuildYjsSubdocuments(
+  db: Database.Database,
+  noteId: string,
+  content: string,
+  maxBlocks = 250,
+): { rootGuid: string; sections: YjsSubdocumentSection[]; generation: number; structureVersion: number } {
+  ensureYjsSubdocumentTables(db);
+  const sections = splitYjsSubdocumentSections(noteId, content, maxBlocks);
+  if (!sections) throw new Error("INVALID_TIPTAP_SUBDOCUMENT_SOURCE");
+  return db.transaction(() => replaceYjsSubdocumentRows(db, noteId, content, sections))();
 }
 
 /** 读取健康清单；只有缺失或与 notes.content 漂移时才重建，普通 GET 不得改写 Y.js 历史。 */
@@ -205,13 +296,15 @@ export function prepareYjsSubdocuments(
 ): YjsSubdocumentManifest {
   ensureYjsSubdocumentTables(db);
   const manifest = db.prepare(`
-    SELECT rootGuid, rootSnapshot, contentHash, sectionCount, status
+    SELECT rootGuid, rootSnapshot, contentHash, sectionCount, generation, structureVersion, status
     FROM note_y_subdocument_manifests WHERE noteId = ?
   `).get(noteId) as {
     rootGuid: string;
     rootSnapshot: Buffer;
     contentHash: string;
     sectionCount: number;
+    generation: number;
+    structureVersion: number;
     status: string;
   } | undefined;
   const rows = db.prepare(`
@@ -244,6 +337,8 @@ export function prepareYjsSubdocuments(
   if (manifest && rootMatches && rows.length === manifest.sectionCount) {
     return {
       rootGuid: manifest.rootGuid,
+      generation: manifest.generation,
+      structureVersion: manifest.structureVersion,
       sections: rows.map((row) => ({
         id: row.sectionId,
         guid: row.guid,
@@ -255,6 +350,8 @@ export function prepareYjsSubdocuments(
   const rebuilt = rebuildYjsSubdocuments(db, noteId, content, maxBlocks);
   return {
     rootGuid: rebuilt.rootGuid,
+    generation: rebuilt.generation,
+    structureVersion: rebuilt.structureVersion,
     sections: rebuilt.sections.map((section) => ({
       id: section.id,
       guid: section.guid,
@@ -342,30 +439,48 @@ export function applyYjsSubdocumentUpdate(
   sectionId: string,
   update: Uint8Array,
   userId: string | null,
-): { content: string; contentText: string; sectionGuid: string; version: number } {
+  expectedGeneration: number,
+): {
+  content: string;
+  contentText: string;
+  sectionGuid: string;
+  version: number;
+  generation: number;
+  structureVersion: number;
+} {
   if (update.byteLength === 0 || update.byteLength > 1024 * 1024) throw new Error("INVALID_SUBDOCUMENT_UPDATE_SIZE");
   ensureYjsSubdocumentTables(db);
-  const current = db.prepare(`
-    SELECT guid, snapshotBlob FROM note_y_subdocuments WHERE noteId = ? AND sectionId = ?
-  `).get(noteId, sectionId) as { guid: string; snapshotBlob: Buffer } | undefined;
-  if (!current) throw new Error("SUBDOCUMENT_NOT_FOUND");
-  const sectionDoc = new Y.Doc({ guid: current.guid });
-  let sectionContent = "";
-  let nextSnapshot: Buffer;
-  try {
-    Y.applyUpdate(sectionDoc, new Uint8Array(current.snapshotBlob));
-    Y.applyUpdate(sectionDoc, update);
-    sectionContent = sectionDoc.getText("content").toString();
-    if (!parseDocument(sectionContent)) throw new Error("INVALID_SUBDOCUMENT_CONTENT");
-    nextSnapshot = Buffer.from(Y.encodeStateAsUpdate(sectionDoc));
-  } finally {
-    sectionDoc.destroy();
-  }
-
   let materialized = "";
   let contentText = "";
   let version = 0;
+  let sectionGuid = "";
+  let generation = 0;
+  let structureVersion = 0;
   db.transaction(() => {
+    const manifest = readManifest(db, noteId);
+    if (!manifest) throw new Error("SUBDOCUMENT_NOT_FOUND");
+    if (manifest.generation !== expectedGeneration) {
+      throw new SubdocumentGenerationConflictError(manifest);
+    }
+    generation = manifest.generation;
+    structureVersion = manifest.structureVersion;
+    const currentSection = db.prepare(`
+      SELECT guid, snapshotBlob FROM note_y_subdocuments WHERE noteId = ? AND sectionId = ?
+    `).get(noteId, sectionId) as { guid: string; snapshotBlob: Buffer } | undefined;
+    if (!currentSection) throw new Error("SUBDOCUMENT_NOT_FOUND");
+    sectionGuid = currentSection.guid;
+    const sectionDoc = new Y.Doc({ guid: currentSection.guid });
+    let sectionContent = "";
+    let nextSnapshot: Buffer;
+    try {
+      Y.applyUpdate(sectionDoc, new Uint8Array(currentSection.snapshotBlob));
+      Y.applyUpdate(sectionDoc, update);
+      sectionContent = sectionDoc.getText("content").toString();
+      if (!parseDocument(sectionContent)) throw new Error("INVALID_SUBDOCUMENT_CONTENT");
+      nextSnapshot = Buffer.from(Y.encodeStateAsUpdate(sectionDoc));
+    } finally {
+      sectionDoc.destroy();
+    }
     db.prepare(`UPDATE note_y_subdocuments
       SET snapshotBlob = ?, payloadHash = ?, updatedAt = datetime('now')
       WHERE noteId = ? AND sectionId = ?`)
@@ -383,29 +498,47 @@ export function applyYjsSubdocumentUpdate(
       nodes.push(...doc.content);
     }
     materialized = JSON.stringify({ type: "doc", content: nodes });
-    const current = db.prepare("SELECT version FROM notes WHERE id = ?").get(noteId) as
-      | { version: number }
+    const currentNote = db.prepare("SELECT version, content FROM notes WHERE id = ?").get(noteId) as
+      | { version: number; content: string }
       | undefined;
-    if (!current) throw new Error("SUBDOCUMENT_NOTE_NOT_FOUND");
+    if (!currentNote) throw new Error("SUBDOCUMENT_NOTE_NOT_FOUND");
     const synced = syncNoteBlocks(db, noteId, materialized, "tiptap-json");
     // Subdocument 章节必须已经携带稳定 Block ID；若仍需规范化，章节快照会与整篇内容分叉。
     if (synced.changed) throw new Error("SUBDOCUMENT_NORMALIZATION_REQUIRED");
     materialized = synced.content;
     contentText = synced.contentText;
-    version = current.version + 1;
+    version = currentNote.version + 1;
     const updated = db.prepare(`UPDATE notes
       SET content = ?, contentText = ?, version = ?, updatedAt = datetime('now')
       WHERE id = ? AND version = ?`)
-      .run(materialized, contentText, version, noteId, current.version);
+      .run(materialized, contentText, version, noteId, currentNote.version);
     if (updated.changes !== 1) throw new Error("SUBDOCUMENT_VERSION_CONFLICT");
-    db.prepare(`UPDATE note_y_subdocument_manifests
-      SET contentHash = ?, status = 'healthy', mismatchReason = NULL, updatedAt = datetime('now') WHERE noteId = ?`)
-      .run(hash(materialized), noteId);
+
+    const previousDoc = parseDocument(currentNote.content);
+    const nonHeadingBoundarySizes = manifest.sections.slice(1).flatMap((section, index) => {
+      const node = previousDoc?.content?.[section.startBlock];
+      const isHeadingBoundary = node?.type === "heading" && Number(node?.attrs?.level) <= 2;
+      return isHeadingBoundary ? [] : [manifest.sections[index]?.endBlock - manifest.sections[index]?.startBlock];
+    });
+    const maxBlocks = nonHeadingBoundarySizes.length > 0
+      ? Math.max(10, ...nonHeadingBoundarySizes)
+      : 250;
+    const nextSections = splitYjsSubdocumentSections(noteId, materialized, maxBlocks);
+    if (!nextSections) throw new Error("INVALID_TIPTAP_SUBDOCUMENT_SOURCE");
+    if (!sameSectionStructure(manifest.sections, nextSections)) {
+      const replaced = replaceYjsSubdocumentRows(db, noteId, materialized, nextSections);
+      generation = replaced.generation;
+      structureVersion = replaced.structureVersion;
+    } else {
+      db.prepare(`UPDATE note_y_subdocument_manifests
+        SET contentHash = ?, status = 'healthy', mismatchReason = NULL, updatedAt = datetime('now') WHERE noteId = ?`)
+        .run(hash(materialized), noteId);
+    }
     rebuildBlockAuthorityStore(db, noteId, materialized, "tiptap-json", {
       noteVersion: version,
       operationType: "yjs-subdocument-update",
-      operationJson: { sectionId },
+      operationJson: { sectionId, generation, structureVersion },
     });
   })();
-  return { content: materialized, contentText, sectionGuid: current.guid, version };
+  return { content: materialized, contentText, sectionGuid, version, generation, structureVersion };
 }

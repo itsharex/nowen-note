@@ -63,6 +63,8 @@ test("通过 ACL 提供章节清单、按需快照和原子章节更新", async 
   assert.equal(manifestResponse.status, 200);
   const manifest = await manifestResponse.json() as any;
   assert.equal(manifest.rootGuid, `nowen-root-${noteId}`);
+  assert.equal(manifest.generation, 1);
+  assert.equal(manifest.structureVersion, 1);
   assert.deepEqual(manifest.sections.map((section: any) => section.id), [
     "section-blk_route_a",
     "section-blk_route_b",
@@ -99,7 +101,10 @@ test("通过 ACL 提供章节清单、按需快照和原子章节更新", async 
   const updateResponse = await app.request(`/notes/${noteId}/yjs/subdocuments/${sectionId}`, {
     method: "POST",
     headers: { "X-User-Id": ownerId, "Content-Type": "application/json" },
-    body: JSON.stringify({ updateBase64: Buffer.from(update).toString("base64") }),
+    body: JSON.stringify({
+      updateBase64: Buffer.from(update).toString("base64"),
+      generation: manifest.generation,
+    }),
   });
   assert.equal(updateResponse.status, 200);
   const updated = await updateResponse.json() as any;
@@ -107,6 +112,22 @@ test("通过 ACL 提供章节清单、按需快照和原子章节更新", async 
   assert.equal(updated.version, 2);
   assert.match(updated.content, /updated/);
   assert.match((db.prepare("SELECT content FROM notes WHERE id = ?").get(noteId) as any).content, /updated/);
+
+  db.prepare(`UPDATE note_y_subdocument_manifests
+    SET generation = 2, structureVersion = 2 WHERE noteId = ?`).run(noteId);
+  const staleResponse = await app.request(`/notes/${noteId}/yjs/subdocuments/${sectionId}`, {
+    method: "POST",
+    headers: { "X-User-Id": ownerId, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      updateBase64: Buffer.from(update).toString("base64"),
+      generation: manifest.generation,
+    }),
+  });
+  assert.equal(staleResponse.status, 409);
+  const stale = await staleResponse.json() as any;
+  assert.equal(stale.code, "SUBDOCUMENT_GENERATION_CONFLICT");
+  assert.equal(stale.manifest.generation, 2);
+  assert.equal(stale.manifest.structureVersion, 2);
 });
 
 test("Subdocument 路由在功能关闭和非法更新时 fail closed", async () => {
